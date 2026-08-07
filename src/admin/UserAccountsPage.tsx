@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Pencil, Search, Upload, UserPlus, X } from "lucide-react";
 import { confirmUserImport, createUser, disableUser, downloadUserImportTemplate, getMetadata, getUsersPage, setUserLocked, updateUser, uploadUserImport, type AuthSession, type MetadataOption, type UserAccount, type UserAccountInput, type UserImportPreview } from "../api";
 import type { components } from "../api/types";
@@ -9,31 +10,62 @@ type ImportRow = components["schemas"]["UserImportRow"];
 const fallbackRoles:MetadataOption[]=[{value:"ADMIN",label:"Quản trị viên"},{value:"TEACHER",label:"Giáo viên"},{value:"STUDENT",label:"Học sinh"}];
 const fallbackStatuses:MetadataOption[]=[{value:"ACTIVE",label:"Đang hoạt động"},{value:"LOCKED",label:"Đã khóa"},{value:"INACTIVE",label:"Tạm ngưng"},{value:"ARCHIVED",label:"Đã xóa"}];
 const emptyForm=(roles:MetadataOption[],statuses:MetadataOption[]):UserAccountInput=>({username:"",email:"",fullName:"",phone:"",roleCode:roles[0]?.value??"",status:(statuses[0]?.value??"ACTIVE") as UserStatus,password:""});
+const formatError=(reason:unknown,fallback:string)=>reason instanceof Error?reason.message:fallback;
+const USERS_QUERY_KEY="admin-users-page";
 
 export function UserAccountsPage({session}:{session:AuthSession}) {
- const [rows,setRows]=useState<UserAccount[]>([]),[page,setPage]=useState(0),[totalPages,setTotalPages]=useState(0),[totalElements,setTotalElements]=useState(0);
- const [search,setSearch]=useState(""),[roleCode,setRoleCode]=useState(""),[status,setStatus]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
- const [roles,setRoles]=useState<MetadataOption[]>(fallbackRoles),[statuses,setStatuses]=useState<MetadataOption[]>(fallbackStatuses);
+ const queryClient=useQueryClient();
+ const [page,setPage]=useState(0);
+ const [search,setSearch]=useState(""),[roleCode,setRoleCode]=useState(""),[status,setStatus]=useState("");
  const [form,setForm]=useState<UserAccountInput>(()=>emptyForm(fallbackRoles,fallbackStatuses)),[editing,setEditing]=useState<UserAccount|null>(null),[panelOpen,setPanelOpen]=useState(false),[importOpen,setImportOpen]=useState(false);
+
+ const metadataQuery=useQuery({queryKey:["admin-metadata-roles-statuses",session.accessToken],queryFn:()=>getMetadata(session)});
+ const roles=metadataQuery.data?.roles.length?metadataQuery.data.roles:fallbackRoles;
+ const statuses=metadataQuery.data?.userStatuses.length?metadataQuery.data.userStatuses:fallbackStatuses;
  const roleLabels=useMemo(()=>Object.fromEntries(roles.map(x=>[x.value,x.label])),[roles]);
  const statusLabels=useMemo(()=>Object.fromEntries(statuses.map(x=>[x.value,x.label])),[statuses]);
- useEffect(()=>{void getMetadata(session).then(data=>{if(data.roles.length)setRoles(data.roles);if(data.userStatuses.length)setStatuses(data.userStatuses)}).catch(()=>undefined)},[session]);
- const load=useCallback(async()=>{setLoading(true);setError("");try{const result=await getUsersPage(session,{search,roleCode,status,page,size:20});setRows((result.content??[]) as UserAccount[]);setTotalPages(result.totalPages??0);setTotalElements(result.totalElements??0)}catch(reason){setError(reason instanceof Error?reason.message:"Không thể tải danh sách tài khoản")}finally{setLoading(false)}},[session,search,roleCode,status,page]);
- useEffect(()=>{void load()},[load]);useEffect(()=>setPage(0),[search,roleCode,status]);
+
+ const usersQuery=useQuery({queryKey:[USERS_QUERY_KEY,session.accessToken,search,roleCode,status,page],queryFn:()=>getUsersPage(session,{search,roleCode,status,page,size:20})});
+ const rows=(usersQuery.data?.content??[]) as UserAccount[];
+ const totalPages=usersQuery.data?.totalPages??0;
+ const totalElements=usersQuery.data?.totalElements??0;
+ const loading=usersQuery.isLoading;
+ const invalidateUsers=()=>queryClient.invalidateQueries({queryKey:[USERS_QUERY_KEY]});
+
+ const saveMutation=useMutation({
+  mutationFn:(payload:{id?:number;input:UserAccountInput})=>payload.id?updateUser(session,payload.id,payload.input):createUser(session,payload.input),
+  onSuccess:()=>{setPanelOpen(false);void invalidateUsers()},
+ });
+ const lockMutation=useMutation({
+  mutationFn:(row:UserAccount)=>setUserLocked(session,row.id,row.status!=="LOCKED"),
+  onSuccess:()=>void invalidateUsers(),
+ });
+ const disableMutation=useMutation({
+  mutationFn:(row:UserAccount)=>disableUser(session,row.id),
+  onSuccess:()=>void invalidateUsers(),
+ });
+
+ const error=usersQuery.isError?formatError(usersQuery.error,"Không thể tải danh sách tài khoản")
+  :saveMutation.isError?formatError(saveMutation.error,"Không thể lưu tài khoản")
+  :lockMutation.isError?formatError(lockMutation.error,"Không thể đổi trạng thái")
+  :disableMutation.isError?formatError(disableMutation.error,"Không thể vô hiệu hóa")
+  :"";
+
+ const setFilter=(setter:(value:string)=>void)=>(value:string)=>{setter(value);setPage(0)};
  const openCreate=()=>{setEditing(null);setForm(emptyForm(roles,statuses));setPanelOpen(true)};
  const openEdit=(row:UserAccount)=>{setEditing(row);setForm({username:row.username,email:row.email,fullName:row.fullName,phone:row.phone??"",roleCode:row.roleCode,status:row.status,password:""});setPanelOpen(true)};
- const save=async(event:React.FormEvent)=>{event.preventDefault();setError("");try{editing?await updateUser(session,editing.id,{...form,password:form.password||undefined}):await createUser(session,form);setPanelOpen(false);await load()}catch(reason){setError(reason instanceof Error?reason.message:"Không thể lưu tài khoản")}};
- const toggleLock=async(row:UserAccount)=>{try{await setUserLocked(session,row.id,row.status!=="LOCKED");await load()}catch(reason){setError(reason instanceof Error?reason.message:"Không thể đổi trạng thái")}};
- const disable=async(row:UserAccount)=>{if(!confirm(`Vô hiệu hóa tài khoản ${row.username}?`))return;try{await disableUser(session,row.id);await load()}catch(reason){setError(reason instanceof Error?reason.message:"Không thể vô hiệu hóa")}};
- const filtered=Boolean(search||roleCode||status),clearFilters=()=>{setSearch("");setRoleCode("");setStatus("")};
+ const save=(event:React.FormEvent)=>{event.preventDefault();saveMutation.mutate({id:editing?.id,input:{...form,password:form.password||undefined}})};
+ const toggleLock=(row:UserAccount)=>lockMutation.mutate(row);
+ const disable=(row:UserAccount)=>{if(!confirm(`Vô hiệu hóa tài khoản ${row.username}?`))return;disableMutation.mutate(row)};
+ const filtered=Boolean(search||roleCode||status),clearFilters=()=>{setSearch("");setRoleCode("");setStatus("");setPage(0)};
  return <section className="accounts-page">
   <header className="accounts-heading"><div><p>QUẢN TRỊ HỆ THỐNG</p><h1>Tài khoản</h1><span>Quản lý người dùng, phân quyền và trạng thái truy cập hệ thống.</span></div><div><button className="secondary-action" onClick={()=>setImportOpen(true)}><Upload size={17}/>Import Excel</button><button className="primary-action" onClick={openCreate}><UserPlus size={17}/>Thêm tài khoản</button></div></header>
-  {error&&<div className="accounts-error"><AlertTriangle size={18}/><span>{error}</span><button onClick={()=>void load()}>Thử lại</button></div>}
-  <div className="accounts-card"><div className="accounts-filters"><label><Search size={17}/><input aria-label="Tìm tài khoản" placeholder="Tìm username, email, họ tên" value={search} onChange={e=>setSearch(e.target.value)}/></label><select aria-label="Lọc vai trò" value={roleCode} onChange={e=>setRoleCode(e.target.value)}><option value="">Mọi vai trò</option>{roles.map(x=><option value={x.value} key={x.value}>{x.label}</option>)}</select><select aria-label="Lọc trạng thái" value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{statuses.map(x=><option value={x.value} key={x.value}>{x.label}</option>)}</select>{filtered&&<button onClick={clearFilters}>Xóa bộ lọc</button>}<span>{totalElements.toLocaleString("vi-VN")} tài khoản</span></div>
-   <div className="accounts-table-wrap"><table><thead><tr><th>Họ và tên</th><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Ngày tạo</th><th className="actions-column">Thao tác</th></tr></thead><tbody>{loading&&Array.from({length:7}).map((_,i)=><tr className="skeleton-row" key={i}><td colSpan={6}><span/></td></tr>)}{!loading&&rows.map(row=><tr key={row.id}><td><b>{row.fullName}</b><small>{row.phone||"Chưa có số điện thoại"}</small></td><td><span>@{row.username}</span><small>{row.email}</small></td><td>{roleLabels[row.roleCode]??row.roleCode}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusLabels[row.status]??row.status}</span></td><td className="numeric">{row.createdAt?new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt)):"—"}</td><td className="actions-column"><button title="Chỉnh sửa" onClick={()=>openEdit(row)}><Pencil size={16}/></button><button onClick={()=>void toggleLock(row)}>{row.status==="LOCKED"?"Mở khóa":"Khóa"}</button><button className="danger-action" onClick={()=>void disable(row)}>Vô hiệu</button></td></tr>)}</tbody></table></div>
+  {error&&<div className="accounts-error"><AlertTriangle size={18}/><span>{error}</span><button onClick={()=>void usersQuery.refetch()}>Thử lại</button></div>}
+  <div className="accounts-card"><div className="accounts-filters"><label><Search size={17}/><input aria-label="Tìm tài khoản" placeholder="Tìm username, email, họ tên" value={search} onChange={e=>setFilter(setSearch)(e.target.value)}/></label><select aria-label="Lọc vai trò" value={roleCode} onChange={e=>setFilter(setRoleCode)(e.target.value)}><option value="">Mọi vai trò</option>{roles.map(x=><option value={x.value} key={x.value}>{x.label}</option>)}</select><select aria-label="Lọc trạng thái" value={status} onChange={e=>setFilter(setStatus)(e.target.value)}><option value="">Mọi trạng thái</option>{statuses.map(x=><option value={x.value} key={x.value}>{x.label}</option>)}</select>{filtered&&<button onClick={clearFilters}>Xóa bộ lọc</button>}<span>{totalElements.toLocaleString("vi-VN")} tài khoản</span></div>
+   <div className="accounts-table-wrap"><table><thead><tr><th>Họ và tên</th><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Ngày tạo</th><th className="actions-column">Thao tác</th></tr></thead><tbody>{loading&&Array.from({length:7}).map((_,i)=><tr className="skeleton-row" key={i}><td colSpan={6}><span/></td></tr>)}{!loading&&rows.map(row=><tr key={row.id}><td><b>{row.fullName}</b><small>{row.phone||"Chưa có số điện thoại"}</small></td><td><span>@{row.username}</span><small>{row.email}</small></td><td>{roleLabels[row.roleCode]??row.roleCode}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusLabels[row.status]??row.status}</span></td><td className="numeric">{row.createdAt?new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt)):"—"}</td><td className="actions-column"><button title="Chỉnh sửa" onClick={()=>openEdit(row)}><Pencil size={16}/></button><button onClick={()=>toggleLock(row)}>{row.status==="LOCKED"?"Mở khóa":"Khóa"}</button><button className="danger-action" onClick={()=>disable(row)}>Vô hiệu</button></td></tr>)}</tbody></table></div>
    {!loading&&!rows.length&&<div className="accounts-empty"><h2>{filtered?"Không có kết quả phù hợp":"Chưa có tài khoản"}</h2><p>{filtered?"Thử thay đổi từ khóa hoặc xóa bộ lọc hiện tại.":"Thêm tài khoản đầu tiên hoặc import danh sách từ Excel."}</p>{filtered?<button className="secondary-action" onClick={clearFilters}>Xóa bộ lọc</button>:<button className="primary-action" onClick={openCreate}>Thêm tài khoản</button>}</div>}
    <footer className="accounts-pagination"><span>Trang {Math.min(page+1,Math.max(totalPages,1))}/{Math.max(totalPages,1)}</span><div><button aria-label="Trang trước" disabled={page===0} onClick={()=>setPage(x=>x-1)}><ChevronLeft size={17}/></button><button aria-label="Trang sau" disabled={page+1>=totalPages} onClick={()=>setPage(x=>x+1)}><ChevronRight size={17}/></button></div></footer>
-  </div>{panelOpen&&<AccountPanel form={form} setForm={setForm} editing={editing} roles={roles} statuses={statuses} onClose={()=>setPanelOpen(false)} onSubmit={save}/>} {importOpen&&<ImportDialog session={session} roleLabels={roleLabels} onClose={()=>setImportOpen(false)} onImported={load}/>} 
+  </div>{panelOpen&&<AccountPanel form={form} setForm={setForm} editing={editing} roles={roles} statuses={statuses} onClose={()=>setPanelOpen(false)} onSubmit={save}/>} {importOpen&&<ImportDialog session={session} roleLabels={roleLabels} onClose={()=>setImportOpen(false)} onImported={invalidateUsers}/>}
  </section>;
 }
 
@@ -41,7 +73,7 @@ function AccountPanel({form,setForm,editing,roles,statuses,onClose,onSubmit}:{fo
  return <div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA":"TẠO MỚI"}</p><h2>{editing?editing.fullName:"Thêm tài khoản"}</h2></div><button aria-label="Đóng" onClick={onClose}><X size={19}/></button></header><form onSubmit={onSubmit}><label>Username<input required pattern="[a-zA-Z0-9._-]+" maxLength={80} value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label><label>Email<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Họ và tên<input required maxLength={120} value={form.fullName} onChange={e=>setForm({...form,fullName:e.target.value})}/></label><label>Điện thoại<input maxLength={30} value={form.phone??""} onChange={e=>setForm({...form,phone:e.target.value})}/></label><div className="form-columns"><label>Vai trò<select value={form.roleCode} onChange={e=>setForm({...form,roleCode:e.target.value})}>{roles.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value as UserStatus})}>{statuses.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label></div><label>{editing?"Mật khẩu mới (không bắt buộc)":"Mật khẩu khởi tạo"}<input type="password" minLength={8} required={!editing} value={form.password??""} onChange={e=>setForm({...form,password:e.target.value})}/></label><footer><button type="button" className="secondary-action" onClick={onClose}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo tài khoản"}</button></footer></form></aside></div>;
 }
 
-function ImportDialog({session,roleLabels,onClose,onImported}:{session:AuthSession;roleLabels:Record<string,string>;onClose:()=>void;onImported:()=>Promise<void>}){
+function ImportDialog({session,roleLabels,onClose,onImported}:{session:AuthSession;roleLabels:Record<string,string>;onClose:()=>void;onImported:()=>Promise<unknown>}){
  const [step,setStep]=useState<1|2|3>(1),[file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<UserImportPreview|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[result,setResult]=useState("");const rows=(preview?.rows??[]) as ImportRow[];
  const upload=async()=>{if(!file)return;setBusy(true);setError("");try{setPreview(await uploadUserImport(session,file));setStep(2)}catch(reason){setError(reason instanceof Error?reason.message:"Không thể đọc file")}finally{setBusy(false)}};
  const confirmImport=async()=>{if(!preview?.objectKey)return;setBusy(true);setError("");try{const next=await confirmUserImport(session,preview.objectKey);setResult(`Đã tạo ${next.created??0} tài khoản, bỏ qua ${next.skipped??0} dòng.`);setStep(3);await onImported()}catch(reason){setError(reason instanceof Error?reason.message:"Import thất bại")}finally{setBusy(false)}};

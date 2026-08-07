@@ -270,35 +270,13 @@ function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSe
  </div>;
 }
 
-const emptyUser = (metadata: Metadata | null): UserAccountInput => ({
-  username: "",
-  email: "",
-  fullName: "",
-  phone: "",
-  roleCode: firstMetadataValue(metadata, "roles"),
-  status: (firstMetadataValue(metadata, "userStatuses") || "ACTIVE") as UserAccountInput["status"],
-  password: "",
-});
-
 function AdminDashboard({session,activeSection}:{session:AuthSession;activeSection:string}) {
   const metadata=useMetadata(session);
-  const [stats,setStats]=useState<AdminStats|null>(null);
-  const [users,setUsers]=useState<UserAccount[]>([]);
-  const [logs,setLogs]=useState<AuditLog[]>([]);
-  const [search,setSearch]=useState("");
-  const [role,setRole]=useState("");
-  const [status,setStatus]=useState("");
-  const [form,setForm]=useState<UserAccountInput>(() => emptyUser(null));
-  const [editing,setEditing]=useState<number|null>(null);
-  const [error,setError]=useState("");
-  const load=useCallback(async()=>{try{const [nextStats,nextUsers,nextLogs]=await Promise.all([getAdminStats(session),getUsers(session,search,role,status),getAuditLogs(session)]);setStats(nextStats);setUsers(nextUsers);setLogs(nextLogs)}catch(reason){setError(messageOf(reason))}},[session,search,role,status]);
-  useEffect(()=>{void load()},[load]);
-  useEffect(()=>{if(!editing)setForm(current=>({...current,roleCode:current.roleCode||firstMetadataValue(metadata,"roles"),status:current.status||firstMetadataValue(metadata,"userStatuses")}))},[editing,metadata]);
-  const save=async(event:React.FormEvent)=>{event.preventDefault();setError("");try{if(editing)await updateUser(session,editing,{...form,password:form.password||undefined});else await createUser(session,form);setEditing(null);setForm(emptyUser(metadata));await load()}catch(reason){setError(messageOf(reason))}};
-  const edit=(user:UserAccount)=>{setEditing(user.id);setForm({...user,password:""})};
-  const toggle=async(user:UserAccount)=>{try{await setUserLocked(session,user.id,user.status!=="LOCKED");await load()}catch(reason){setError(messageOf(reason))}};
-  const userStatusLabel=(value:string)=>metadataOptions(metadata,"userStatuses").find(option=>option.value===value)?.label||value;
-  const roleLabel=(value:string)=>metadataOptions(metadata,"roles").find(option=>option.value===value)?.label||value;
+  const statsQuery=useQuery({queryKey:["admin-stats",session.accessToken],queryFn:()=>getAdminStats(session)});
+  const logsQuery=useQuery({queryKey:["admin-audit-logs",session.accessToken],queryFn:()=>getAuditLogs(session)});
+  const stats=statsQuery.data??null;
+  const logs=logsQuery.data??[];
+  const error=statsQuery.isError?messageOf(statsQuery.error):logsQuery.isError?messageOf(logsQuery.error):"";
   return <div className="page live-dashboard admin-page-section">
       {error&&<div className="api-error">{error}</div>}
       {activeSection==="overview"&&<>

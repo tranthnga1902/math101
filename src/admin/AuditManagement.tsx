@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getAuditLogs, getUsers, type AuditLog, type AuthSession, type UserAccount } from "../api";
 import "./audit-management.css";
 
@@ -26,8 +27,6 @@ function pretty(value: unknown) {
 }
 
 export function AuditManagement({ session }: { session: AuthSession }) {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [users, setUsers] = useState<UserAccount[]>([]);
   const [selected, setSelected] = useState<AuditLog | null>(null);
   const [range, setRange] = useState("30");
   const [actor, setActor] = useState("");
@@ -35,19 +34,14 @@ export function AuditManagement({ session }: { session: AuthSession }) {
   const [target, setTarget] = useState("");
   const [objectId, setObjectId] = useState("");
   const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      setError("");
-      const [audit, userRows] = await Promise.all([getAuditLogs(session), getUsers(session)]);
-      setLogs(audit);
-      setUsers(userRows);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể tải nhật ký");
-    }
-  }, [session]);
-  useEffect(() => { void load(); }, [load]);
+  const logsQuery = useQuery({ queryKey: ["audit-logs", session.accessToken], queryFn: () => getAuditLogs(session) });
+  const usersQuery = useQuery({ queryKey: ["audit-log-users", session.accessToken], queryFn: () => getUsers(session) });
+  const logs = logsQuery.data ?? [];
+  const users = usersQuery.data ?? [];
+  const error = logsQuery.isError ? (logsQuery.error instanceof Error ? logsQuery.error.message : "Không thể tải nhật ký")
+    : usersQuery.isError ? (usersQuery.error instanceof Error ? usersQuery.error.message : "Không thể tải nhật ký")
+    : "";
 
   const userMap = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const targets = useMemo(() => [...new Set(logs.map((log) => log.targetType).filter(Boolean))], [logs]);
