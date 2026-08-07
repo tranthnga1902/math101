@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreVertical, Plus, X } from "lucide-react";
 import {
   deleteDocument,
@@ -20,6 +21,8 @@ const message = (reason: unknown) => reason instanceof Error ? reason.message : 
 const storageKey = (session: AuthSession) => `math10.document-categories.${session.userId}`;
 const hiddenStorageKey = (session: AuthSession) => `math10.hidden-document-categories.${session.userId}`;
 const mappingStorageKey = (session: AuthSession) => `math10.document-category-mappings.${session.userId}`;
+const DOCUMENTS_QUERY_KEY = "admin-documents";
+const METADATA_QUERY_KEY = "admin-document-metadata";
 
 function loadSavedTypes(session: AuthSession): ManagedType[] {
   try {
@@ -31,6 +34,7 @@ function loadSavedTypes(session: AuthSession): ManagedType[] {
 }
 
 export function DocumentManagement({ session }: { session: AuthSession }) {
+  const queryClient = useQueryClient();
   const [rows, setRows] = useState<DocumentItem[]>([]);
   const [types, setTypes] = useState<ManagedType[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -38,38 +42,39 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [upload, setUpload] = useState(false);
-  const [error, setError] = useState("");
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [categoryDialog, setCategoryDialog] = useState<CategoryDialog>(null);
   const [deleteType, setDeleteType] = useState<ManagedType | null>(null);
   const menuArea = useRef<HTMLElement>(null);
+
+  const documentsQuery = useQuery({ queryKey: [DOCUMENTS_QUERY_KEY, session.accessToken], queryFn: () => getDocuments(session) });
+  const metadataQuery = useQuery({ queryKey: [METADATA_QUERY_KEY, session.accessToken], queryFn: () => getMetadata(session) });
+  const invalidateDocuments = () => queryClient.invalidateQueries({ queryKey: [DOCUMENTS_QUERY_KEY] });
+  const error = documentsQuery.isError ? message(documentsQuery.error) : metadataQuery.isError ? message(metadataQuery.error) : "";
 
   const persistTypes = useCallback((next: ManagedType[]) => {
     setTypes(next);
     localStorage.setItem(storageKey(session), JSON.stringify(next));
   }, [session]);
 
-  const load = useCallback(async () => {
-    try {
-      const [documents, metadata] = await Promise.all([getDocuments(session), getMetadata(session)]);
-      const saved = loadSavedTypes(session);
-      const hidden = new Set<string>(JSON.parse(localStorage.getItem(hiddenStorageKey(session)) || "[]"));
-      const savedByValue = new Map(saved.map(item => [item.value, item]));
-      const builtin = metadata.documentTypes.filter(item => !hidden.has(item.value)).map(item => ({
-        ...item,
-        label: savedByValue.get(item.value)?.label || item.label,
-        builtin: true,
-      }));
-      const custom = saved.filter(item => !metadata.documentTypes.some(base => base.value === item.value));
-      const mappings = JSON.parse(localStorage.getItem(mappingStorageKey(session)) || "{}") as Record<string, string>;
-      setRows(documents.map(document => ({ ...document, docType: mappings[String(document.id)] || document.docType })));
-      setTypes([...builtin, ...custom]);
-    } catch (reason) {
-      setError(message(reason));
-    }
-  }, [session]);
+  useEffect(() => {
+    if (!documentsQuery.data || !metadataQuery.data) return;
+    const documents = documentsQuery.data;
+    const metadata = metadataQuery.data;
+    const saved = loadSavedTypes(session);
+    const hidden = new Set<string>(JSON.parse(localStorage.getItem(hiddenStorageKey(session)) || "[]"));
+    const savedByValue = new Map(saved.map(item => [item.value, item]));
+    const builtin = metadata.documentTypes.filter(item => !hidden.has(item.value)).map(item => ({
+      ...item,
+      label: savedByValue.get(item.value)?.label || item.label,
+      builtin: true,
+    }));
+    const custom = saved.filter(item => !metadata.documentTypes.some(base => base.value === item.value));
+    const mappings = JSON.parse(localStorage.getItem(mappingStorageKey(session)) || "{}") as Record<string, string>;
+    setRows(documents.map(document => ({ ...document, docType: mappings[String(document.id)] || document.docType })));
+    setTypes([...builtin, ...custom]);
+  }, [documentsQuery.data, metadataQuery.data, session]);
 
-  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const close = (event: MouseEvent) => {
       if (!menuArea.current?.contains(event.target as Node)) setOpenMenu(null);
@@ -78,6 +83,11 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
+  const deleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => deleteDocument(session, id))),
+    onSuccess: () => { setSelected([]); void invalidateDocuments(); },
+  });
+
   const visible = useMemo(() => rows.filter(row =>
     (!selectedTypes.length || selectedTypes.includes(row.docType)) &&
     row.title.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))
@@ -85,15 +95,9 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   const counts = useMemo(() => Object.fromEntries(types.map(type => [type.value, rows.filter(row => row.docType === type.value).length])), [rows, types]);
   const toggleType = (value: string) => setSelectedTypes(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
   const toggle = (id: number) => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
-  const archive = async () => {
+  const archive = () => {
     if (!selected.length || !confirm(`Xóa ${selected.length} tài liệu đã chọn?`)) return;
-    try {
-      await Promise.all(selected.map(id => deleteDocument(session, id)));
-      setSelected([]);
-      await load();
-    } catch (reason) {
-      setError(message(reason));
-    }
+    deleteMutation.mutate(selected);
   };
   const saveCategory = (name: string) => {
     const label = name.trim();
@@ -138,7 +142,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
       {error && <div className="api-error">{error}</div>}
       <div className={`docs-collection ${view}`}>{visible.map(row => <article className={selected.includes(row.id) ? "selected" : ""} key={row.id}><input className="doc-check" type="checkbox" checked={selected.includes(row.id)} onChange={() => toggle(row.id)} /><button className="doc-preview" onClick={() => void openDocumentFile(session, row.fileUrl, row.title)}>{row.fileUrl && row.docType !== "VIDEO" ? <PdfThumbnail fileUrl={row.fileUrl} accessToken={session.accessToken} pageNumber={1} className="doc-pdf-preview" renderScale={0.75} thumbnailUrl={row.thumbnailUrl} docType={row.docType}/> : <span className={`doc-kind ${row.docType.toLowerCase()}`}>{row.docType === "VIDEO" ? "VIDEO" : "TÀI LIỆU"}</span>}</button><div className="doc-info"><div><h2>{row.title}</h2><button aria-label="Mở tài liệu" onClick={() => void openDocumentFile(session, row.fileUrl, row.title)}>⋮</button></div><p><span>{types.find(item => item.value === row.docType)?.label ?? row.docType}</span><time>{new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt))}</time></p></div></article>)}</div>
       {!visible.length && <div className="docs-empty">Không có tài liệu phù hợp.</div>}
-      {selected.length > 0 && <div className="docs-floating"><b>{selected.length}</b><span>Đã chọn</span><button onClick={() => setSelected([])}>Bỏ chọn</button><button className="danger" onClick={() => void archive()}>Xóa</button></div>}
+      {selected.length > 0 && <div className="docs-floating"><b>{selected.length}</b><span>Đã chọn</span><button onClick={() => setSelected([])}>Bỏ chọn</button><button className="danger" onClick={archive}>Xóa</button></div>}
     </main>
     {upload && <DocumentUpload session={session} types={types} onClose={() => setUpload(false)} onDone={async (document, category) => {
       if (!category.builtin) {
@@ -147,7 +151,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
         localStorage.setItem(mappingStorageKey(session), JSON.stringify(mappings));
       }
       setUpload(false);
-      await load();
+      await invalidateDocuments();
     }} />}
     {categoryDialog && <CategoryEditor initialName={categoryDialog.mode === "rename" ? categoryDialog.category.label : ""} title={categoryDialog.mode === "rename" ? "Đổi tên phân loại" : "Thêm phân loại"} onClose={() => setCategoryDialog(null)} onSave={saveCategory} />}
     {deleteType && <DeleteCategoryDialog category={deleteType} count={counts[deleteType.value] ?? 0} targets={types.filter(item => item.value !== deleteType.value)} onClose={() => setDeleteType(null)} onDelete={removeCategory} />}

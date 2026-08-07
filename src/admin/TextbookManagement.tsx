@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useMemo,useState} from "react";
+import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
 import {attachLessonDocument,deleteDocument,getAdminTextbooks,getChapters,getCourses,getLessons,getTextbook,openTextbook,openTextbookInBrowser,publishTextbook,setTextbookPageOffset,uploadTextbook,type AuthSession,type Chapter,type Course,type Lesson,type TextbookDetail,type TextbookItem} from "../api";
 import {useMappingAutoSave} from "../hooks/useMappingAutoSave";
 import {PdfThumbnail} from "../PdfThumbnail";
@@ -8,13 +9,19 @@ import "./textbook-pdf.css";
 
 type BookRow={book:TextbookItem;detail:TextbookDetail|null};
 const message=(reason:unknown)=>reason instanceof Error?reason.message:"Không thể thực hiện thao tác";
+const TEXTBOOKS_QUERY_KEY="admin-textbooks";
 
 export function TextbookManagement({session}:{session:AuthSession}){
- const [rows,setRows]=useState<BookRow[]>([]),[active,setActive]=useState<BookRow|null>(null),[uploadOpen,setUploadOpen]=useState(false),[error,setError]=useState("");
- const load=useCallback(async()=>{try{const books=await getAdminTextbooks(session);const details=await Promise.all(books.map(book=>getTextbook(session,book.id).catch(()=>null)));setRows(books.map((book,index)=>({book,detail:details[index]})))}catch(reason){setError(message(reason))}},[session]);
- useEffect(()=>{void load()},[load]);
- if(active)return <TextbookMapping session={session} row={active} onBack={()=>{setActive(null);void load()}}/>;
- return <section className="sgk-page"><header><div><h1>Quản lý Sách Giáo Khoa</h1><p>Danh sách SGK môn Toán lớp 10 chương trình GDPT 2018.</p></div><button className="sgk-primary" onClick={()=>setUploadOpen(true)}>Tải lên SGK</button></header>{error&&<div className="api-error">{error}</div>}<div className="sgk-table"><table><thead><tr><th>Ảnh bìa</th><th>Tên SGK</th><th>Tập</th><th>Số trang PDF</th><th>Trạng thái khớp trang</th><th>Trạng thái xuất bản</th><th>Thao tác</th></tr></thead><tbody>{rows.map(({book,detail})=>{const mapped=detail?.pageMappings.length??0,total=book.totalPages??0,percent=total?Math.min(100,Math.round(mapped/total*100)):0,isMatched=mapped>0||book.basePageOffset>1;return <tr key={book.id} className="sgk-row-clickable" onClick={()=>setActive({book,detail})} title={isMatched?"Bấm để chỉnh sửa khớp trang":"Bấm để khớp trang"}><td><div className="sgk-cover">{book.thumbnailUrl?<img src={book.thumbnailUrl} alt=""/>:<span>PDF</span>}</div></td><td><b>{book.title}</b><small>{book.docType}</small></td><td>{/tập\s*2/i.test(book.title)?"Tập 2":/tập\s*1/i.test(book.title)?"Tập 1":"—"}</td><td className="numeric">{book.totalPages??"—"}</td><td>{isMatched?<span className="sgk-chip matched">{percent&&percent<100?`Khớp một phần (${percent}%)`:"Đã khớp"}</span>:<span className="sgk-chip warning">Chưa khớp</span>}</td><td onClick={e=>e.stopPropagation()}>{book.status==="PUBLISHED"?<span className="sgk-chip published">Đã xuất bản</span>:<button title={!isMatched?"Phải hoàn thành khớp trang trước khi xuất bản.":"Xuất bản sách"} disabled={!isMatched} onClick={()=>void publishTextbook(session,book.id).then(load).catch(e=>setError(message(e)))}>Xuất bản</button>}</td><td className="actions-column" onClick={e=>e.stopPropagation()}><button title="Mở trang khớp trang / chỉnh sửa" onClick={()=>setActive({book,detail})}>{isMatched?"Chỉnh sửa":"Khớp trang"}</button><button className="sgk-delete" onClick={()=>{if(confirm(`Xóa sách “${book.title}”? Sách sẽ được gỡ khỏi hệ thống nhưng lịch sử vẫn được bảo toàn.`))void deleteDocument(session,book.id).then(load).catch(reason=>setError(message(reason)))}}>Xóa</button></td></tr>})}</tbody></table><footer>Hiển thị {rows.length} kết quả · Bấm vào một cuốn sách để khớp hoặc chỉnh sửa trang.</footer></div>{!rows.length&&<p className="sgk-empty">Chưa có sách giáo khoa.</p>}{uploadOpen&&<UploadBook session={session} onClose={()=>setUploadOpen(false)} onDone={async()=>{setUploadOpen(false);await load()}}/>}</section>;
+ const queryClient=useQueryClient();
+ const [active,setActive]=useState<BookRow|null>(null),[uploadOpen,setUploadOpen]=useState(false);
+ const booksQuery=useQuery({queryKey:[TEXTBOOKS_QUERY_KEY,session.accessToken],queryFn:async()=>{const books=await getAdminTextbooks(session);const details=await Promise.all(books.map(book=>getTextbook(session,book.id).catch(()=>null)));return books.map((book,index)=>({book,detail:details[index]}))}});
+ const rows=booksQuery.data??[];
+ const invalidate=()=>queryClient.invalidateQueries({queryKey:[TEXTBOOKS_QUERY_KEY]});
+ const publishMutation=useMutation({mutationFn:(id:number)=>publishTextbook(session,id),onSuccess:invalidate});
+ const deleteMutation=useMutation({mutationFn:(id:number)=>deleteDocument(session,id),onSuccess:invalidate});
+ const error=booksQuery.isError?message(booksQuery.error):publishMutation.isError?message(publishMutation.error):deleteMutation.isError?message(deleteMutation.error):"";
+ if(active)return <TextbookMapping session={session} row={active} onBack={()=>{setActive(null);void invalidate()}}/>;
+ return <section className="sgk-page"><header><div><h1>Quản lý Sách Giáo Khoa</h1><p>Danh sách SGK môn Toán lớp 10 chương trình GDPT 2018.</p></div><button className="sgk-primary" onClick={()=>setUploadOpen(true)}>Tải lên SGK</button></header>{error&&<div className="api-error">{error}</div>}<div className="sgk-table"><table><thead><tr><th>Ảnh bìa</th><th>Tên SGK</th><th>Tập</th><th>Số trang PDF</th><th>Trạng thái khớp trang</th><th>Trạng thái xuất bản</th><th>Thao tác</th></tr></thead><tbody>{rows.map(({book,detail})=>{const mapped=detail?.pageMappings.length??0,total=book.totalPages??0,percent=total?Math.min(100,Math.round(mapped/total*100)):0,isMatched=mapped>0||book.basePageOffset>1;return <tr key={book.id} className="sgk-row-clickable" onClick={()=>setActive({book,detail})} title={isMatched?"Bấm để chỉnh sửa khớp trang":"Bấm để khớp trang"}><td><div className="sgk-cover">{book.thumbnailUrl?<img src={book.thumbnailUrl} alt=""/>:<span>PDF</span>}</div></td><td><b>{book.title}</b><small>{book.docType}</small></td><td>{/tập\s*2/i.test(book.title)?"Tập 2":/tập\s*1/i.test(book.title)?"Tập 1":"—"}</td><td className="numeric">{book.totalPages??"—"}</td><td>{isMatched?<span className="sgk-chip matched">{percent&&percent<100?`Khớp một phần (${percent}%)`:"Đã khớp"}</span>:<span className="sgk-chip warning">Chưa khớp</span>}</td><td onClick={e=>e.stopPropagation()}>{book.status==="PUBLISHED"?<span className="sgk-chip published">Đã xuất bản</span>:<button title={!isMatched?"Phải hoàn thành khớp trang trước khi xuất bản.":"Xuất bản sách"} disabled={!isMatched} onClick={()=>publishMutation.mutate(book.id)}>Xuất bản</button>}</td><td className="actions-column" onClick={e=>e.stopPropagation()}><button title="Mở trang khớp trang / chỉnh sửa" onClick={()=>setActive({book,detail})}>{isMatched?"Chỉnh sửa":"Khớp trang"}</button><button className="sgk-delete" onClick={()=>{if(confirm(`Xóa sách “${book.title}”? Sách sẽ được gỡ khỏi hệ thống nhưng lịch sử vẫn được bảo toàn.`))deleteMutation.mutate(book.id)}}>Xóa</button></td></tr>})}</tbody></table><footer>Hiển thị {rows.length} kết quả · Bấm vào một cuốn sách để khớp hoặc chỉnh sửa trang.</footer></div>{!rows.length&&<p className="sgk-empty">Chưa có sách giáo khoa.</p>}{uploadOpen&&<UploadBook session={session} onClose={()=>setUploadOpen(false)} onDone={async()=>{setUploadOpen(false);await invalidate()}}/>}</section>;
 }
 
 function UploadBook({session,onClose,onDone}:{session:AuthSession;onClose:()=>void;onDone:()=>Promise<void>}){const [title,setTitle]=useState(""),[file,setFile]=useState<File|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!file)return;setBusy(true);try{await uploadTextbook(session,{title,docType:"SGK",audience:"STUDENT_ALLOWED",file,basePageOffset:1});await onDone()}catch(reason){setError(message(reason));setBusy(false)}};return <div className="sgk-overlay"><form className="sgk-modal" onSubmit={submit}><header><h2>Tải lên sách giáo khoa</h2><button type="button" onClick={onClose}>×</button></header><label>Tên sách<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>File PDF<input required type="file" accept="application/pdf" onChange={e=>setFile(e.target.files?.[0]??null)}/></label>{error&&<div className="api-error">{error}</div>}<footer><button type="button" onClick={onClose}>Hủy</button><button className="sgk-primary" disabled={busy}>{busy?"Đang tải…":"Tải lên"}</button></footer></form></div>}
@@ -28,9 +35,6 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
  const [zoom,setZoomLocal]=useState<number>(100);
  const [thumbPage,setThumbPageLocal]=useState<number>(1);
  const [check,setCheck]=useState<string>("");
- const [courses,setCourses]=useState<Course[]>([]);
- const [chapters,setChapters]=useState<Chapter[]>([]);
- const [lessons,setLessons]=useState<Lesson[]>([]);
  const [courseId,setCourseId]=useState<number>(0);
  const [chapterId,setChapterId]=useState<number>(0);
  const [lessonId,setLessonId]=useState<number>(0);
@@ -70,9 +74,16 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
  const bookPage=Math.max(1,pdfPage-offset);
  const checked=check?Number(check)-offset:null;
 
- useEffect(()=>{void getCourses(session).then(data=>{setCourses(data);setCourseId(data[0]?.id??0)})},[session]);
- useEffect(()=>{if(courseId)void getChapters(session,courseId).then(data=>{setChapters(data);setChapterId(data[0]?.id??0)})},[session,courseId]);
- useEffect(()=>{if(chapterId)void getLessons(session,chapterId).then(setLessons)},[session,chapterId]);
+ const coursesQuery=useQuery({queryKey:["admin-textbook-courses",session.accessToken],queryFn:()=>getCourses(session)});
+ const courses=coursesQuery.data??[];
+ useEffect(()=>{if(coursesQuery.data)setCourseId(coursesQuery.data[0]?.id??0)},[coursesQuery.data]);
+
+ const chaptersQuery=useQuery({queryKey:["admin-textbook-chapters",session.accessToken,courseId],queryFn:()=>getChapters(session,courseId),enabled:!!courseId});
+ const chapters=chaptersQuery.data??[];
+ useEffect(()=>{if(chaptersQuery.data)setChapterId(chaptersQuery.data[0]?.id??0)},[chaptersQuery.data]);
+
+ const lessonsQuery=useQuery({queryKey:["admin-textbook-lessons",session.accessToken,chapterId],queryFn:()=>getLessons(session,chapterId),enabled:!!chapterId});
+ const lessons=lessonsQuery.data??[];
 
  useEffect(()=>{
   const onKey=(e:KeyboardEvent)=>{
