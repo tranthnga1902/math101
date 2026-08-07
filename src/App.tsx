@@ -142,12 +142,16 @@ export default function App() {
 }
 
 function PublicProblemPage({slug,session}:{slug:string;session:AuthSession|null}){
- const [data,setData]=useState<PublicProblem|null>(null),[error,setError]=useState(""),[qr,setQr]=useState(""),[progressStatus,setProgressStatus]=useState(""),[revealedHints,setRevealedHints]=useState(0),[showSolutions,setShowSolutions]=useState(false);
- useEffect(()=>{void getPublicProblem(slug).then(setData).catch(e=>setError(messageOf(e)));void QRCode.toDataURL(location.href,{width:240,margin:1}).then(setQr)},[slug]);
+ const problemQuery=useQuery({queryKey:["public-problem",slug],queryFn:()=>getPublicProblem(slug)});
+ const data=problemQuery.data??null;
+ const [qr,setQr]=useState(""),[progressStatus,setProgressStatus]=useState(""),[revealedHints,setRevealedHints]=useState(0),[showSolutions,setShowSolutions]=useState(false);
+ useEffect(()=>{void QRCode.toDataURL(location.href,{width:240,margin:1}).then(setQr)},[slug]);
+ const progressMutation=useMutation({mutationFn:(input:{completed:boolean})=>markProblemProgress(session as AuthSession,data!.problem.id,input.completed)});
+ const error=problemQuery.isError?messageOf(problemQuery.error):progressMutation.isError?messageOf(progressMutation.error):"";
  if(error)return <main className="public-problem"><div className="api-error">{error}</div></main>;
  if(!data)return <main className="public-problem">Đang tải bài toán…</main>;
  const math=(value:string)=><span className="latex" dangerouslySetInnerHTML={{__html:katex.renderToString(value.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:true})}}/>;
- const markOpened=()=>{if(session?.role==="student"&&!progressStatus)void markProblemProgress(session,data.problem.id,false).then(()=>setProgressStatus("IN_PROGRESS")).catch(e=>setError(messageOf(e)))};
+ const markOpened=()=>{if(session?.role==="student"&&!progressStatus)progressMutation.mutate({completed:false},{onSuccess:()=>setProgressStatus("IN_PROGRESS")})};
  return <main className="public-problem">
   <header><div className="brand"><span className="brand-mark">M10</span><b>MATH10</b></div><span>{data.problem.publicCode}</span></header>
   <section className="problem-hero"><div><p className="eyebrow">{data.problemType.name} · {data.problem.difficulty}</p><h1>Bài toán</h1>{math(data.problem.statementLatex)}{data.problem.contentHtml&&data.problem.contentHtml!==data.problem.statementLatex&&<SafeLessonContent html={data.problem.contentHtml}/>}</div>{qr&&<a href={qr} download={`${data.problem.publicCode}.png`}><img src={qr} alt={`QR ${data.problem.publicCode}`}/><small>Tải QR PNG</small></a>}</section>
@@ -155,7 +159,7 @@ function PublicProblemPage({slug,session}:{slug:string;session:AuthSession|null}
    <article><h2>Gợi ý</h2>{data.hints.slice(0,revealedHints).map((x,i)=><div className="revealed-hint" key={x.id}><b>Gợi ý {i+1}</b>{math(x.contentLatex)}</div>)}{revealedHints<data.hints.length?<button className="hint-reveal-button" onClick={()=>{setRevealedHints(value=>value+1);markOpened()}}>Xem gợi ý {revealedHints+1}</button>:data.hints.length?<small>Đã mở tất cả gợi ý.</small>:<small>Bài này chưa có gợi ý.</small>}</article>
    <article><h2>Lời giải từng bước</h2>{data.solutions.map(x=><details key={x.id} onToggle={e=>{if(e.currentTarget.open)markOpened()}}><summary>{x.orderIndex}. {x.title}</summary>{math(x.contentLatex)}</details>)}</article>
   </section>
-  <section className="problem-completion">{session?.role==="student"?<><button className="primary" disabled={progressStatus==="COMPLETED"} onClick={()=>void markProblemProgress(session,data.problem.id,true).then(()=>setProgressStatus("COMPLETED")).catch(e=>setError(messageOf(e)))}>{progressStatus==="COMPLETED"?"Đã ghi nhận hoàn thành":"Tôi đã tự giải xong bài này"}</button>{progressStatus==="IN_PROGRESS"&&<small>Tiến độ hiện tại: Đang làm</small>}</>:<a href="/">Đăng nhập Student để lưu tiến độ</a>}</section>
+  <section className="problem-completion">{session?.role==="student"?<><button className="primary" disabled={progressStatus==="COMPLETED"} onClick={()=>progressMutation.mutate({completed:true},{onSuccess:()=>setProgressStatus("COMPLETED")})}>{progressStatus==="COMPLETED"?"Đã ghi nhận hoàn thành":"Tôi đã tự giải xong bài này"}</button>{progressStatus==="IN_PROGRESS"&&<small>Tiến độ hiện tại: Đang làm</small>}</>:<a href="/">Đăng nhập Student để lưu tiến độ</a>}</section>
   <section><h2>Làm bài tương tự</h2><div className="similar-grid">{data.similar.map(x=><a key={x.relation} href={`/q/${x.problem.qrSlug}`}><small>{x.relation==="EASIER"?"Dễ hơn":x.relation==="EQUIVALENT"?"Tương đương":"Khó hơn"}</small><b>{x.problem.publicCode}</b><span>{x.problem.difficulty}</span></a>)}</div>{!data.similar.length&&<EmptyState text="Giáo viên chưa chọn bài tương tự."/>}</section>
  </main>;
 }
