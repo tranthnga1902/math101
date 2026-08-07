@@ -78,6 +78,32 @@ type TokenResponse = {
   role?: string;
 };
 
+// Không request nào được phép treo vô thời hạn — nếu không, nút bấm/spinner
+// đứng hình mãi khi mạng chậm hoặc backend không phản hồi, khiến UI "cảm giác" bị đơ.
+const DEFAULT_TIMEOUT_MS = 20_000; // gọi API JSON thông thường
+const FILE_TIMEOUT_MS = 60_000; // tải/mở file (PDF, ảnh…)
+const UPLOAD_TIMEOUT_MS = 120_000; // upload file lên server/storage
+
+function isAbortOrTimeout(err: unknown): boolean {
+  return err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError");
+}
+
+/**
+ * Bọc 1 lời gọi fetch bằng timeout; biến lỗi abort/timeout thành thông báo tiếng Việt dễ hiểu.
+ * Nếu có `externalSignal` (vd React Query hủy khi component unmount/queryKey đổi), kết hợp cả
+ * hai để request vẫn bị hủy đúng lúc mà vẫn giữ giới hạn thời gian chờ.
+ */
+async function withTimeout<T>(ms: number, run: (signal: AbortSignal) => Promise<T>, externalSignal?: AbortSignal | null): Promise<T> {
+  const timeout = AbortSignal.timeout(ms);
+  const signal = externalSignal ? AbortSignal.any([timeout, externalSignal]) : timeout;
+  try {
+    return await run(signal);
+  } catch (err) {
+    if (isAbortOrTimeout(err) && !externalSignal?.aborted) throw new Error("Yêu cầu quá thời gian chờ, vui lòng thử lại");
+    throw err;
+  }
+}
+
 function decodeJwt(token: string) {
   const encoded = token.split(".")[1];
   if (!encoded) throw new Error("Token đăng nhập không hợp lệ");
@@ -94,13 +120,16 @@ export function normalizeRole(value: string | undefined | null): AuthSession["ro
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}/api${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
-  });
-  const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
-  if (!response.ok || !payload?.success) throw new Error(payload?.message || `API trả về lỗi ${response.status}`);
-  return payload.data;
+  return withTimeout(DEFAULT_TIMEOUT_MS, async signal => {
+    const response = await fetch(`${API_BASE_URL}/api${path}`, {
+      ...options,
+      signal,
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+    });
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
+    if (!response.ok || !payload?.success) throw new Error(payload?.message || `API trả về lỗi ${response.status}`);
+    return payload.data;
+  }, options.signal);
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
@@ -221,14 +250,17 @@ export async function uploadUserImport(session: AuthSession, file: File) {
     body: JSON.stringify({fileName: file.name, contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
   }, session.accessToken);
   if (!presign.uploadUrl || !presign.objectKey) throw new Error("API không trả về URL tải lên");
-  const uploaded = await fetch(presign.uploadUrl, {method: "PUT", headers: {"Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, body: file});
+  const uploadUrl = presign.uploadUrl;
+  const uploaded = await withTimeout(UPLOAD_TIMEOUT_MS, signal =>
+    fetch(uploadUrl, {method: "PUT", headers: {"Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, body: file, signal})
+  );
   if (!uploaded.ok) throw new Error(`Tải file lên R2 thất bại (${uploaded.status})`);
   return request<UserImportPreview>("/users/import/preview", {method: "POST", body: JSON.stringify({objectKey: presign.objectKey})}, session.accessToken);
 }
 
 export const confirmUserImport=(session:AuthSession,objectKey:string)=>request<UserImportResult>("/users/import/confirm",{method:"POST",body:JSON.stringify({objectKey})},session.accessToken);
 export async function downloadUserImportTemplate(session:AuthSession){
- const response=await fetch(`${API_BASE_URL}/api/users/import/template`,{headers:{Authorization:`Bearer ${session.accessToken}`}});
+ const response=await withTimeout(FILE_TIMEOUT_MS, signal=>fetch(`${API_BASE_URL}/api/users/import/template`,{headers:{Authorization:`Bearer ${session.accessToken}`},signal}));
  if(!response.ok)throw new Error("Không thể tải file mẫu");
  const url=URL.createObjectURL(await response.blob());const link=document.createElement("a");link.href=url;link.download="user-import-template.xlsx";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -285,8 +317,8 @@ export const getResources=(s:AuthSession,lessonId:number)=>request<LessonResourc
 export const saveResource=(s:AuthSession,x:Omit<LessonResource,"id">,id?:number)=>request<LessonResource>(`/resources${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteResource=(s:AuthSession,id:number)=>request<void>(`/resources/${id}`,{method:"DELETE"},s.accessToken);
 export const reorderResources=(s:AuthSession,ids:number[])=>request<void>("/resources/reorder",{method:"PATCH",body:JSON.stringify({ids})},s.accessToken);
-export async function uploadFile(s:AuthSession,file:File){const form=new FormData();form.append("file",file);const response=await fetch(`${API_BASE_URL}/api/files`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form});const payload=await response.json() as ApiEnvelope<FileAsset>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải file thất bại");return payload.data}
-export async function downloadFile(s:AuthSession,id:number,title:string){const response=await fetch(`${API_BASE_URL}/api/files/${id}/download`,{headers:{Authorization:`Bearer ${s.accessToken}`}});if(!response.ok)throw new Error(`Không thể tải file (${response.status})`);const blob=await response.blob();if(!blob.size)return;const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=title;a.click();URL.revokeObjectURL(url)}
+export async function uploadFile(s:AuthSession,file:File){const form=new FormData();form.append("file",file);const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/files`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));const payload=await response.json() as ApiEnvelope<FileAsset>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải file thất bại");return payload.data}
+export async function downloadFile(s:AuthSession,id:number,title:string){const response=await withTimeout(FILE_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/files/${id}/download`,{headers:{Authorization:`Bearer ${s.accessToken}`},signal}));if(!response.ok)throw new Error(`Không thể tải file (${response.status})`);const blob=await response.blob();if(!blob.size)return;const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=title;a.click();URL.revokeObjectURL(url)}
 export const getEnrollments=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",classId:number)=>request<Enrollment[]>(`/enrollments/${type}?classId=${classId}`,{},s.accessToken);
 export const addEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",x:{classId:number;userId?:number;courseId?:number})=>request<void>(`/enrollments/${type}`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
 export const removeEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",id:number)=>request<void>(`/enrollments/${type}/${id}`,{method:"DELETE"},s.accessToken);
@@ -296,7 +328,7 @@ export const getDocuments=(s:AuthSession)=>request<DocumentItem[]>("/documents",
 export async function openDocumentFile(s:AuthSession,fileUrl:string,title:string,startPage?:number|null){
  const pageHash=startPage&&startPage>0?`#page=${startPage}`:"";
  if(/^https?:\/\//i.test(fileUrl)){window.open(`${fileUrl}${pageHash}`,"_blank","noreferrer");return}
- const response=await fetch(`${API_BASE_URL}${fileUrl}`,{headers:{Authorization:`Bearer ${s.accessToken}`}});
+ const response=await withTimeout(FILE_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}${fileUrl}`,{headers:{Authorization:`Bearer ${s.accessToken}`},signal}));
  if(!response.ok)throw new Error(`Không thể mở tài liệu (${response.status})`);
  const blob=await response.blob();if(!blob.size)return;
  const objectUrl=URL.createObjectURL(blob);const url=`${objectUrl}${pageHash}`;const win=window.open(url,"_blank","noreferrer");
@@ -309,7 +341,7 @@ export async function openLessonDocumentFile(s:AuthSession,lessonId:number,docum
 }
 export async function uploadDocument(s:AuthSession,x:{title:string;docType:string;audience:string;gradeId?:number|null;file:File}){
  const form=new FormData();form.append("title",x.title);form.append("docType",x.docType);form.append("audience",x.audience);if(x.gradeId)form.append("gradeId",String(x.gradeId));form.append("file",x.file);
- const response=await fetch(`${API_BASE_URL}/api/admin/documents`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form});
+ const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/admin/documents`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));
  const payload=await response.json() as ApiEnvelope<DocumentItem>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải tài liệu thất bại");return payload.data;
 }
 export const updateDocument=(s:AuthSession,id:number,x:{title:string;docType:string;audience:string;gradeId?:number|null})=>request<DocumentItem>(`/admin/documents/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
@@ -338,7 +370,7 @@ export async function openTextbookInBrowser(s:AuthSession,id:number,bookPage?:nu
  const info=await openTextbook(s,id,bookPage);
  const pageHash=info.pdfPage&&info.pdfPage>1?`#page=${info.pdfPage}`:"";
  if(/^https?:\/\//i.test(info.fileUrl)){window.open(`${info.fileUrl}${pageHash}`,"_blank","noreferrer");return}
- const response=await fetch(`${API_BASE_URL}${info.fileUrl}`,{headers:{Authorization:`Bearer ${s.accessToken}`}});
+ const response=await withTimeout(FILE_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}${info.fileUrl}`,{headers:{Authorization:`Bearer ${s.accessToken}`},signal}));
  if(!response.ok)throw new Error(`Không thể mở sách (${response.status})`);
  const blob=await response.blob();if(!blob.size)return;
  const objectUrl=URL.createObjectURL(blob);const url=`${objectUrl}${pageHash}`;const win=window.open(url,"_blank","noreferrer");
@@ -350,7 +382,7 @@ export async function uploadTextbook(s:AuthSession,x:{title:string;docType:strin
  const form=new FormData();form.append("title",x.title);form.append("docType",x.docType);form.append("audience",x.audience);
  if(x.gradeId)form.append("gradeId",String(x.gradeId));if(x.subjectId)form.append("subjectId",String(x.subjectId));
  if(x.basePageOffset)form.append("basePageOffset",String(x.basePageOffset));form.append("file",x.file);
- const response=await fetch(`${API_BASE_URL}/api/admin/documents/textbooks`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form});
+ const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/admin/documents/textbooks`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));
  const payload=await response.json() as ApiEnvelope<TextbookItem>;if(!response.ok||!payload.success)throw new Error(payload.message||"Upload sách thất bại");return payload.data;
 }
 export const updateTextbook=(s:AuthSession,id:number,x:{title:string;docType:string;audience:string;gradeId?:number|null;subjectId?:number|null;totalPages?:number|null;basePageOffset?:number})=>request<TextbookItem>(`/admin/documents/textbooks/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
