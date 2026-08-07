@@ -40,6 +40,7 @@ export type Classroom=Required<Pick<GeneratedClassroom,"id"|"code"|"name"|"grade
 export type ClassroomInput=components["schemas"]["ClassroomRequest"];
 export type ClassroomPage=components["schemas"]["PageClassroomResponse"];
 export type TeacherStats={classes:number;studentsBelow50:number;worksheets:number};
+export type ClassResult={classId:number;className:string;classCode:string;teacherName:string|null;status:string;diemTb:number;hoanThanh:number;tiLe:number};
 export type GradebookRow={student_id:number;full_name:string;username:string;assignment_id:number;title:string;status:string;completion_percent:number};
 export type LessonResource={id:number;lessonId:number;type:string;title:string;externalUrl:string;fileAssetId:number|null;textContent:string;orderIndex:number};
 export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null};
@@ -312,6 +313,7 @@ export const updateClass=(s:AuthSession,id:number,x:ClassroomInput)=>request<Cla
 export const deleteClass=(s:AuthSession,id:number)=>request<void>(`/classes/${id}`,{method:"DELETE"},s.accessToken);
 export const getTeacherStats=(s:AuthSession)=>request<TeacherStats>("/teacher/dashboard",{},s.accessToken);
 export const getTeacherClasses=(s:AuthSession)=>request<Classroom[]>("/teacher/classes",{},s.accessToken);
+export const getClassResults=(s:AuthSession)=>request<ClassResult[]>("/teacher/class-results",{},s.accessToken);
 export const getGradebook=(s:AuthSession,classId:number)=>request<GradebookRow[]>(`/teacher/gradebook?classId=${classId}`,{},s.accessToken);
 export const getResources=(s:AuthSession,lessonId:number)=>request<LessonResource[]>(`/resources?lessonId=${lessonId}`,{},s.accessToken);
 export const saveResource=(s:AuthSession,x:Omit<LessonResource,"id">,id?:number)=>request<LessonResource>(`/resources${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);

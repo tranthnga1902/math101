@@ -25,11 +25,11 @@ const groups = [
   ]},
   { label: "LỚP HỌC", items: [
     { id: "teacher-classes", icon: LibraryBig, label: "Danh sách lớp" },
+    { id: "teacher-tasks", icon: CheckSquare, label: "Nhiệm vụ" },
     { id: "teacher-grading", icon: ClipboardCheck, label: "Chấm bài" },
     { id: "teacher-reports", icon: BarChart3, label: "Báo cáo" },
   ]},
   { label: "HỆ THỐNG", items: [
-    { id: "teacher-tasks", icon: CheckSquare, label: "Nhiệm vụ" },
     { id: "teacher-notifications", icon: Bell, label: "Thông báo" },
     { id: "teacher-settings", icon: Settings, label: "Cài đặt" },
   ]},
