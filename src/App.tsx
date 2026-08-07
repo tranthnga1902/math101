@@ -1217,7 +1217,7 @@ function TeacherGradingView({session,classes}:{session:AuthSession;classes:Class
 
 function TeacherWorksheetView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
  const queryClient=useQueryClient();
- const [search,setSearch]=useState(""),[qrFilter,setQrFilter]=useState(""),[preview,setPreview]=useState<Worksheet|null>(null),[assigning,setAssigning]=useState<Worksheet|null>(null);
+ const [search,setSearch]=useState(""),[qrFilter,setQrFilter]=useState(""),[preview,setPreview]=useState<Worksheet|null>(null),[assigning,setAssigning]=useState<Worksheet|null>(null),[selected,setSelected]=useState<Worksheet|null>(null);
  const [form,setForm]=useState({classId:classes[0]?.id??0,title:"",dueAt:""});
  const classIdsKey=classes.map(item=>item.id).join(",");
  const worksheetsQuery=useQuery({queryKey:["teacher-worksheets",session.accessToken,classIdsKey],queryFn:async()=>{const [sheets,...classAssignments]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>(await getAssignments(session,classroom.id)).map(item=>({...item,className:classroom.name})))]);return {rows:sheets as Worksheet[],assignments:(classAssignments as (Assignment&{className:string})[][]).flat()}}});
@@ -1225,11 +1225,124 @@ function TeacherWorksheetView({session,classes}:{session:AuthSession;classes:Cla
  const assignMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["teacher-worksheets"]})});
  const error=worksheetsQuery.isError?messageOf(worksheetsQuery.error):assignMutation.isError?messageOf(assignMutation.error):"";
  useEffect(()=>{if(!classes.some(item=>item.id===form.classId))setForm(value=>({...value,classId:classes[0]?.id??0}))},[classes,form.classId]);
+ useEffect(()=>{if(selected&&!rows.some(item=>item.id===selected.id))setSelected(null)},[rows,selected]);
  const filtered=rows.filter(item=>(!search||item.name.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi")))&&(!qrFilter||(qrFilter==="QR"?item.showQr:!item.showQr)));
  const assignedClasses=(worksheetId:number)=>Array.from(new Set(assignments.filter(item=>item.worksheetId===worksheetId).map(item=>item.className)));
  const assign=async(e:React.FormEvent)=>{e.preventDefault();if(!assigning)return;try{await assignMutation.mutateAsync({classId:form.classId,lessonId:null,worksheetId:assigning.id,title:form.title||assigning.name,dueAt:form.dueAt||null,status:"PUBLISHED"});setAssigning(null)}catch{/* lỗi đã có trong mutation state */}};
  const goCreate=()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-content"}));
- return <section className="worksheet-manager"><header><div><h1>Quản lý Phiếu & Đề</h1><p>Tạo, xem trước, in và giao phiếu bài tập cho lớp.</p></div><button className="primary" onClick={goCreate}>＋ Tạo phiếu mới</button></header><div className="worksheet-filters"><input placeholder="Tìm tên phiếu…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={qrFilter} onChange={e=>setQrFilter(e.target.value)}><option value="">Tất cả loại</option><option value="QR">Phiếu in có QR</option><option value="NO_QR">Phiếu không QR</option></select><span>{filtered.length} phiếu</span></div>{error&&<div className="api-error">{error}</div>}{loading?<p>Đang tải phiếu…</p>:<div className="worksheet-table"><table><thead><tr><th>Tên phiếu</th><th>Loại</th><th>Bố cục</th><th>Số câu</th><th>Đã giao</th><th>Thao tác</th></tr></thead><tbody>{filtered.map(item=>{const assigned=assignedClasses(item.id);return <tr key={item.id}><td><b>{item.name}</b><small>Phiếu #{item.id}</small></td><td><span className="worksheet-kind">{item.showQr?"Phiếu in có QR":"Phiếu in"}</span></td><td>{item.columnsCount} cột{item.showStudentFields?" · Có ô học sinh":""}</td><td className="numeric">{item.items.length}</td><td>{assigned.length?assigned.join(", "):<i>Chưa giao</i>}</td><td><div><button onClick={()=>setPreview(item)}>Xem / In</button><button className="primary" disabled={!classes.length} onClick={()=>{setAssigning(item);setForm(value=>({...value,title:item.name}))}}>Giao bài</button></div></td></tr>})}</tbody></table>{!filtered.length&&<EmptyState text="Không có phiếu phù hợp bộ lọc."/>}</div>}{preview&&<WorksheetPreview sheet={preview} onClose={()=>setPreview(null)}/>} {assigning&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">GIAO PHIẾU</p><h2>{assigning.name}</h2></div><button onClick={()=>setAssigning(null)}>Đóng</button></div><form className="live-form" onSubmit={assign}><label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label><button className="primary">Giao phiếu</button></form></section></div>}</section>
+ const difficultyLabel=(value:string)=>value==="EASY"?"Dễ":value==="HARD"?"Khó":"TB";
+ const difficultyTone=(value:string)=>value==="EASY"?"bg-secondary-container/30 text-on-secondary-container":value==="HARD"?"bg-error-container/30 text-on-error-container":"bg-tertiary-container/30 text-on-tertiary-container";
+ return (
+  <section className="flex flex-col gap-4">
+   <header className="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+     <h1 className="text-2xl font-bold text-on-surface">Quản lý Phiếu & Đề</h1>
+     <p className="text-sm text-on-surface-variant">Tạo, xem trước, in và giao phiếu bài tập cho lớp.</p>
+    </div>
+    <button onClick={goCreate} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
+     <span className="material-symbols-outlined text-[18px]">add</span> Tạo phiếu mới
+    </button>
+   </header>
+
+   <div className="flex items-center gap-2 flex-wrap">
+    <input placeholder="Tìm tên phiếu…" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[200px]"/>
+    <select value={qrFilter} onChange={e=>setQrFilter(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
+     <option value="">Tất cả loại</option>
+     <option value="QR">Phiếu in có QR</option>
+     <option value="NO_QR">Phiếu không QR</option>
+    </select>
+    <span className="text-xs text-on-surface-variant">{filtered.length} phiếu</span>
+   </div>
+
+   {error && <div className="api-error">{error}</div>}
+
+   <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 items-start">
+    {loading ? <p className="text-sm text-on-surface-variant">Đang tải phiếu…</p> : (
+     <div className="border border-outline-variant rounded-lg overflow-hidden">
+      <div className="flex flex-col divide-y divide-outline-variant">
+       {filtered.map(item=>{
+        const assigned=assignedClasses(item.id);
+        const isSelected=selected?.id===item.id;
+        return (
+         <div key={item.id} className={`flex items-center gap-3 p-3 transition-colors ${isSelected?"bg-primary-container/15":"bg-surface-container-lowest hover:bg-surface-container-low"}`}>
+          <button onClick={()=>setSelected(item)} className="flex-1 min-w-0 text-left flex items-center gap-3">
+           <span className="material-symbols-outlined text-primary text-[22px] shrink-0">description</span>
+           <span className="min-w-0">
+            <span className="block text-sm font-medium text-on-surface truncate">{item.name}</span>
+            <span className="block text-[11px] text-on-surface-variant truncate">Phiếu #{item.id} · {item.showQr?"Có QR":"Không QR"} · {item.columnsCount} cột · {item.items.length} câu · {assigned.length?assigned.join(", "):"Chưa giao"}</span>
+           </span>
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
+           <button onClick={()=>setPreview(item)} className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Xem / In</button>
+           <button disabled={!classes.length} onClick={()=>{setAssigning(item);setForm(value=>({...value,title:item.name}))}} className="px-2.5 py-1.5 text-xs font-semibold rounded bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">Giao bài</button>
+          </div>
+         </div>
+        );
+       })}
+      </div>
+      {!filtered.length && <EmptyState text="Không có phiếu phù hợp bộ lọc."/>}
+     </div>
+    )}
+
+    <aside className="border border-outline-variant rounded-lg bg-surface-container-lowest p-4 flex flex-col gap-4 lg:sticky lg:top-[72px]">
+     {selected ? <>
+      <div className="flex items-start justify-between gap-2">
+       <div className="min-w-0">
+        <p className="text-xs font-semibold text-primary tracking-wide">CHI TIẾT PHIẾU</p>
+        <h2 className="text-base font-bold text-on-surface truncate">{selected.name}</h2>
+       </div>
+       <button onClick={()=>setSelected(null)} className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
+        <span className="material-symbols-outlined text-[18px]">close</span>
+       </button>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-2 text-xs">
+       <div><dt className="text-on-surface-variant">Bố cục</dt><dd className="text-sm font-semibold text-on-surface">{selected.columnsCount} cột</dd></div>
+       <div><dt className="text-on-surface-variant">Số câu</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{selected.items.length}</dd></div>
+       <div><dt className="text-on-surface-variant">QR nộp bài</dt><dd className="text-sm font-semibold text-on-surface">{selected.showQr?"Có":"Không"}</dd></div>
+       <div><dt className="text-on-surface-variant">Ô thông tin học sinh</dt><dd className="text-sm font-semibold text-on-surface">{selected.showStudentFields?"Có":"Không"}</dd></div>
+      </dl>
+      <p className="text-xs text-on-surface-variant">Đã giao: {assignedClasses(selected.id).length?assignedClasses(selected.id).join(", "):"Chưa giao lớp nào"}</p>
+
+      <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant max-h-[420px] overflow-auto thin-scrollbar">
+       <p className="text-xs font-semibold text-on-surface-variant tracking-wide">DANH SÁCH CÂU HỎI ({selected.items.length} câu)</p>
+       {selected.items.map((item,index)=>(
+        <div key={item.id} className="p-2.5 rounded border border-outline-variant bg-surface-container-lowest">
+         <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-bold text-on-surface">Câu {index+1}</span>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${difficultyTone(item.difficulty)}`}>{difficultyLabel(item.difficulty)}</span>
+          <span className="text-[10px] text-on-surface-variant">{item.publicCode}</span>
+         </div>
+         <div className="text-xs text-on-surface [&_.katex]:text-xs" dangerouslySetInnerHTML={{__html:katex.renderToString(item.statementLatex.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:false})}}/>
+        </div>
+       ))}
+       {!selected.items.length && <p className="text-xs text-on-surface-variant text-center py-4">Phiếu chưa có câu hỏi.</p>}
+      </div>
+     </> : (
+      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+       <span className="material-symbols-outlined text-on-surface-variant text-[28px]">description</span>
+       <p className="text-sm text-on-surface-variant">Chọn một phiếu bên trái để xem danh sách câu hỏi.</p>
+      </div>
+     )}
+    </aside>
+   </div>
+
+   {preview && <WorksheetPreview sheet={preview} onClose={()=>setPreview(null)}/>}
+   {assigning && (
+    <div className="dialog-backdrop">
+     <section className="dialog-card">
+      <div className="panel-head"><div><p className="eyebrow">GIAO PHIẾU</p><h2>{assigning.name}</h2></div><button onClick={()=>setAssigning(null)}>Đóng</button></div>
+      <form className="live-form" onSubmit={assign}>
+       <label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+       <label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
+       <label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label>
+       <button className="primary">Giao phiếu</button>
+      </form>
+     </section>
+    </div>
+   )}
+  </section>
+ );
 }
 
 function TeacherTaskView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
