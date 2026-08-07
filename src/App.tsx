@@ -1551,6 +1551,9 @@ function TeacherTaskView({session,classes}:{session:AuthSession;classes:Classroo
 function TeacherOperationsView({session,classes,mode}:{session:AuthSession;classes:Classroom[];mode:TeacherOperationMode}) {
  const [classId,setClassId]=useState(classes[0]?.id??0);
  useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
+ // Trạng thái đã đọc/chưa đọc không có persistence ở backend nên chỉ giữ ở state cục bộ, reset khi đổi lớp.
+ const [readKeys,setReadKeys]=useState<Set<string>>(new Set());
+ useEffect(()=>{setReadKeys(new Set())},[classId]);
  const operationsQuery=useQuery({queryKey:["teacher-operations",session.accessToken,classId],queryFn:async()=>{const [assignments,rows]=await Promise.all([getAssignments(session,classId),getGradebook(session,classId)]);return {assignments,rows}},enabled:!!classId});
  const assignments=operationsQuery.data?.assignments??[],rows=operationsQuery.data?.rows??[],loading=operationsQuery.isLoading;
  const error=operationsQuery.isError?messageOf(operationsQuery.error):"";
@@ -1697,7 +1700,53 @@ function TeacherOperationsView({session,classes,mode}:{session:AuthSession;class
  );})()}
  {mode==="grading"&&<section className="audit-panel"><div className="panel-head"><div><p className="eyebrow">BÀI NỘP THEO TIẾN ĐỘ</p><h2>{selectedClass?.name??"Chọn lớp"}</h2></div></div>{rows.length?<div className="operation-table"><table><thead><tr><th>Học sinh</th><th>Bài tập</th><th>Trạng thái</th><th>Hoàn thành</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.student_id}-${row.assignment_id}`}><td><b>{row.full_name}</b><small>@{row.username}</small></td><td>{row.title}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{row.status==="COMPLETED"?"Đã hoàn thành":row.status==="IN_PROGRESS"?"Đang làm":"Chưa mở"}</span></td><td>{row.completion_percent}%</td></tr>)}</tbody></table></div>:<EmptyState text="Chưa có bài nộp trong lớp này."/>}</section>}
  {mode==="tasks"&&<section className="operation-feed"><h2>Việc cần làm</h2>{overdue.map(item=><article className="urgent" key={item.id}><span>Quá hạn</span><div><b>Kiểm tra tiến độ: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{upcoming.map(item=><article key={item.id}><span>Sắp tới</span><div><b>Theo dõi: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{!overdue.length&&!upcoming.length&&<EmptyState text="Không có nhiệm vụ theo hạn bài tập."/>}</section>}
- {mode==="notifications"&&<section className="operation-feed"><h2>Cập nhật mới nhất</h2>{overdue.map(item=><article className="urgent" key={`due-${item.id}`}><span>Cần chú ý</span><div><b>Bài “{item.title}” đã quá hạn</b><small>{selectedClass?.name} · Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")}</small></div></article>)}{average<50&&rows.length>0&&<article><span>Tiến độ</span><div><b>Tiến độ trung bình của lớp đang dưới 50%</b><small>{selectedClass?.name} · Hiện tại {average}%</small></div></article>}{completed>0&&<article><span>Hoàn thành</span><div><b>{completed} lượt bài đã hoàn thành</b><small>Dữ liệu cập nhật từ sổ điểm</small></div></article>}{!overdue.length&&!(average<50&&rows.length)&&!completed&&<EmptyState text="Hiện chưa có thông báo mới."/>}</section>}
+ {mode==="notifications"&&(()=>{
+  const items=[
+   ...overdue.map(item=>({key:`due-${item.id}`,tone:"error" as const,icon:"schedule",title:`Bài "${item.title}" đã quá hạn`,sub:`${selectedClass?.name??""} · Hạn ${new Date(item.dueAt!).toLocaleString("vi-VN")}`})),
+   ...(average<50&&rows.length>0?[{key:"avg-low",tone:"warning" as const,icon:"trending_down",title:"Tiến độ trung bình của lớp đang dưới 50%",sub:`${selectedClass?.name??""} · Hiện tại ${average}%`}]:[]),
+   ...(completed>0?[{key:"completed",tone:"secondary" as const,icon:"task_alt",title:`${completed} lượt bài đã hoàn thành`,sub:"Dữ liệu cập nhật từ sổ điểm"}]:[]),
+  ];
+  const toggleRead=(key:string)=>setReadKeys(current=>{const next=new Set(current);if(next.has(key))next.delete(key);else next.add(key);return next});
+  const unreadCount=items.filter(item=>!readKeys.has(item.key)).length;
+  const toneClasses={error:"bg-error-container/60 text-error",warning:"bg-tertiary-container text-on-tertiary-container",secondary:"bg-secondary/15 text-secondary"} as const;
+  return (
+   <div className="flex flex-col gap-4">
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+     <div className="flex items-center gap-2">
+      <h2 className="text-sm font-bold text-on-surface">Cập nhật mới nhất</h2>
+      {unreadCount>0&&<span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-on-primary text-[11px] font-bold">{unreadCount}</span>}
+     </div>
+     <div className="flex items-center gap-2 flex-wrap">
+      <button type="button" onClick={()=>setReadKeys(new Set(items.map(item=>item.key)))} disabled={!unreadCount} className="h-8 px-3 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant flex items-center gap-1.5 hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+       <span className="material-symbols-outlined text-[16px]">done_all</span> Đánh dấu tất cả đã đọc
+      </button>
+      <button type="button" disabled title="Hệ thống chưa có API nhắn tin lớp học." className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold opacity-50 cursor-not-allowed flex items-center gap-1.5">
+       <span className="material-symbols-outlined text-[16px]">forum</span> Nhắn cả lớp
+      </button>
+     </div>
+    </div>
+    {items.length?(
+     <div className="flex flex-col gap-2">
+      {items.map(item=>{
+       const isRead=readKeys.has(item.key);
+       return (
+        <article key={item.key} onClick={()=>toggleRead(item.key)} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleRead(item.key)}}} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isRead?"border-outline-variant bg-surface-container-lowest opacity-70":"border-primary/30 bg-primary-container/10"}`}>
+         <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${toneClasses[item.tone]}`}>
+          <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+         </span>
+         <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-on-surface">{item.title}</p>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">{item.sub}</p>
+         </div>
+         {!isRead&&<span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5"/>}
+        </article>
+       );
+      })}
+     </div>
+    ):<EmptyState text="Hiện chưa có thông báo mới."/>}
+   </div>
+  );
+ })()}
  </section>
 }
 
