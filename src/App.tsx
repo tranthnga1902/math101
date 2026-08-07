@@ -552,55 +552,25 @@ function ChangePasswordDialog({session,onClose}:{session:AuthSession;onClose:()=
 }
 
 function StudentDashboard({ session, onLogout, onChangePassword }: { session: AuthSession; onLogout: () => void; onChangePassword: () => void }) {
-  const [courses,setCourses]=useState<StudentCourse[]>([]);
-  const [assignments,setAssignments]=useState<StudentAssignment[]>([]);
-  const [items, setItems] = useState<Progress[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [progress,curriculum,assigned]=await Promise.all([getStudentProgress(session),getMyCourses(session),getMyAssignments(session)]);
-      setItems(progress);setCourses(curriculum);setAssignments(assigned);
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
-
-  useEffect(() => { void load(); }, [load]);
+  const queryClient = useQueryClient();
+  const dataQuery = useQuery({ queryKey: ["student-dashboard", session.accessToken], queryFn: async () => {
+    const [progress,curriculum,assigned]=await Promise.all([getStudentProgress(session),getMyCourses(session),getMyAssignments(session)]);
+    return { items: progress, courses: curriculum, assignments: assigned };
+  } });
+  const courses = dataQuery.data?.courses ?? [];
+  const assignments = dataQuery.data?.assignments ?? [];
+  const items = dataQuery.data?.items ?? [];
+  const reload = () => queryClient.invalidateQueries({ queryKey: ["student-dashboard"] });
+  const saveMutation = useMutation({ mutationFn: (input: { lessonId: number; completed: boolean }) => markLessonProgress(session, input.lessonId, input.completed), onSuccess: reload });
+  const error = dataQuery.isError ? messageOf(dataQuery.error) : saveMutation.isError ? messageOf(saveMutation.error) : "";
 
   const save = async (lessonId:number,completed: boolean) => {
-    setSaving(true);
-    setError("");
     try {
-      await markLessonProgress(session, lessonId, completed);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setSaving(false);
-    }
+      await saveMutation.mutateAsync({ lessonId, completed });
+    } catch { /* lỗi đã có trong mutation state */ }
   };
 
-  return <StudentMobileExperience session={session} courses={courses} assignments={assignments} items={items} loading={loading} saving={saving} error={error} onLogout={onLogout} onChangePassword={onChangePassword} onReload={load} onSaveLesson={save} />;
-
-  const totalLessons=courses.flatMap(c=>c.chapters).flatMap(c=>c.lessons).length;
-  const completed=items.filter(x=>x.completedAt).length;
-  return (
-    <div className="page live-dashboard">
-      <PageHeading eyebrow="HỌC SINH · SUPABASE STAGING" title="Khóa học của tôi" text="Nội dung và tiến độ được tải từ lớp học đã ghi danh." />
-      {error && <div className="api-error">{error}</div>}
-      <section className="stat-grid student-stats"><article><small>Khóa học</small><b>{courses.length}</b></article><article><small>Bài đã hoàn thành</small><b>{completed}/{totalLessons}</b></article></section>
-      <section className="student-assignments"><h2>Bài được giao</h2>{!assignments.length&&<EmptyState text="Chưa có bài được giao."/>}{assignments.map(a=><details key={a.id} onToggle={e=>{if((e.currentTarget as HTMLDetailsElement).open&&a.progressStatus==="NOT_OPENED")void markAssignment(session,a.id,false).then(load)}}><summary><b>{a.title}</b><span>{a.completionPercent}% · {a.dueAt?`Hạn ${new Date(a.dueAt).toLocaleString("vi-VN")}`:"Không giới hạn thời gian"}</span></summary>{a.worksheetId&&<div><h3>{a.worksheetName}</h3>{a.items.map((x,i)=><article key={x.problemId}><b>Câu {i+1} · {x.publicCode}</b><span dangerouslySetInnerHTML={{__html:katex.renderToString(x.statementLatex.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:true})}}/><a href={`/q/${x.qrSlug}`}>Xem gợi ý và lời giải</a></article>)}</div>}{a.lessonId&&<p>Bài học #{a.lessonId} trong khóa học của bạn.</p>}<button className="primary" disabled={a.progressStatus==="COMPLETED"} onClick={()=>void markAssignment(session,a.id,true).then(load)}>{a.progressStatus==="COMPLETED"?"Đã hoàn thành":"Đánh dấu hoàn thành"}</button></details>)}</section>
-      {loading&&<p>Đang tải nội dung…</p>}{!loading&&!courses.length&&<EmptyState text="Bạn chưa được gán khóa học nào."/>}
-      <section className="student-courses">{courses.map(course=><article key={course.id}><div className="course-head"><small>{course.code}</small><h2>{course.name}</h2><p>{course.description}</p></div>{course.chapters.map(ch=><details key={ch.id} open><summary>{ch.orderIndex}. {ch.title}</summary>{ch.lessons.map(lesson=>{const progress=items.find(x=>x.lessonId===lesson.id);return <div className="student-lesson" key={lesson.id}><div><b>{lesson.orderIndex}. {lesson.title}</b>{lesson.contentHtml?<SafeLessonContent html={lesson.contentHtml}/>:<p>{lesson.summary}</p>}{lesson.resources.map(r=>r.externalUrl?<a key={r.id} href={r.externalUrl} target="_blank" rel="noreferrer">{r.type}: {r.title}</a>:r.fileAssetId?<button key={r.id} onClick={()=>void downloadFile(session,r.fileAssetId!,r.title)}>{r.type}: {r.title}</button>:<span key={r.id}>{r.textContent}</span>)}{lesson.worksheets.map(sheet=><div className="attached-worksheet" key={sheet.id}><b>Phiếu cuối bài</b><span>{sheet.name}</span></div>)}</div><div><strong>{progress?.completionPercent??lesson.completionPercent}%</strong><button disabled={saving} onClick={()=>void save(lesson.id,false)}>Mở bài</button><button className="primary" disabled={saving} onClick={()=>void save(lesson.id,true)}>Hoàn thành</button></div></div>})}</details>)}</article>)}</section>
-    </div>
-  );
+  return <StudentMobileExperience session={session} courses={courses} assignments={assignments} items={items} loading={dataQuery.isLoading} saving={saveMutation.isPending} error={error} onLogout={onLogout} onChangePassword={onChangePassword} onReload={reload} onSaveLesson={save} />;
 }
 
 function StudentMobileExperience({
@@ -709,15 +679,16 @@ function StudentMobileExperience({
 }
 
 function TextbookStudentView({session}:{session:AuthSession}){
- const [books,setBooks]=useState<TextbookItem[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
- const load=useCallback(async()=>{try{setBooks(await getTextbooks(session))}catch(reason){setError(messageOf(reason))}finally{setLoading(false)}},[session]);
- useEffect(()=>{void load()},[load]);
+ const booksQuery=useQuery({queryKey:["student-textbooks",session.accessToken],queryFn:()=>getTextbooks(session)});
+ const books=booksQuery.data??[];
+ const goToPageMutation=useMutation({mutationFn:(input:{id:number;page:number})=>openTextbookInBrowser(session,input.id,input.page)});
+ const error=booksQuery.isError?messageOf(booksQuery.error):goToPageMutation.isError?messageOf(goToPageMutation.error):"";
  const [selectedBook,setSelectedBook]=useState<TextbookItem|null>(null);
  const [bookPage,setBookPage]=useState<number|null>(null);
  const openBook=(row:TextbookItem)=>{setSelectedBook(row);setBookPage(1)};
- const goToPage=async()=>{if(!selectedBook||!bookPage)return;try{await openTextbookInBrowser(session,selectedBook.id,bookPage)}catch(reason){setError(messageOf(reason))}};
+ const goToPage=async()=>{if(!selectedBook||!bookPage)return;try{await goToPageMutation.mutateAsync({id:selectedBook.id,page:bookPage})}catch{/* lỗi đã có trong mutation state */}};
  const docTypeLabel=(v:string)=>v==="SGK"?"Sách giáo khoa":v==="SBT"?"Sách bài tập":v;
- if(loading)return<section className="student-section"><p>Đang tải sách…</p></section>;
+ if(booksQuery.isLoading)return<section className="student-section"><p>Đang tải sách…</p></section>;
  if(error)return<section className="student-section"><div className="api-error">{error}</div></section>;
  if(selectedBook)return<section className="student-section textbook-reader">
   <div className="reader-head"><button onClick={()=>setSelectedBook(null)}>← Danh sách</button><b>{selectedBook.title}</b></div>
@@ -786,12 +757,18 @@ function StudentLessonView({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [canComplete, setCanComplete] = useState(false);
-  const [lessonDocs, setLessonDocs] = useState<LessonDocument[]>([]);
-  const [documentQuestions, setDocumentQuestions] = useState<Record<number, LessonDocumentQuestion[]>>({});
   const [documentAnswers, setDocumentAnswers] = useState<Record<number, Record<number, string>>>({});
   const [documentQuizResult, setDocumentQuizResult] = useState<Record<number, string>>({});
-  const [documentError, setDocumentError] = useState("");
   const lesson = active.lesson;
+  const docsQuery = useQuery({ queryKey: ["student-lesson-documents", session.accessToken, lesson.id], queryFn: async () => {
+    const docs = await getLessonDocuments(session, lesson.id);
+    const pairs = await Promise.all(docs.map(async doc => [doc.id, await getLessonDocumentQuestions(session, lesson.id, doc.id)] as const));
+    return { docs, questions: Object.fromEntries(pairs) as Record<number, LessonDocumentQuestion[]> };
+  } });
+  const lessonDocs = docsQuery.data?.docs ?? [];
+  const documentQuestions = docsQuery.data?.questions ?? {};
+  const documentError = docsQuery.isError ? messageOf(docsQuery.error) : "";
+  const submitQuizMutation = useMutation({ mutationFn: (input: { doc: LessonDocument }) => submitLessonDocumentQuiz(session, lesson.id, input.doc.id, documentAnswers[input.doc.id] || {}) });
   const video = lesson.resources.find(resource => resource.type === "VIDEO");
   const files = lesson.resources.filter(resource => resource.type !== "VIDEO");
   const progress = items.find(item => item.lessonId === lesson.id);
@@ -803,7 +780,7 @@ function StudentLessonView({
   const videoUrl = video?.externalUrl ? youtubeEmbed(video.externalUrl) : "";
   const hasDocumentQuiz = lessonDocs.some(doc => (documentQuestions[doc.id] || []).length > 0);
   const documentQuizPassed = !hasDocumentQuiz || lessonDocs.every(doc => !(documentQuestions[doc.id] || []).length || (documentQuizResult[doc.id] || "").includes("Hoàn thành"));
-  useEffect(()=>{setCanComplete(false);setDocumentError("");setDocumentQuestions({});setDocumentAnswers({});setDocumentQuizResult({});void getLessonDocuments(session,lesson.id).then(async docs=>{setLessonDocs(docs);const pairs=await Promise.all(docs.map(async doc=>[doc.id,await getLessonDocumentQuestions(session,lesson.id,doc.id)] as const));setDocumentQuestions(Object.fromEntries(pairs))}).catch(reason=>setDocumentError(messageOf(reason)))},[session,lesson.id]);
+  useEffect(()=>{setCanComplete(false);setDocumentAnswers({});setDocumentQuizResult({})},[lesson.id]);
   const openStudyDocument=async(doc:LessonDocument)=>{
     await openLessonDocumentFile(session,lesson.id,doc);
     await recordLessonDocumentStudy(session,lesson.id,doc.id,30).catch(()=>undefined);
@@ -811,7 +788,7 @@ function StudentLessonView({
   const answerQuestion=(docId:number,questionId:number,value:string)=>setDocumentAnswers(current=>({...current,[docId]:{...(current[docId]||{}),[questionId]:value}}));
   const submitDocumentQuiz=async(doc:LessonDocument)=>{
     try{
-      const result=await submitLessonDocumentQuiz(session,lesson.id,doc.id,documentAnswers[doc.id]||{});
+      const result=await submitQuizMutation.mutateAsync({doc});
       setDocumentQuizResult(current=>({...current,[doc.id]:result.status==="COMPLETED"?`Đạt ${result.quizScore}% · Hoàn thành`:`${result.quizScore}% · Cần xem lại`}));
     }catch(reason){setDocumentQuizResult(current=>({...current,[doc.id]:messageOf(reason)}))}
   };
