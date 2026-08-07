@@ -834,10 +834,91 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
 
       {activeSection === "teacher-overview" && <>
         <div id="teacher-overview" data-teacher-section data-search="Dashboard giáo viên" className="section-anchor" />
-        {unfinished&&<section className="overview-resume"><div><AlertTriangle size={19}/><span>Bạn có tiến độ đang theo dõi ở <b>{unfinished.title}</b> · {unfinished.className}</span></div><span>{unfinished.completion_percent}% hoàn thành</span></section>}
-        <header className="overview-welcome"><h1>Chào {session.email.split("@")[0]}</h1><p>{new Intl.DateTimeFormat("vi-VN",{weekday:"long",day:"2-digit",month:"2-digit"}).format(new Date())}. Tổng quan công việc và tiến độ các lớp đang phụ trách.</p></header>
-        <section className="overview-metrics"><article><small>Lớp phụ trách</small><b>{teacherStats?.classes??classes.length}</b><span>{classes.reduce((sum,item)=>sum+item.studentCount,0).toLocaleString("vi-VN")} học sinh</span></article><article><small>Nhiệm vụ đang mở</small><b>{openAssignments.length}</b><span>{overviewAssignments.length} nhiệm vụ tất cả</span></article><article><small>Bài đang thực hiện</small><b>{pendingSubmissions.length}</b><span>Từ dữ liệu sổ điểm</span></article><article className="attention"><small>Cần chú ý</small><b>{teacherStats?.studentsBelow50??attentionStudents.length}</b><span>Học sinh tiến độ dưới 50%</span></article></section>
-        <section className="overview-columns"><div><h2>Cần xử lý hôm nay</h2><div className="overview-task-list">{dueTasks.map(item=>{const due=new Date(item.dueAt!),overdue=due.getTime()<Date.now();return <article key={item.id}><Clock3 size={18}/><div><b>{item.title}</b><small>{item.className} · {overdue?"Đã quá hạn":"Hạn"} {due.toLocaleString("vi-VN")}</small></div><span className={overdue?"overdue":""}>{overdue?"Quá hạn":"Đang mở"}</span></article>})}{pendingSubmissions.slice(0,3).map(row=><article key={`progress-${row.student_id}-${row.assignment_id}`}><ClipboardList size={18}/><div><b>{row.title}</b><small>{row.full_name} · {row.className} · tiến độ {row.completion_percent}%</small></div><span>Chờ hoàn thành</span></article>)}{!dueTasks.length&&!pendingSubmissions.length&&<EmptyState text="Không có công việc cần xử lý."/>}</div></div><div><h2>Học sinh cần chú ý</h2><div className="attention-students">{attentionStudents.slice(0,4).map(student=><article key={student.id}><header><UserRound size={18}/><div><b>{student.name}</b><small>{student.className} · @{student.username}</small></div><strong>{student.average}%</strong></header><p>Tiến độ trung bình đang dưới ngưỡng 50%.</p><div className="attention-progress"><span style={{width:`${Math.max(0,Math.min(100,student.average))}%`}}/></div></article>)}{!attentionStudents.length&&<EmptyState text="Không có học sinh cần chú ý."/>}</div></div></section>
+        <div className="flex flex-col gap-6 max-w-7xl">
+          {unfinished && (
+            <div className="bg-primary-container text-on-primary-container p-4 rounded-lg flex items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="material-symbols-outlined shrink-0">info</span>
+                <span className="text-sm font-medium truncate">Có tiến độ đang theo dõi ở <b>{unfinished.title}</b> · {unfinished.className} — {unfinished.completion_percent}% hoàn thành</span>
+              </div>
+              <button onClick={()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-classes"}))} className="shrink-0 px-4 py-2 bg-on-primary-container text-primary-container text-xs font-semibold rounded hover:opacity-90 transition-opacity">Xem</button>
+            </div>
+          )}
+
+          <header>
+            <h1 className="text-3xl font-bold text-on-surface mb-1">Chào {session.email.split("@")[0]}</h1>
+            <p className="text-sm text-on-surface-variant">{new Intl.DateTimeFormat("vi-VN",{weekday:"long",day:"2-digit",month:"2-digit"}).format(new Date())}. Tổng quan công việc và tiến độ các lớp đang phụ trách.</p>
+          </header>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest flex flex-col justify-between h-24">
+              <p className="text-xs text-on-surface-variant">Lớp phụ trách</p>
+              <p className="text-3xl font-bold text-on-surface data-tabular">{teacherStats?.classes??classes.length}</p>
+            </div>
+            <div className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest flex flex-col justify-between h-24">
+              <p className="text-xs text-on-surface-variant">Nhiệm vụ đang mở</p>
+              <p className="text-3xl font-bold text-on-surface data-tabular">{openAssignments.length}<span className="text-xs font-normal text-on-surface-variant ml-2">{overviewAssignments.length} tất cả</span></p>
+            </div>
+            <div className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest flex flex-col justify-between h-24">
+              <p className="text-xs text-on-surface-variant">Bài đang thực hiện</p>
+              <p className="text-3xl font-bold text-on-surface data-tabular">{pendingSubmissions.length}<span className="text-xs font-normal text-on-surface-variant ml-2">Từ sổ điểm</span></p>
+            </div>
+            <div className="p-4 border border-error/30 rounded-lg bg-error-container/20 flex flex-col justify-between h-24">
+              <p className="text-xs text-on-surface-variant">Cần chú ý</p>
+              <p className="text-3xl font-bold text-error data-tabular">{teacherStats?.studentsBelow50??attentionStudents.length}<span className="text-xs font-normal text-on-surface-variant ml-2">tiến độ &lt;50%</span></p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-lg p-5">
+              <h3 className="text-lg font-bold text-on-surface mb-4 border-b border-outline-variant pb-2">Cần xử lý hôm nay</h3>
+              <div className="flex flex-col gap-3">
+                {dueTasks.map(item=>{
+                  const due=new Date(item.dueAt!),overdue=due.getTime()<Date.now();
+                  return (
+                    <div key={item.id} className="flex items-center justify-between gap-3 p-3 border border-outline-variant rounded hover:bg-surface-container-low transition-colors">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <span className={`material-symbols-outlined mt-0.5 shrink-0 ${overdue?"text-error":"text-primary"}`}>{overdue?"warning":"schedule"}</span>
+                        <p className="text-sm text-on-surface truncate"><b>{item.title}</b><br/><span className="text-on-surface-variant">{item.className} · {overdue?"Đã quá hạn":"Hạn"} {due.toLocaleString("vi-VN")}</span></p>
+                      </div>
+                      <button onClick={()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-tasks"}))} className="shrink-0 px-3 py-1.5 border border-outline-variant text-on-surface text-xs font-semibold rounded hover:bg-surface-variant transition-colors whitespace-nowrap">Xem nhiệm vụ</button>
+                    </div>
+                  );
+                })}
+                {pendingSubmissions.slice(0,3).map(row=>(
+                  <div key={`progress-${row.student_id}-${row.assignment_id}`} className="flex items-center justify-between gap-3 p-3 border border-outline-variant rounded hover:bg-surface-container-low transition-colors">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="material-symbols-outlined text-primary mt-0.5 shrink-0">edit_note</span>
+                      <p className="text-sm text-on-surface truncate"><b>{row.title}</b><br/><span className="text-on-surface-variant">{row.full_name} · {row.className} · tiến độ {row.completion_percent}%</span></p>
+                    </div>
+                    <button onClick={()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-grading"}))} className="shrink-0 px-3 py-1.5 bg-primary text-on-primary text-xs font-semibold rounded hover:opacity-90 transition-colors whitespace-nowrap">Chấm ngay</button>
+                  </div>
+                ))}
+                {!dueTasks.length && !pendingSubmissions.length && <p className="text-sm text-on-surface-variant text-center py-8 border border-dashed border-outline-variant rounded">Không có công việc cần xử lý.</p>}
+              </div>
+            </div>
+
+            <div className="lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-lg p-5">
+              <h3 className="text-lg font-bold text-on-surface mb-4 border-b border-outline-variant pb-2">Học sinh cần chú ý</h3>
+              <div className="flex flex-col gap-4">
+                {attentionStudents.slice(0,4).map(student=>{
+                  const initials=(student.name||"?").trim().split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
+                  return (
+                    <div key={student.id} className="flex flex-col gap-2 p-3 border border-error/20 bg-error-container/10 rounded">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-surface-dim flex items-center justify-center text-xs font-medium text-on-surface-variant shrink-0">{initials||"?"}</div>
+                        <p className="text-sm text-on-surface truncate">{student.name} <span className="text-on-surface-variant text-xs ml-1">{student.className} · @{student.username}</span></p>
+                      </div>
+                      <p className="text-xs text-error">Tiến độ trung bình {student.average}% — dưới ngưỡng 50%.</p>
+                      <div className="h-1.5 rounded-full bg-surface-variant overflow-hidden mt-1"><span className="block h-full bg-error rounded-full" style={{width:`${Math.max(0,Math.min(100,student.average))}%`}}/></div>
+                    </div>
+                  );
+                })}
+                {!attentionStudents.length && <p className="text-sm text-on-surface-variant text-center py-8 border border-dashed border-outline-variant rounded">Không có học sinh cần chú ý.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
       </>}
 
       {activeSection === "teacher-content" && <>
