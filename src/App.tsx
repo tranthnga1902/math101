@@ -924,13 +924,79 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
       </>}
 
       {activeSection === "teacher-content" && <>
-        <div className="stitch-page-title"><div><h1>Nội dung học</h1><p>Quản lý chương trình, sách giáo khoa và ngân hàng câu hỏi.</p></div><button className="primary" onClick={()=>{setContentTab("problems");setTimeout(()=>document.getElementById("problem-create")?.scrollIntoView({behavior:"smooth",block:"start"}),0)}}>+ Tạo câu hỏi</button></div>
-        <nav className="content-tabs"><button className={contentTab==="courses"?"active":""} onClick={()=>setContentTab("courses")}>Chương trình</button><button className={contentTab==="textbooks"?"active":""} onClick={()=>setContentTab("textbooks")}>Sách giáo khoa</button><button className={contentTab==="problems"?"active":""} onClick={()=>setContentTab("problems")}>Ngân hàng câu hỏi</button><button className={contentTab==="results"?"active":""} onClick={()=>setContentTab("results")}>Kết quả các lớp</button></nav>
-        {contentTab==="courses"&&<section className="live-grid teacher-live"><article><h2>{editingId ? "Cập nhật khóa học" : "Tạo khóa học"}</h2><form id="course-create" className="live-form" onSubmit={save}><label>Mã khóa học<input required maxLength={50} value={form.code} onChange={event=>setForm({...form,code:event.target.value})}/></label><label>Tên khóa học<input required maxLength={255} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label><label>Mô tả<textarea value={form.description} onChange={event=>setForm({...form,description:event.target.value})}/></label><label>Trạng thái<select required value={form.status} onChange={event=>setForm({...form,status:event.target.value})}>{metadataOptions(metadata,"courseStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button className="primary" disabled={saving}>{saving?"Đang lưu…":"Lưu"}</button>{editingId&&<button type="button" onClick={()=>{setEditingId(null);setForm(emptyCourse(metadata))}}>Hủy</button>}</div></form></article><article><h2>Chương trình ({courses.length})</h2>{courses.map(course=><div className="live-row" key={course.id}><div><small>{course.code}</small><b>{course.name}</b><span>{course.status}</span></div><div className="row-actions"><button onClick={()=>setSelectedCourse(course)}>Nội dung</button><button onClick={()=>edit(course)}>Sửa</button></div></div>)}{!dashboardQuery.isLoading&&!courses.length&&<EmptyState text="Chưa có chương trình học."/>}</article></section>}
-        {contentTab==="textbooks"&&<TextbookStudentView session={session}/>} 
-        {contentTab==="problems"&&<MathWorkspace session={session}/>} 
-        {contentTab==="results"&&<ClassResultsView session={session}/>}
-        {selectedCourse&&<CurriculumManager session={session} course={selectedCourse} onClose={()=>setSelectedCourse(null)}/>} 
+        <div id="teacher-content" data-teacher-section data-search="Nội dung học chương trình sách giáo khoa ngân hàng câu hỏi" className="section-anchor" />
+        <div className="flex flex-col gap-4">
+          <header className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-on-surface">Nội dung học</h1>
+              <p className="text-sm text-on-surface-variant">Quản lý chương trình, sách giáo khoa và ngân hàng câu hỏi.</p>
+            </div>
+            <button onClick={()=>{setContentTab("problems");setTimeout(()=>document.getElementById("problem-create")?.scrollIntoView({behavior:"smooth",block:"start"}),0)}} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
+              <span className="material-symbols-outlined text-[18px]">add</span> Tạo câu hỏi
+            </button>
+          </header>
+
+          <nav role="tablist" className="flex items-center gap-6 border-b border-outline-variant">
+            {([["courses","Chương trình"],["textbooks","Sách giáo khoa"],["problems","Ngân hàng câu hỏi"],["results","Kết quả các lớp"]] as const).map(([key,label])=>(
+              <button key={key} role="tab" aria-selected={contentTab===key} onClick={()=>setContentTab(key)} className={`pb-2.5 text-sm border-b-2 transition-colors -mb-px ${contentTab===key?"border-primary text-primary font-bold":"border-transparent text-on-surface-variant font-medium hover:text-on-surface"}`}>{label}</button>
+            ))}
+          </nav>
+
+          {contentTab==="courses" && (
+           <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 items-start">
+            <article className="border border-outline-variant rounded-lg bg-surface-container-lowest p-4">
+             <h2 className="text-sm font-bold text-on-surface mb-3">{editingId ? "Cập nhật khóa học" : "Tạo khóa học"}</h2>
+             <form id="course-create" className="flex flex-col gap-3" onSubmit={save}>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-on-surface-variant">Mã khóa học
+               <input required maxLength={50} value={form.code} onChange={event=>setForm({...form,code:event.target.value})} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface font-normal"/>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-on-surface-variant">Tên khóa học
+               <input required maxLength={255} value={form.name} onChange={event=>setForm({...form,name:event.target.value})} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface font-normal"/>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-on-surface-variant">Mô tả
+               <textarea value={form.description} onChange={event=>setForm({...form,description:event.target.value})} className="min-h-[80px] px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface font-normal resize-y"/>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-on-surface-variant">Trạng thái
+               <select required value={form.status} onChange={event=>setForm({...form,status:event.target.value})} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface font-normal">
+                {metadataOptions(metadata,"courseStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+               </select>
+              </label>
+              <div className="flex items-center gap-2 pt-1">
+               <button className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold disabled:opacity-50" disabled={saving}>{saving?"Đang lưu…":"Lưu"}</button>
+               {editingId && <button type="button" onClick={()=>{setEditingId(null);setForm(emptyCourse(metadata))}} className="h-9 px-4 rounded-lg border border-outline-variant text-on-surface text-sm font-semibold">Hủy</button>}
+              </div>
+             </form>
+            </article>
+            <article className="border border-outline-variant rounded-lg overflow-hidden">
+             <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-lowest">
+              <h2 className="text-sm font-bold text-on-surface">Chương trình ({courses.length})</h2>
+             </div>
+             <div className="divide-y divide-outline-variant">
+              {courses.map(course=>(
+               <div key={course.id} className="flex items-center justify-between gap-3 p-3 bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                 <span className="material-symbols-outlined text-primary text-[22px] shrink-0">folder</span>
+                 <div className="min-w-0">
+                  <p className="text-sm font-medium text-on-surface truncate">{course.name}</p>
+                  <p className="text-[11px] text-on-surface-variant truncate">{course.code} · {course.status}</p>
+                 </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                 <button onClick={()=>setSelectedCourse(course)} className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Nội dung</button>
+                 <button onClick={()=>edit(course)} className="px-2.5 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low rounded transition-colors">Sửa</button>
+                </div>
+               </div>
+              ))}
+             </div>
+             {!dashboardQuery.isLoading && !courses.length && <EmptyState text="Chưa có chương trình học."/>}
+            </article>
+           </div>
+          )}
+          {contentTab==="textbooks"&&<TextbookStudentView session={session}/>}
+          {contentTab==="problems"&&<MathWorkspace session={session}/>}
+          {contentTab==="results"&&<ClassResultsView session={session}/>}
+        </div>
+        {selectedCourse&&<CurriculumManager session={session} course={selectedCourse} onClose={()=>setSelectedCourse(null)}/>}
       </>}
 
       {activeSection === "teacher-courses" && <>
