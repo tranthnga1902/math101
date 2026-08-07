@@ -17,6 +17,7 @@ const sectionTargets: Record<string, string> = {
   "teacher-courses": "teacher-content",
   "teacher-problems": "teacher-content",
   "teacher-textbooks": "teacher-content",
+  "teacher-gradebook": "teacher-classes",
 };
 
 const mainSections = new Set([

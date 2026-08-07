@@ -776,6 +776,7 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [gradeStudent,setGradeStudent]=useState<number|null>(null);
   const [gradebookClassId,setGradebookClassId]=useState<number|null>(null);
+  const [classTab,setClassTab]=useState<"students"|"tasks"|"gradebook"|"groups">("students");
   const [contentTab,setContentTab]=useState<"courses"|"textbooks"|"problems"|"results">("problems");
 
   const dashboardQuery=useQuery({queryKey:["teacher-dashboard",session.accessToken],queryFn:async()=>{
@@ -827,6 +828,7 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
   const attentionStudents=Array.from(new Map(overviewProgress.map(row=>[row.student_id,{id:row.student_id,name:row.full_name,username:row.username,className:row.className,rows:overviewProgress.filter(item=>item.student_id===row.student_id)}])).values()).map(student=>({...student,average:student.rows.length?Math.round(student.rows.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/student.rows.length):0})).filter(student=>student.average<50).sort((a,b)=>a.average-b.average);
   const dueTasks=[...openAssignments].filter(item=>item.dueAt).sort((a,b)=>new Date(a.dueAt!).getTime()-new Date(b.dueAt!).getTime()).slice(0,4);
   const unfinished=pendingSubmissions[0];
+  const selectedClass=classes.find(item=>item.id===gradebookClassId)??null;
 
   return (
     <div className="page live-dashboard teacher-page-section">
@@ -971,14 +973,87 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
       </>}
 
       {activeSection === "teacher-classes" && <>
-        <div id="teacher-classes" data-teacher-section data-search="Danh sách lớp học sinh" className="section-anchor" />
-        <TeacherClassManager session={session} classes={classes} onChanged={invalidateDashboard}/>
-      </>}
+        <div id="teacher-classes" data-teacher-section data-search="Danh sách lớp học sinh Sổ điểm Gradebook" className="section-anchor" />
+        <div className="flex flex-col gap-6 max-w-7xl">
+          <TeacherClassManager
+            session={session}
+            classes={classes}
+            onChanged={invalidateDashboard}
+            selectedClassId={gradebookClassId}
+            onSelectClass={classroom => { setGradebookClassId(classroom.id); setGradeStudent(null); setClassTab("students"); }}
+          />
 
-      {activeSection === "teacher-gradebook" && <>
-        <div id="teacher-gradebook" data-teacher-section data-search="Sổ điểm Gradebook" className="section-anchor" />
-        <PageHeading eyebrow="LỚP HỌC" title="Sổ điểm" text="Xem tiến độ và kết quả học tập theo từng lớp." />
-        {classes.length>0?<GradebookMatrix classes={classes} rows={gradebook} selectedStudent={gradeStudent} onSelectStudent={setGradeStudent} onSelectClass={async id=>{setGradebookClassId(id);setGradeStudent(null)}}/>:<EmptyState text="Chưa có lớp học để xem sổ điểm."/>}
+          {selectedClass && (
+            <section className="border border-outline-variant rounded-lg bg-surface-container-lowest p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-primary tracking-wide">CHI TIẾT LỚP</p>
+                  <h2 className="text-lg font-bold text-on-surface truncate">{selectedClass.name}</h2>
+                </div>
+                <button onClick={() => setGradebookClassId(null)} className="shrink-0 h-9 px-3 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">
+                  Đóng chi tiết
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 border-b border-outline-variant overflow-x-auto thin-scrollbar">
+                {([["students", "Học sinh"], ["tasks", "Nhiệm vụ"], ["gradebook", "Sổ điểm"], ["groups", "Nhóm học tập"]] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setClassTab(id)}
+                    className={`shrink-0 px-3 h-10 text-sm font-semibold border-b-2 -mb-px transition-colors ${classTab === id ? "border-primary text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-container-low border border-outline-variant flex-wrap">
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">campaign</span>
+                <input disabled placeholder="Nhắn cả lớp (chưa khả dụng)" className="flex-1 min-w-[160px] h-8 px-2 rounded bg-surface-container-lowest border border-outline-variant text-sm text-on-surface-variant placeholder:text-on-surface-variant/70 disabled:cursor-not-allowed" />
+                <button disabled className="shrink-0 h-8 px-3 rounded bg-surface-variant text-on-surface-variant text-xs font-semibold cursor-not-allowed">Gửi</button>
+                <span className="text-[11px] text-on-surface-variant shrink-0">Hệ thống chưa có API nhắn tin lớp học.</span>
+              </div>
+
+              {classTab === "students" && <TeacherRoster session={session} classes={classes} fixedClassId={selectedClass.id} />}
+
+              {classTab === "tasks" && (() => {
+                const classAssignments = overviewAssignments.filter(item => item.classId === selectedClass.id);
+                return (
+                  <div className="flex flex-col gap-2">
+                    {classAssignments.map(item => {
+                      const due = item.dueAt ? new Date(item.dueAt) : null;
+                      const overdue = Boolean(due && due.getTime() < Date.now() && item.status !== "COMPLETED");
+                      const statusLabel = item.status === "PUBLISHED" ? "Đang mở" : item.status === "DRAFT" ? "Chưa giao" : "Đã đóng";
+                      return (
+                        <div key={item.id} className="flex items-center justify-between gap-3 p-3 border border-outline-variant rounded hover:bg-surface-container-low transition-colors">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <span className={`material-symbols-outlined mt-0.5 shrink-0 ${overdue ? "text-error" : "text-primary"}`}>{overdue ? "warning" : "assignment"}</span>
+                            <p className="text-sm text-on-surface truncate">
+                              <b>{item.title}</b><br />
+                              <span className="text-on-surface-variant">{due ? `Hạn ${due.toLocaleString("vi-VN")}` : "Không giới hạn"}</span>
+                            </p>
+                          </div>
+                          <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded ${item.status === "PUBLISHED" ? "bg-primary-container/20 text-primary" : "bg-surface-variant text-on-surface-variant"}`}>{statusLabel}</span>
+                        </div>
+                      );
+                    })}
+                    {!classAssignments.length && <p className="text-sm text-on-surface-variant text-center py-8 border border-dashed border-outline-variant rounded">Lớp chưa có nhiệm vụ nào.</p>}
+                  </div>
+                );
+              })()}
+
+              {classTab === "gradebook" && <GradebookMatrix classes={[selectedClass]} rows={gradebook} selectedStudent={gradeStudent} onSelectStudent={setGradeStudent} onSelectClass={async () => {}} />}
+
+              {classTab === "groups" && (
+                <div className="flex flex-col items-center justify-center gap-2 py-10 border border-dashed border-outline-variant rounded text-center">
+                  <span className="material-symbols-outlined text-on-surface-variant text-[28px]">groups</span>
+                  <p className="text-sm font-semibold text-on-surface">Nhóm học tập chưa khả dụng</p>
+                  <p className="text-xs text-on-surface-variant max-w-xs">Hệ thống hiện chưa có tính năng tạo nhóm học tập trong lớp. Mục này sẽ được bổ sung khi có API tương ứng.</p>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       </>}
 
       {activeSection === "teacher-grading" && <TeacherGradingView session={session} classes={classes} />}
@@ -1074,17 +1149,80 @@ function GradebookMatrix({classes,rows,selectedStudent,onSelectStudent,onSelectC
  const assignments=Array.from(new Map(rows.map(row=>[row.assignment_id,{id:row.assignment_id,title:row.title}])).values());
  const icon=(status:string)=>status==="COMPLETED"?"✓":status==="IN_PROGRESS"?"●":"○";
  const label=(status:string)=>status==="COMPLETED"?"Đã xong":status==="IN_PROGRESS"?"Đang làm":"Chưa mở";
- return <section className="audit-panel gradebook"><div className="panel-head"><div><p className="eyebrow">SỔ ĐIỂM TIẾN ĐỘ</p><h2>Học sinh × Bài tập</h2></div><div className="gradebook-class-tabs">{classes.map(item=><button key={item.id} onClick={()=>void onSelectClass(item.id)}>{item.name}</button>)}</div></div>{rows.length?<div className="gradebook-scroll"><table className="gradebook-matrix"><thead><tr><th>Học sinh</th>{assignments.map(item=><th key={item.id} title={item.title}>{item.title}</th>)}</tr></thead><tbody>{students.map(student=><tr key={student.id}><th><button onClick={()=>onSelectStudent(student.id)}>{student.name}<small>@{student.username}</small></button></th>{assignments.map(assignment=>{const row=rows.find(item=>item.student_id===student.id&&item.assignment_id===assignment.id);return <td key={assignment.id}><span className={`progress-icon ${(row?.status||"NOT_OPENED").toLowerCase()}`} title={`${label(row?.status||"NOT_OPENED")} · ${row?.completion_percent||0}%`}>{icon(row?.status||"NOT_OPENED")}</span></td>})}</tr>)}</tbody></table></div>:<EmptyState text="Chọn lớp để xem sổ điểm tiến độ."/>}{selectedStudent&&<div className="student-grade-detail"><div className="panel-head"><h3>Chi tiết · {rows.find(x=>x.student_id===selectedStudent)?.full_name}</h3><button onClick={()=>onSelectStudent(null)}>Đóng</button></div>{rows.filter(x=>x.student_id===selectedStudent).map(x=><div className="live-row" key={x.assignment_id}><b>{x.title}</b><span>{label(x.status)} · {x.completion_percent}%</span></div>)}</div>}</section>
+ const tone=(status:string)=>status==="COMPLETED"?"text-secondary":status==="IN_PROGRESS"?"text-primary":"text-on-surface-variant/40";
+ return (
+  <section className="flex flex-col gap-4">
+   <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div>
+     <p className="text-xs font-semibold text-primary tracking-wide">SỔ ĐIỂM TIẾN ĐỘ</p>
+     <h3 className="text-base font-bold text-on-surface">Học sinh × Bài tập</h3>
+    </div>
+    {classes.length>1 && (
+     <div className="flex items-center gap-1.5 flex-wrap">
+      {classes.map(item=><button key={item.id} onClick={()=>void onSelectClass(item.id)} className="h-8 px-3 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">{item.name}</button>)}
+     </div>
+    )}
+   </div>
+   {rows.length ? (
+    <div className="border border-outline-variant rounded-lg overflow-auto max-h-[560px] thin-scrollbar">
+     <table className="w-full text-sm border-collapse">
+      <thead>
+       <tr>
+        <th className="sticky top-0 left-0 z-20 bg-surface-container-low text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-r border-outline-variant min-w-[180px]">Học sinh</th>
+        {assignments.map(item=><th key={item.id} title={item.title} className="sticky top-0 z-10 bg-surface-container-low px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant min-w-[120px] max-w-[160px] truncate">{item.title}</th>)}
+       </tr>
+      </thead>
+      <tbody>
+       {students.map(student=>{
+        const initials=(student.name||"?").trim().split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
+        return (
+         <tr key={student.id} className="hover:bg-surface-container-low/60">
+          <th className="sticky left-0 z-10 bg-surface-container-lowest text-left px-3 py-2 border-b border-r border-outline-variant font-normal">
+           <button onClick={()=>onSelectStudent(student.id)} className="flex items-center gap-2 text-left w-full">
+            <span className="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-[10px] font-bold shrink-0">{initials||"?"}</span>
+            <span className="min-w-0"><span className="block text-sm font-medium text-on-surface truncate">{student.name}</span><span className="block text-[11px] text-on-surface-variant truncate">@{student.username}</span></span>
+           </button>
+          </th>
+          {assignments.map(assignment=>{
+           const row=rows.find(item=>item.student_id===student.id&&item.assignment_id===assignment.id);
+           const status=row?.status||"NOT_OPENED";
+           return <td key={assignment.id} className="px-3 py-2 border-b border-outline-variant text-center"><span className={`text-base ${tone(status)}`} title={`${label(status)} · ${row?.completion_percent||0}%`}>{icon(status)}</span></td>;
+          })}
+         </tr>
+        );
+       })}
+      </tbody>
+     </table>
+    </div>
+   ) : <EmptyState text="Lớp này chưa có nhiệm vụ nào nên chưa có dữ liệu sổ điểm."/>}
+   {selectedStudent && (
+    <div className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
+     <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-bold text-on-surface">Chi tiết · {rows.find(x=>x.student_id===selectedStudent)?.full_name}</h4>
+      <button onClick={()=>onSelectStudent(null)} className="text-xs text-on-surface-variant hover:text-on-surface">Đóng</button>
+     </div>
+     <div className="flex flex-col gap-2">
+      {rows.filter(x=>x.student_id===selectedStudent).map(x=>(
+       <div key={x.assignment_id} className="flex items-center justify-between text-sm">
+        <b className="text-on-surface">{x.title}</b>
+        <span className="text-on-surface-variant">{label(x.status)} · {x.completion_percent}%</span>
+       </div>
+      ))}
+     </div>
+    </div>
+   )}
+  </section>
+ );
 }
 
-function TeacherClassManager({session,classes,onChanged}:{session:AuthSession;classes:Classroom[];onChanged:()=>Promise<void>}){
+function TeacherClassManager({session,classes,onChanged,selectedClassId,onSelectClass}:{session:AuthSession;classes:Classroom[];onChanged:()=>Promise<void>;selectedClassId?:number|null;onSelectClass?:(classroom:Classroom)=>void}){
  const metadata=useMetadata(session);
  const queryClient=useQueryClient();
  const [editing,setEditing]=useState<Classroom|null>(null),[form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[formOpen,setFormOpen]=useState(false);
  const gradesQuery=useQuery({queryKey:["teacher-class-manager-grades",session.accessToken],queryFn:()=>getGrades(session)});
  const grades=gradesQuery.data??[];
  const classIdsKey=classes.map(item=>item.id).join(",");
- const metricsQuery=useQuery({queryKey:["teacher-class-manager-metrics",session.accessToken,classIdsKey],queryFn:async()=>{const values=await Promise.all(classes.map(async classroom=>{const [assignments,book]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);const byStudent=Array.from(new Set(book.map(row=>row.student_id))).map(id=>{const own=book.filter(row=>row.student_id===id);return own.length?own.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/own.length:0});return [classroom.id,{openTasks:assignments.filter(item=>item.status==="PUBLISHED").length,average:book.length?Math.round(book.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/book.length):0,attention:byStudent.filter(value=>value<50).length}] as const}));return Object.fromEntries(values) as Record<number,{openTasks:number;average:number;attention:number}>},enabled:classes.length>0});
+ const metricsQuery=useQuery({queryKey:["teacher-class-manager-metrics",session.accessToken,classIdsKey],queryFn:async()=>{const values=await Promise.all(classes.map(async classroom=>{const [assignments,book,enrolled]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id),getEnrollments(session,"class-students",classroom.id)]);const byStudent=Array.from(new Set(book.map(row=>row.student_id))).map(id=>{const own=book.filter(row=>row.student_id===id);return own.length?own.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/own.length:0});return [classroom.id,{studentCount:enrolled.length,openTasks:assignments.filter(item=>item.status==="PUBLISHED").length,average:book.length?Math.round(book.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/book.length):0,attention:byStudent.filter(value=>value<50).length}] as const}));return Object.fromEntries(values) as Record<number,{studentCount:number;openTasks:number;average:number;attention:number}>},enabled:classes.length>0});
  const metrics=metricsQuery.data??{};
  const invalidateMetrics=()=>queryClient.invalidateQueries({queryKey:["teacher-class-manager-metrics"]});
  const createMutation=useMutation({mutationFn:(input:ClassroomInput)=>createClass(session,input),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
@@ -1095,19 +1233,122 @@ function TeacherClassManager({session,classes,onChanged}:{session:AuthSession;cl
  useEffect(()=>{if(!editing)setForm(current=>({...current,status:current.status||firstMetadataValue(metadata,"classStatuses")}))},[editing,metadata]);
  const reset=()=>{setEditing(null);setFormOpen(false);setForm({code:"",name:"",gradeId:grades[0]?.id||0,status:firstMetadataValue(metadata,"classStatuses")})};
   const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing)await updateMutation.mutateAsync({id:editing.id,input:form as ClassroomInput});else await createMutation.mutateAsync(form as ClassroomInput);reset()}catch{/* lỗi đã có trong mutation state */}};
- return <section className="teacher-class-manager"><header className="teacher-class-heading"><div><h1>Danh sách lớp học</h1><p>Quản lý và theo dõi tiến độ học tập của các lớp Khối 10.</p></div><button className="primary" onClick={()=>{reset();setFormOpen(true)}}>＋ Thêm lớp học</button></header>{error&&<div className="api-error">{error}</div>}<div className="teacher-class-grid">{classes.map(item=>{const stat=metrics[item.id]??{openTasks:0,average:0,attention:0};return <article key={item.id}><header><div><h3>{item.name}</h3><small>{item.code} · {grades.find(grade=>grade.id===item.gradeId)?.name??`Khối #${item.gradeId}`}</small></div><button onClick={()=>{setEditing(item);setForm({code:item.code,name:item.name,gradeId:item.gradeId,status:item.status});setFormOpen(true)}}>•••</button></header><dl><div><dt>Sĩ số</dt><dd>{item.studentCount}</dd></div><div><dt>Nhiệm vụ mở</dt><dd>{stat.openTasks}</dd></div><div><dt>Tiến độ TB</dt><dd>{stat.average}%</dd></div><div className="attention"><dt>Cần chú ý</dt><dd>{stat.attention} hs</dd></div></dl><footer><span className={`status-chip status-${item.status.toLowerCase()}`}>{item.status}</span><button className="danger-link" onClick={()=>{if(confirm(`Xóa lớp “${item.name}”?`))deleteMutation.mutate(item.id)}}>Xóa</button></footer></article>})}</div>{!classes.length&&<EmptyState text="Chưa có lớp học."/>}{formOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">{editing?"CHỈNH SỬA LỚP":"THÊM LỚP HỌC"}</p><h2>{editing?editing.name:"Lớp học mới"}</h2></div><button onClick={reset}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Mã lớp<input required placeholder="Ví dụ: 10A1" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select required value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(grade=><option key={grade.id} value={grade.id}>{grade.name}</option>)}</select></label><label>Trạng thái<select required value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button type="button" onClick={reset}>Hủy</button><button className="primary">{editing?"Lưu thay đổi":"Tạo lớp"}</button></div></form></section></div>}</section>
+ return (
+  <section className="flex flex-col gap-4">
+   <header className="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+     <h1 className="text-2xl font-bold text-on-surface">Lớp học</h1>
+     <p className="text-sm text-on-surface-variant">Quản lý danh sách lớp và xem chi tiết học sinh, nhiệm vụ, sổ điểm theo từng lớp.</p>
+    </div>
+    <button onClick={()=>{reset();setFormOpen(true)}} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
+     <span className="material-symbols-outlined text-[18px]">add</span> Thêm lớp học
+    </button>
+   </header>
+   {error && <div className="api-error">{error}</div>}
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {classes.map(item=>{
+     const stat=metrics[item.id]??{studentCount:0,openTasks:0,average:0,attention:0};
+     const isSelected=selectedClassId===item.id;
+     return (
+      <article key={item.id} className={`p-4 rounded-lg border bg-surface-container-lowest flex flex-col gap-3 transition-colors ${isSelected?"border-primary ring-1 ring-primary":"border-outline-variant"}`}>
+       <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+         <h3 className="text-base font-bold text-on-surface truncate">{item.name}</h3>
+         <p className="text-xs text-on-surface-variant truncate">{item.code} · {grades.find(grade=>grade.id===item.gradeId)?.name??(item.gradeId!=null?`Khối #${item.gradeId}`:"—")}</p>
+        </div>
+        <button onClick={()=>{setEditing(item);setForm({code:item.code,name:item.name,gradeId:item.gradeId,status:item.status});setFormOpen(true)}} className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
+         <span className="material-symbols-outlined text-[18px]">more_vert</span>
+        </button>
+       </div>
+       <dl className="grid grid-cols-2 gap-2 text-xs">
+        <div><dt className="text-on-surface-variant">Sĩ số</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.studentCount}</dd></div>
+        <div><dt className="text-on-surface-variant">Nhiệm vụ mở</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.openTasks}</dd></div>
+        <div><dt className="text-on-surface-variant">Tiến độ TB</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.average}%</dd></div>
+        <div><dt className="text-on-surface-variant">Cần chú ý</dt><dd className={`text-sm font-semibold data-tabular ${stat.attention?"text-error":"text-on-surface"}`}>{stat.attention} hs</dd></div>
+       </dl>
+       <footer className="flex items-center justify-between gap-2 pt-2 border-t border-outline-variant">
+        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${item.status==="ACTIVE"?"bg-primary-container/20 text-primary":"bg-surface-variant text-on-surface-variant"}`}>{item.status}</span>
+        <div className="flex items-center gap-1">
+         <button className="text-error text-xs font-semibold hover:underline" onClick={()=>{if(confirm(`Xóa lớp “${item.name}”?`))deleteMutation.mutate(item.id)}}>Xóa</button>
+         <button onClick={()=>onSelectClass?.(item)} className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${isSelected?"bg-primary-container text-on-primary-container":"bg-primary text-on-primary hover:opacity-90"}`}>{isSelected?"Đang xem":"Xem chi tiết"}</button>
+        </div>
+       </footer>
+      </article>
+     );
+    })}
+   </div>
+   {!classes.length && <EmptyState text="Chưa có lớp học."/>}
+   {formOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">{editing?"CHỈNH SỬA LỚP":"THÊM LỚP HỌC"}</p><h2>{editing?editing.name:"Lớp học mới"}</h2></div><button onClick={reset}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Mã lớp<input required placeholder="Ví dụ: 10A1" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select required value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(grade=><option key={grade.id} value={grade.id}>{grade.name}</option>)}</select></label><label>Trạng thái<select required value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button type="button" onClick={reset}>Hủy</button><button className="primary">{editing?"Lưu thay đổi":"Tạo lớp"}</button></div></form></section></div>}
+  </section>
+ );
 }
 
-function TeacherRoster({session,classes}:{session:AuthSession;classes:Classroom[]}){
+function TeacherRoster({session,classes,fixedClassId}:{session:AuthSession;classes:Classroom[];fixedClassId?:number}){
  const queryClient=useQueryClient();
- const [classId,setClassId]=useState(classes[0].id),[studentId,setStudentId]=useState(0),[search,setSearch]=useState("");
+ const [classId,setClassId]=useState(fixedClassId??classes[0].id),[studentId,setStudentId]=useState(0),[search,setSearch]=useState("");
  const [progress,setProgress]=useState<{name:string;items:Progress[]}|null>(null);
+ useEffect(()=>{if(fixedClassId!=null)setClassId(fixedClassId)},[fixedClassId]);
  const rosterQuery=useQuery({queryKey:["teacher-roster",session.accessToken,classId,search],queryFn:async()=>{const [enrolled,candidates]=await Promise.all([getEnrollments(session,"class-students",classId),getAvailableStudents(session,search)]);return {students:enrolled,available:candidates}}});
  const students=rosterQuery.data?.students??[],available=rosterQuery.data?.available??[];
  const invalidate=()=>queryClient.invalidateQueries({queryKey:["teacher-roster"]});
  const addMutation=useMutation({mutationFn:(id:number)=>addEnrollment(session,"class-students",{classId,userId:id}),onSuccess:invalidate});
  const removeMutation=useMutation({mutationFn:(id:number)=>removeEnrollment(session,"class-students",id),onSuccess:invalidate});
- return <section className="audit-panel"><div className="panel-head"><h2>Học sinh trong lớp</h2><select value={classId} onChange={e=>setClassId(Number(e.target.value))}>{classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div><div className="filter-bar roster-add"><input placeholder="Tìm học sinh" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh…</option>{available.map(x=><option key={x.id} value={x.id}>{x.fullName} (@{x.username})</option>)}</select><button onClick={()=>{if(studentId)addMutation.mutate(studentId)}}>Thêm vào lớp</button></div>{students.map(x=><div className="live-row" key={x.id}><b>{x.label}</b><div className="row-actions"><button onClick={async()=>{if(x.userId)setProgress({name:x.label,items:await getStudentProgress(session,x.userId)})}}>Tiến độ</button><button onClick={async()=>{if(!x.userId)return;const password=prompt(`Mật khẩu mới cho ${x.label}`);if(password)await resetUserPassword(session,x.userId,password)}}>Reset mật khẩu</button><button onClick={()=>removeMutation.mutate(x.id)}>Gỡ khỏi lớp</button></div></div>)}{progress&&<div className="student-grade-detail"><div className="panel-head"><h3>Tiến độ bài học · {progress.name}</h3><button onClick={()=>setProgress(null)}>Đóng</button></div>{progress.items.map(x=><div className="live-row" key={x.id}><b>Bài học #{x.lessonId}</b><span>{x.completedAt?"Đã hoàn thành":x.openedAt?"Đang học":"Chưa mở"} · {x.completionPercent}%</span></div>)}{!progress.items.length&&<EmptyState text="Học sinh chưa có tiến độ bài học."/>}</div>}</section>
+ return (
+  <section className="flex flex-col gap-4">
+   <div className="flex items-center justify-between gap-3 flex-wrap">
+    <h3 className="text-base font-bold text-on-surface">Học sinh trong lớp</h3>
+    {fixedClassId==null && (
+     <select value={classId} onChange={e=>setClassId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
+      {classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+     </select>
+    )}
+   </div>
+   <div className="flex items-center gap-2 flex-wrap">
+    <input placeholder="Tìm học sinh" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[160px]"/>
+    <select value={studentId} onChange={e=>setStudentId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
+     <option value={0}>Chọn học sinh…</option>
+     {available.map(x=><option key={x.id} value={x.id}>{x.fullName} (@{x.username})</option>)}
+    </select>
+    <button onClick={()=>{if(studentId)addMutation.mutate(studentId)}} className="h-9 px-3 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity">Thêm vào lớp</button>
+   </div>
+   <div className="flex flex-col divide-y divide-outline-variant border border-outline-variant rounded-lg overflow-hidden">
+    {students.map(x=>{
+     const initials=(x.label||"?").trim().split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
+     return (
+      <div key={x.id} className="flex items-center justify-between gap-3 p-3 bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
+       <div className="flex items-center gap-3 min-w-0">
+        <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-bold shrink-0">{initials||"?"}</div>
+        <p className="text-sm text-on-surface truncate">{x.label}</p>
+       </div>
+       <div className="flex items-center gap-1 shrink-0">
+        <button onClick={async()=>{if(x.userId)setProgress({name:x.label,items:await getStudentProgress(session,x.userId)})}} className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Tiến độ</button>
+        <button onClick={async()=>{if(!x.userId)return;const password=prompt(`Mật khẩu mới cho ${x.label}`);if(password)await resetUserPassword(session,x.userId,password)}} className="px-2.5 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-variant rounded transition-colors">Reset MK</button>
+        <button onClick={()=>removeMutation.mutate(x.id)} className="px-2.5 py-1.5 text-xs font-semibold text-error hover:bg-error-container/30 rounded transition-colors">Gỡ</button>
+       </div>
+      </div>
+     );
+    })}
+    {!students.length && <p className="text-sm text-on-surface-variant text-center py-8">Lớp chưa có học sinh.</p>}
+   </div>
+   {progress && (
+    <div className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
+     <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-bold text-on-surface">Tiến độ bài học · {progress.name}</h4>
+      <button onClick={()=>setProgress(null)} className="text-xs text-on-surface-variant hover:text-on-surface">Đóng</button>
+     </div>
+     <div className="flex flex-col gap-2">
+      {progress.items.map(x=>(
+       <div key={x.id} className="flex items-center justify-between text-sm">
+        <b className="text-on-surface">Bài học #{x.lessonId}</b>
+        <span className="text-on-surface-variant">{x.completedAt?"Đã hoàn thành":x.openedAt?"Đang học":"Chưa mở"} · {x.completionPercent}%</span>
+       </div>
+      ))}
+      {!progress.items.length && <p className="text-sm text-on-surface-variant">Học sinh chưa có tiến độ bài học.</p>}
+     </div>
+    </div>
+   )}
+  </section>
+ );
 }
 
 function MathWorkspace({session}:{session:AuthSession}){
