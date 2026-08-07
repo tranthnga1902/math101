@@ -64,7 +64,7 @@ export function MainLayout({ session, children, onChangePassword, onLogout }: Ma
     <div className="teacher-app teacher-shell">
       <Sidebar active={active} onNavigate={navigate} />
       <div className="teacher-main">
-        <Topbar session={session} onNavigate={navigate} onChangePassword={onChangePassword} onLogout={onLogout} />
+        <Topbar session={session} active={active} onNavigate={navigate} onChangePassword={onChangePassword} onLogout={onLogout} />
         {typeof children === "function" ? children(active) : children}
       </div>
     </div>
