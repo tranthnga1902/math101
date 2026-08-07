@@ -880,50 +880,50 @@ const emptyCourse = (metadata: Metadata | null): CourseInput => ({
 
 function TeacherDashboard({ session, activeSection }: { session: AuthSession; activeSection: string }) {
   const metadata=useMetadata(session);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const queryClient=useQueryClient();
   const [form, setForm] = useState<CourseInput>(() => emptyCourse(null));
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [teacherStats,setTeacherStats]=useState<TeacherStats|null>(null),[classes,setClasses]=useState<Classroom[]>([]),[gradebook,setGradebook]=useState<GradebookRow[]>([]),[gradeStudent,setGradeStudent]=useState<number|null>(null);
-  const [overviewAssignments,setOverviewAssignments]=useState<(Assignment&{className:string})[]>([]),[overviewProgress,setOverviewProgress]=useState<(GradebookRow&{className:string})[]>([]);
+  const [gradeStudent,setGradeStudent]=useState<number|null>(null);
+  const [gradebookClassId,setGradebookClassId]=useState<number|null>(null);
   const [contentTab,setContentTab]=useState<"courses"|"textbooks"|"problems">("problems");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [nextCourses,stats,nextClasses]=await Promise.all([getCourses(session),getTeacherStats(session),getTeacherClasses(session)]);
-      setCourses(nextCourses);setTeacherStats(stats);setClasses(nextClasses);
-      const overview=await Promise.all(nextClasses.map(async classroom=>{const [assignments,progress]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);return {classroom,assignments,progress}}));
-      setOverviewAssignments(overview.flatMap(item=>item.assignments.map(row=>({...row,className:item.classroom.name}))));
-      setOverviewProgress(overview.flatMap(item=>item.progress.map(row=>({...row,className:item.classroom.name}))));
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
+  const dashboardQuery=useQuery({queryKey:["teacher-dashboard",session.accessToken],queryFn:async()=>{
+    const [nextCourses,stats,nextClasses]=await Promise.all([getCourses(session),getTeacherStats(session),getTeacherClasses(session)]);
+    const overview=await Promise.all(nextClasses.map(async classroom=>{const [assignments,progress]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);return {classroom,assignments,progress}}));
+    return {
+      courses:nextCourses,
+      teacherStats:stats,
+      classes:nextClasses,
+      overviewAssignments:overview.flatMap(item=>item.assignments.map(row=>({...row,className:item.classroom.name}))),
+      overviewProgress:overview.flatMap(item=>item.progress.map(row=>({...row,className:item.classroom.name}))),
+    };
+  }});
+  const courses=dashboardQuery.data?.courses??[];
+  const teacherStats=dashboardQuery.data?.teacherStats??null;
+  const classes=dashboardQuery.data?.classes??[];
+  const overviewAssignments=dashboardQuery.data?.overviewAssignments??[];
+  const overviewProgress=dashboardQuery.data?.overviewProgress??[];
+  const gradebookQuery=useQuery({queryKey:["teacher-gradebook-select",session.accessToken,gradebookClassId],queryFn:()=>getGradebook(session,gradebookClassId as number),enabled:gradebookClassId!=null});
+  const gradebook=gradebookQuery.data??[];
+  const invalidateDashboard=()=>queryClient.invalidateQueries({queryKey:["teacher-dashboard"]});
+  const createMutation=useMutation({mutationFn:(input:CourseInput)=>createCourse(session,input),onSuccess:invalidateDashboard});
+  const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:CourseInput})=>updateCourse(session,id,input),onSuccess:invalidateDashboard});
+  const deleteMutation=useMutation({mutationFn:(id:number)=>deleteCourse(session,id),onSuccess:invalidateDashboard});
+  const saving=createMutation.isPending||updateMutation.isPending;
+  const error=dashboardQuery.isError?messageOf(dashboardQuery.error):gradebookQuery.isError?messageOf(gradebookQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
 
-  useEffect(() => { void load(); }, [load]);
   useEffect(()=>{if(!editingId)setForm(current=>({...current,status:current.status||firstMetadataValue(metadata,"courseStatuses")}))},[editingId,metadata]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true);
-    setError("");
     try {
-      if (editingId) await updateCourse(session, editingId, form);
-      else await createCourse(session, form);
+      if (editingId) await updateMutation.mutateAsync({id:editingId,input:form});
+      else await createMutation.mutateAsync(form);
       setEditingId(null);
       setForm(emptyCourse(metadata));
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setSaving(false);
+    } catch {
+      /* lỗi đã có trong mutation state */
     }
   };
 
@@ -953,7 +953,7 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
       {activeSection === "teacher-content" && <>
         <div className="stitch-page-title"><div><h1>Nội dung học</h1><p>Quản lý chương trình, sách giáo khoa và ngân hàng câu hỏi.</p></div><button className="primary" onClick={()=>setContentTab("problems")}>+ Tạo câu hỏi</button></div>
         <nav className="content-tabs"><button className={contentTab==="courses"?"active":""} onClick={()=>setContentTab("courses")}>Chương trình</button><button className={contentTab==="textbooks"?"active":""} onClick={()=>setContentTab("textbooks")}>Sách giáo khoa</button><button className={contentTab==="problems"?"active":""} onClick={()=>setContentTab("problems")}>Ngân hàng câu hỏi</button></nav>
-        {contentTab==="courses"&&<section className="live-grid teacher-live"><article><h2>{editingId ? "Cập nhật khóa học" : "Tạo khóa học"}</h2><form id="course-create" className="live-form" onSubmit={save}><label>Mã khóa học<input required maxLength={50} value={form.code} onChange={event=>setForm({...form,code:event.target.value})}/></label><label>Tên khóa học<input required maxLength={255} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label><label>Mô tả<textarea value={form.description} onChange={event=>setForm({...form,description:event.target.value})}/></label><label>Trạng thái<select required value={form.status} onChange={event=>setForm({...form,status:event.target.value})}>{metadataOptions(metadata,"courseStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button className="primary" disabled={saving}>{saving?"Đang lưu…":"Lưu"}</button>{editingId&&<button type="button" onClick={()=>{setEditingId(null);setForm(emptyCourse(metadata))}}>Hủy</button>}</div></form></article><article><h2>Chương trình ({courses.length})</h2>{courses.map(course=><div className="live-row" key={course.id}><div><small>{course.code}</small><b>{course.name}</b><span>{course.status}</span></div><div className="row-actions"><button onClick={()=>setSelectedCourse(course)}>Nội dung</button><button onClick={()=>edit(course)}>Sửa</button></div></div>)}{!loading&&!courses.length&&<EmptyState text="Chưa có chương trình học."/>}</article></section>}
+        {contentTab==="courses"&&<section className="live-grid teacher-live"><article><h2>{editingId ? "Cập nhật khóa học" : "Tạo khóa học"}</h2><form id="course-create" className="live-form" onSubmit={save}><label>Mã khóa học<input required maxLength={50} value={form.code} onChange={event=>setForm({...form,code:event.target.value})}/></label><label>Tên khóa học<input required maxLength={255} value={form.name} onChange={event=>setForm({...form,name:event.target.value})}/></label><label>Mô tả<textarea value={form.description} onChange={event=>setForm({...form,description:event.target.value})}/></label><label>Trạng thái<select required value={form.status} onChange={event=>setForm({...form,status:event.target.value})}>{metadataOptions(metadata,"courseStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button className="primary" disabled={saving}>{saving?"Đang lưu…":"Lưu"}</button>{editingId&&<button type="button" onClick={()=>{setEditingId(null);setForm(emptyCourse(metadata))}}>Hủy</button>}</div></form></article><article><h2>Chương trình ({courses.length})</h2>{courses.map(course=><div className="live-row" key={course.id}><div><small>{course.code}</small><b>{course.name}</b><span>{course.status}</span></div><div className="row-actions"><button onClick={()=>setSelectedCourse(course)}>Nội dung</button><button onClick={()=>edit(course)}>Sửa</button></div></div>)}{!dashboardQuery.isLoading&&!courses.length&&<EmptyState text="Chưa có chương trình học."/>}</article></section>}
         {contentTab==="textbooks"&&<TextbookStudentView session={session}/>} 
         {contentTab==="problems"&&<MathWorkspace session={session}/>} 
         {selectedCourse&&<CurriculumManager session={session} course={selectedCourse} onClose={()=>setSelectedCourse(null)}/>} 
@@ -977,9 +977,9 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
           </article>
           <article>
             <h2>Khóa học ({courses.length})</h2>
-            {loading && <p>Đang tải dữ liệu…</p>}
-            {!loading && courses.length === 0 && <EmptyState text="Chưa có khóa học." />}
-            {courses.map((course) => <div className="live-row" key={course.id}><div><small>{course.code}</small><b>{course.name}</b><span>{course.status}</span></div><div className="row-actions"><button onClick={() => setSelectedCourse(course)}>Nội dung</button><button onClick={() => edit(course)}>Sửa</button><button className="danger-link" onClick={async()=>{if(confirm(`Xóa khóa học “${course.name}”?`)){await deleteCourse(session,course.id);await load()}}}>Xóa</button></div></div>)}
+            {dashboardQuery.isLoading && <p>Đang tải dữ liệu…</p>}
+            {!dashboardQuery.isLoading && courses.length === 0 && <EmptyState text="Chưa có khóa học." />}
+            {courses.map((course) => <div className="live-row" key={course.id}><div><small>{course.code}</small><b>{course.name}</b><span>{course.status}</span></div><div className="row-actions"><button onClick={() => setSelectedCourse(course)}>Nội dung</button><button onClick={() => edit(course)}>Sửa</button><button className="danger-link" onClick={()=>{if(confirm(`Xóa khóa học “${course.name}”?`))deleteMutation.mutate(course.id)}}>Xóa</button></div></div>)}
           </article>
         </section>
         {selectedCourse && <CurriculumManager session={session} course={selectedCourse} onClose={() => setSelectedCourse(null)} />}
@@ -1000,13 +1000,13 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
 
       {activeSection === "teacher-classes" && <>
         <div id="teacher-classes" data-teacher-section data-search="Danh sách lớp học sinh" className="section-anchor" />
-        <TeacherClassManager session={session} classes={classes} onChanged={load}/>
+        <TeacherClassManager session={session} classes={classes} onChanged={invalidateDashboard}/>
       </>}
 
       {activeSection === "teacher-gradebook" && <>
         <div id="teacher-gradebook" data-teacher-section data-search="Sổ điểm Gradebook" className="section-anchor" />
         <PageHeading eyebrow="LỚP HỌC" title="Sổ điểm" text="Xem tiến độ và kết quả học tập theo từng lớp." />
-        {classes.length>0?<GradebookMatrix classes={classes} rows={gradebook} selectedStudent={gradeStudent} onSelectStudent={setGradeStudent} onSelectClass={async id=>{setGradebook(await getGradebook(session,id));setGradeStudent(null)}}/>:<EmptyState text="Chưa có lớp học để xem sổ điểm."/>}
+        {classes.length>0?<GradebookMatrix classes={classes} rows={gradebook} selectedStudent={gradeStudent} onSelectStudent={setGradeStudent} onSelectClass={async id=>{setGradebookClassId(id);setGradeStudent(null)}}/>:<EmptyState text="Chưa có lớp học để xem sổ điểm."/>}
       </>}
 
       {activeSection === "teacher-grading" && <TeacherGradingView session={session} classes={classes} />}
@@ -1032,9 +1032,12 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
 type TeacherOperationMode = "grading" | "reports" | "tasks" | "notifications";
 
 function TeacherGradingView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const [classId,setClassId]=useState(classes[0]?.id??0),[rows,setRows]=useState<GradebookRow[]>([]),[selected,setSelected]=useState<GradebookRow|null>(null),[search,setSearch]=useState(""),[status,setStatus]=useState("IN_PROGRESS"),[loading,setLoading]=useState(false),[error,setError]=useState("");
- const load=useCallback(async()=>{if(!classId){setRows([]);return}setLoading(true);setError("");try{setRows(await getGradebook(session,classId))}catch(reason){setError(messageOf(reason))}finally{setLoading(false)}},[session,classId]);
- useEffect(()=>{void load()},[load]);useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
+ const [classId,setClassId]=useState(classes[0]?.id??0),[selected,setSelected]=useState<GradebookRow|null>(null),[search,setSearch]=useState(""),[status,setStatus]=useState("IN_PROGRESS");
+ const gradebookQuery=useQuery({queryKey:["teacher-grading",session.accessToken,classId],queryFn:()=>getGradebook(session,classId),enabled:!!classId});
+ const rows=gradebookQuery.data??[];
+ const loading=gradebookQuery.isLoading;
+ const error=gradebookQuery.isError?messageOf(gradebookQuery.error):"";
+ useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
  const filtered=rows.filter(row=>(!status||row.status===status)&&(!search||`${row.full_name} ${row.username} ${row.title}`.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))));
  const inProgress=rows.filter(row=>row.status==="IN_PROGRESS").length,completed=rows.filter(row=>row.status==="COMPLETED").length,notOpened=rows.filter(row=>row.status!=="IN_PROGRESS"&&row.status!=="COMPLETED").length;
  const selectedClass=classes.find(item=>item.id===classId);
@@ -1042,33 +1045,43 @@ function TeacherGradingView({session,classes}:{session:AuthSession;classes:Class
 }
 
 function TeacherWorksheetView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const [rows,setRows]=useState<Worksheet[]>([]),[assignments,setAssignments]=useState<(Assignment&{className:string})[]>([]),[search,setSearch]=useState(""),[qrFilter,setQrFilter]=useState(""),[preview,setPreview]=useState<Worksheet|null>(null),[assigning,setAssigning]=useState<Worksheet|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true);
+ const queryClient=useQueryClient();
+ const [search,setSearch]=useState(""),[qrFilter,setQrFilter]=useState(""),[preview,setPreview]=useState<Worksheet|null>(null),[assigning,setAssigning]=useState<Worksheet|null>(null);
  const [form,setForm]=useState({classId:classes[0]?.id??0,title:"",dueAt:""});
- const load=useCallback(async()=>{setLoading(true);try{const [sheets,...classAssignments]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>(await getAssignments(session,classroom.id)).map(item=>({...item,className:classroom.name})))]);setRows(sheets as Worksheet[]);setAssignments((classAssignments as (Assignment&{className:string})[][]).flat())}catch(reason){setError(messageOf(reason))}finally{setLoading(false)}},[session,classes]);
- useEffect(()=>{void load()},[load]);
+ const classIdsKey=classes.map(item=>item.id).join(",");
+ const worksheetsQuery=useQuery({queryKey:["teacher-worksheets",session.accessToken,classIdsKey],queryFn:async()=>{const [sheets,...classAssignments]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>(await getAssignments(session,classroom.id)).map(item=>({...item,className:classroom.name})))]);return {rows:sheets as Worksheet[],assignments:(classAssignments as (Assignment&{className:string})[][]).flat()}}});
+ const rows=worksheetsQuery.data?.rows??[],assignments=worksheetsQuery.data?.assignments??[],loading=worksheetsQuery.isLoading;
+ const assignMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["teacher-worksheets"]})});
+ const error=worksheetsQuery.isError?messageOf(worksheetsQuery.error):assignMutation.isError?messageOf(assignMutation.error):"";
  useEffect(()=>{if(!classes.some(item=>item.id===form.classId))setForm(value=>({...value,classId:classes[0]?.id??0}))},[classes,form.classId]);
  const filtered=rows.filter(item=>(!search||item.name.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi")))&&(!qrFilter||(qrFilter==="QR"?item.showQr:!item.showQr)));
  const assignedClasses=(worksheetId:number)=>Array.from(new Set(assignments.filter(item=>item.worksheetId===worksheetId).map(item=>item.className)));
- const assign=async(e:React.FormEvent)=>{e.preventDefault();if(!assigning)return;try{await saveAssignment(session,{classId:form.classId,lessonId:null,worksheetId:assigning.id,title:form.title||assigning.name,dueAt:form.dueAt||null,status:"PUBLISHED"});setAssigning(null);await load()}catch(reason){setError(messageOf(reason))}};
+ const assign=async(e:React.FormEvent)=>{e.preventDefault();if(!assigning)return;try{await assignMutation.mutateAsync({classId:form.classId,lessonId:null,worksheetId:assigning.id,title:form.title||assigning.name,dueAt:form.dueAt||null,status:"PUBLISHED"});setAssigning(null)}catch{/* lỗi đã có trong mutation state */}};
  const goCreate=()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-content"}));
  return <section className="worksheet-manager"><header><div><h1>Quản lý Phiếu & Đề</h1><p>Tạo, xem trước, in và giao phiếu bài tập cho lớp.</p></div><button className="primary" onClick={goCreate}>＋ Tạo phiếu mới</button></header><div className="worksheet-filters"><input placeholder="Tìm tên phiếu…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={qrFilter} onChange={e=>setQrFilter(e.target.value)}><option value="">Tất cả loại</option><option value="QR">Phiếu in có QR</option><option value="NO_QR">Phiếu không QR</option></select><span>{filtered.length} phiếu</span></div>{error&&<div className="api-error">{error}</div>}{loading?<p>Đang tải phiếu…</p>:<div className="worksheet-table"><table><thead><tr><th>Tên phiếu</th><th>Loại</th><th>Bố cục</th><th>Số câu</th><th>Đã giao</th><th>Thao tác</th></tr></thead><tbody>{filtered.map(item=>{const assigned=assignedClasses(item.id);return <tr key={item.id}><td><b>{item.name}</b><small>Phiếu #{item.id}</small></td><td><span className="worksheet-kind">{item.showQr?"Phiếu in có QR":"Phiếu in"}</span></td><td>{item.columnsCount} cột{item.showStudentFields?" · Có ô học sinh":""}</td><td className="numeric">{item.items.length}</td><td>{assigned.length?assigned.join(", "):<i>Chưa giao</i>}</td><td><div><button onClick={()=>setPreview(item)}>Xem / In</button><button className="primary" disabled={!classes.length} onClick={()=>{setAssigning(item);setForm(value=>({...value,title:item.name}))}}>Giao bài</button></div></td></tr>})}</tbody></table>{!filtered.length&&<EmptyState text="Không có phiếu phù hợp bộ lọc."/>}</div>}{preview&&<WorksheetPreview sheet={preview} onClose={()=>setPreview(null)}/>} {assigning&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">GIAO PHIẾU</p><h2>{assigning.name}</h2></div><button onClick={()=>setAssigning(null)}>Đóng</button></div><form className="live-form" onSubmit={assign}><label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label><button className="primary">Giao phiếu</button></form></section></div>}</section>
 }
 
 function TeacherTaskView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const [rows,setRows]=useState<(Assignment&{className:string;completed:number;total:number})[]>([]),[worksheets,setWorksheets]=useState<Worksheet[]>([]),[classFilter,setClassFilter]=useState(0),[statusFilter,setStatusFilter]=useState(""),[search,setSearch]=useState(""),[open,setOpen]=useState(false),[error,setError]=useState(""),[loading,setLoading]=useState(true);
+ const queryClient=useQueryClient();
+ const [classFilter,setClassFilter]=useState(0),[statusFilter,setStatusFilter]=useState(""),[search,setSearch]=useState(""),[open,setOpen]=useState(false);
  const [form,setForm]=useState({classId:classes[0]?.id??0,title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"});
- const load=useCallback(async()=>{setLoading(true);setError("");try{const [sheets,...byClass]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>{const [assignments,gradebook]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);return assignments.map(item=>{const related=gradebook.filter(row=>row.assignment_id===item.id);return {...item,className:classroom.name,completed:related.filter(row=>row.status==="COMPLETED").length,total:related.length}})})]);setWorksheets(sheets as Worksheet[]);setRows((byClass as (Assignment&{className:string;completed:number;total:number})[][]).flat())}catch(reason){setError(messageOf(reason))}finally{setLoading(false)}},[session,classes]);
- useEffect(()=>{void load()},[load]);
+ const classIdsKey=classes.map(item=>item.id).join(",");
+ const tasksQuery=useQuery({queryKey:["teacher-tasks",session.accessToken,classIdsKey],queryFn:async()=>{const [sheets,...byClass]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>{const [assignments,gradebook]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);return assignments.map(item=>{const related=gradebook.filter(row=>row.assignment_id===item.id);return {...item,className:classroom.name,completed:related.filter(row=>row.status==="COMPLETED").length,total:related.length}})})]);return {worksheets:sheets as Worksheet[],rows:(byClass as (Assignment&{className:string;completed:number;total:number})[][]).flat()}}});
+ const rows=tasksQuery.data?.rows??[],worksheets=tasksQuery.data?.worksheets??[],loading=tasksQuery.isLoading;
+ const saveMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["teacher-tasks"]})});
+ const error=tasksQuery.isError?messageOf(tasksQuery.error):saveMutation.isError?messageOf(saveMutation.error):"";
  useEffect(()=>{if(!classes.some(item=>item.id===form.classId))setForm(value=>({...value,classId:classes[0]?.id??0}))},[classes,form.classId]);
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveAssignment(session,{classId:form.classId,lessonId:null,worksheetId:form.worksheetId||null,title:form.title,dueAt:form.dueAt||null,status:form.status});setOpen(false);setForm({classId:classes[0]?.id??0,title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"});await load()}catch(reason){setError(messageOf(reason))}};
+ const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveMutation.mutateAsync({classId:form.classId,lessonId:null,worksheetId:form.worksheetId||null,title:form.title,dueAt:form.dueAt||null,status:form.status});setOpen(false);setForm({classId:classes[0]?.id??0,title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"})}catch{/* lỗi đã có trong mutation state */}};
  const filtered=rows.filter(item=>(!classFilter||item.classId===classFilter)&&(!statusFilter||item.status===statusFilter)&&(!search||item.title.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))));
  return <section className="teacher-operation-page task-workspace"><header className="task-heading"><div><h1>Quản lý Nhiệm vụ</h1><p>Giao bài tập, kiểm tra và theo dõi tiến độ học sinh.</p></div><button className="primary" onClick={()=>setOpen(true)}>＋ Tạo nhiệm vụ</button></header><div className="task-filters"><input placeholder="Tìm nhiệm vụ…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={classFilter} onChange={e=>setClassFilter(Number(e.target.value))}><option value={0}>Tất cả các lớp</option>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="">Tất cả trạng thái</option><option value="PUBLISHED">Đang mở</option><option value="DRAFT">Chưa giao</option><option value="HIDDEN">Đã đóng</option></select><span>{filtered.length} nhiệm vụ</span></div>{error&&<div className="api-error">{error}</div>}{loading?<p>Đang tải nhiệm vụ…</p>:<div className="task-table"><table><thead><tr><th>Tên nhiệm vụ</th><th>Loại</th><th>Lớp</th><th>Hạn nộp</th><th>Tiến độ nộp</th><th>Trạng thái</th></tr></thead><tbody>{filtered.map(item=>{const percent=item.total?Math.round(item.completed*100/item.total):0,due=item.dueAt?new Date(item.dueAt):null,overdue=Boolean(due&&due.getTime()<Date.now());return <tr key={item.id}><td><b>{item.title}</b><small>#{item.id}</small></td><td><span className="task-type">{item.worksheetId?"Phiếu bài tập":"Bài học"}</span></td><td>{item.className}</td><td className={overdue?"task-overdue":""}>{due?due.toLocaleString("vi-VN"):"Không giới hạn"}</td><td><div className="task-progress"><div><span style={{width:`${percent}%`}}/></div><small>{item.completed}/{item.total}</small></div></td><td><span className={`status-chip status-${item.status.toLowerCase()}`}>{item.status==="PUBLISHED"?"Đang mở":item.status==="DRAFT"?"Chưa giao":"Đã đóng"}</span></td></tr>})}</tbody></table>{!filtered.length&&<EmptyState text="Không có nhiệm vụ phù hợp bộ lọc."/>}</div>}{open&&<div className="dialog-backdrop"><section className="dialog-card task-dialog"><div className="panel-head"><div><p className="eyebrow">TẠO NHIỆM VỤ</p><h2>Giao phiếu bài tập</h2></div><button onClick={()=>setOpen(false)}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Phiếu bài tập<select required value={form.worksheetId} onChange={e=>setForm({...form,worksheetId:Number(e.target.value)})}><option value={0}>Chọn phiếu…</option>{worksheets.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="PUBLISHED">Giao ngay</option><option value="DRAFT">Lưu nháp</option></select></label><div className="live-actions"><button type="button" onClick={()=>setOpen(false)}>Hủy</button><button className="primary">Tạo nhiệm vụ</button></div></form></section></div>}</section>
 }
 
 function TeacherOperationsView({session,classes,mode}:{session:AuthSession;classes:Classroom[];mode:TeacherOperationMode}) {
- const [classId,setClassId]=useState(classes[0]?.id??0),[assignments,setAssignments]=useState<Assignment[]>([]),[rows,setRows]=useState<GradebookRow[]>([]),[error,setError]=useState(""),[loading,setLoading]=useState(false);
+ const [classId,setClassId]=useState(classes[0]?.id??0);
  useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
- useEffect(()=>{if(!classId){setAssignments([]);setRows([]);return}setLoading(true);setError("");void Promise.all([getAssignments(session,classId),getGradebook(session,classId)]).then(([nextAssignments,nextRows])=>{setAssignments(nextAssignments);setRows(nextRows)}).catch(reason=>setError(messageOf(reason))).finally(()=>setLoading(false))},[session,classId]);
+ const operationsQuery=useQuery({queryKey:["teacher-operations",session.accessToken,classId],queryFn:async()=>{const [assignments,rows]=await Promise.all([getAssignments(session,classId),getGradebook(session,classId)]);return {assignments,rows}},enabled:!!classId});
+ const assignments=operationsQuery.data?.assignments??[],rows=operationsQuery.data?.rows??[],loading=operationsQuery.isLoading;
+ const error=operationsQuery.isError?messageOf(operationsQuery.error):"";
  const selectedClass=classes.find(item=>item.id===classId);
  const completed=rows.filter(row=>row.status==="COMPLETED").length;
  const inProgress=rows.filter(row=>row.status==="IN_PROGRESS").length;
@@ -1094,21 +1107,35 @@ function GradebookMatrix({classes,rows,selectedStudent,onSelectStudent,onSelectC
 
 function TeacherClassManager({session,classes,onChanged}:{session:AuthSession;classes:Classroom[];onChanged:()=>Promise<void>}){
  const metadata=useMetadata(session);
- const [grades,setGrades]=useState<Grade[]>([]),[editing,setEditing]=useState<Classroom|null>(null),[form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[error,setError]=useState(""),[formOpen,setFormOpen]=useState(false);
- const [metrics,setMetrics]=useState<Record<number,{openTasks:number;average:number;attention:number}>>({});
- useEffect(()=>{void getGrades(session).then(rows=>{setGrades(rows);if(rows[0])setForm(value=>({...value,gradeId:value.gradeId||rows[0].id}))}).catch(reason=>setError(messageOf(reason)))},[session]);
- useEffect(()=>{void Promise.all(classes.map(async classroom=>{const [assignments,book]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);const byStudent=Array.from(new Set(book.map(row=>row.student_id))).map(id=>{const own=book.filter(row=>row.student_id===id);return own.length?own.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/own.length:0});return [classroom.id,{openTasks:assignments.filter(item=>item.status==="PUBLISHED").length,average:book.length?Math.round(book.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/book.length):0,attention:byStudent.filter(value=>value<50).length}] as const})).then(values=>setMetrics(Object.fromEntries(values))).catch(reason=>setError(messageOf(reason)))},[session,classes]);
+ const queryClient=useQueryClient();
+ const [editing,setEditing]=useState<Classroom|null>(null),[form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[formOpen,setFormOpen]=useState(false);
+ const gradesQuery=useQuery({queryKey:["teacher-class-manager-grades",session.accessToken],queryFn:()=>getGrades(session)});
+ const grades=gradesQuery.data??[];
+ const classIdsKey=classes.map(item=>item.id).join(",");
+ const metricsQuery=useQuery({queryKey:["teacher-class-manager-metrics",session.accessToken,classIdsKey],queryFn:async()=>{const values=await Promise.all(classes.map(async classroom=>{const [assignments,book]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);const byStudent=Array.from(new Set(book.map(row=>row.student_id))).map(id=>{const own=book.filter(row=>row.student_id===id);return own.length?own.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/own.length:0});return [classroom.id,{openTasks:assignments.filter(item=>item.status==="PUBLISHED").length,average:book.length?Math.round(book.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/book.length):0,attention:byStudent.filter(value=>value<50).length}] as const}));return Object.fromEntries(values) as Record<number,{openTasks:number;average:number;attention:number}>},enabled:classes.length>0});
+ const metrics=metricsQuery.data??{};
+ const invalidateMetrics=()=>queryClient.invalidateQueries({queryKey:["teacher-class-manager-metrics"]});
+ const createMutation=useMutation({mutationFn:(input:ClassroomInput)=>createClass(session,input),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
+ const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:ClassroomInput})=>updateClass(session,id,input),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
+ const deleteMutation=useMutation({mutationFn:(id:number)=>deleteClass(session,id),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
+ const error=gradesQuery.isError?messageOf(gradesQuery.error):metricsQuery.isError?messageOf(metricsQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
+ useEffect(()=>{if(grades[0])setForm(value=>({...value,gradeId:value.gradeId||grades[0].id}))},[grades]);
  useEffect(()=>{if(!editing)setForm(current=>({...current,status:current.status||firstMetadataValue(metadata,"classStatuses")}))},[editing,metadata]);
  const reset=()=>{setEditing(null);setFormOpen(false);setForm({code:"",name:"",gradeId:grades[0]?.id||0,status:firstMetadataValue(metadata,"classStatuses")})};
-  const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing)await updateClass(session,editing.id,form as ClassroomInput);else await createClass(session,form as ClassroomInput);reset();await onChanged()}catch(reason){setError(messageOf(reason))}};
- return <section className="teacher-class-manager"><header className="teacher-class-heading"><div><h1>Danh sách lớp học</h1><p>Quản lý và theo dõi tiến độ học tập của các lớp Khối 10.</p></div><button className="primary" onClick={()=>{reset();setFormOpen(true)}}>＋ Thêm lớp học</button></header>{error&&<div className="api-error">{error}</div>}<div className="teacher-class-grid">{classes.map(item=>{const stat=metrics[item.id]??{openTasks:0,average:0,attention:0};return <article key={item.id}><header><div><h3>{item.name}</h3><small>{item.code} · {grades.find(grade=>grade.id===item.gradeId)?.name??`Khối #${item.gradeId}`}</small></div><button onClick={()=>{setEditing(item);setForm({code:item.code,name:item.name,gradeId:item.gradeId,status:item.status});setFormOpen(true)}}>•••</button></header><dl><div><dt>Sĩ số</dt><dd>{item.studentCount}</dd></div><div><dt>Nhiệm vụ mở</dt><dd>{stat.openTasks}</dd></div><div><dt>Tiến độ TB</dt><dd>{stat.average}%</dd></div><div className="attention"><dt>Cần chú ý</dt><dd>{stat.attention} hs</dd></div></dl><footer><span className={`status-chip status-${item.status.toLowerCase()}`}>{item.status}</span><button className="danger-link" onClick={async()=>{if(confirm(`Xóa lớp “${item.name}”?`)){await deleteClass(session,item.id);await onChanged()}}}>Xóa</button></footer></article>})}</div>{!classes.length&&<EmptyState text="Chưa có lớp học."/>}{formOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">{editing?"CHỈNH SỬA LỚP":"THÊM LỚP HỌC"}</p><h2>{editing?editing.name:"Lớp học mới"}</h2></div><button onClick={reset}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Mã lớp<input required placeholder="Ví dụ: 10A1" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select required value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(grade=><option key={grade.id} value={grade.id}>{grade.name}</option>)}</select></label><label>Trạng thái<select required value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button type="button" onClick={reset}>Hủy</button><button className="primary">{editing?"Lưu thay đổi":"Tạo lớp"}</button></div></form></section></div>}</section>
+  const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing)await updateMutation.mutateAsync({id:editing.id,input:form as ClassroomInput});else await createMutation.mutateAsync(form as ClassroomInput);reset()}catch{/* lỗi đã có trong mutation state */}};
+ return <section className="teacher-class-manager"><header className="teacher-class-heading"><div><h1>Danh sách lớp học</h1><p>Quản lý và theo dõi tiến độ học tập của các lớp Khối 10.</p></div><button className="primary" onClick={()=>{reset();setFormOpen(true)}}>＋ Thêm lớp học</button></header>{error&&<div className="api-error">{error}</div>}<div className="teacher-class-grid">{classes.map(item=>{const stat=metrics[item.id]??{openTasks:0,average:0,attention:0};return <article key={item.id}><header><div><h3>{item.name}</h3><small>{item.code} · {grades.find(grade=>grade.id===item.gradeId)?.name??`Khối #${item.gradeId}`}</small></div><button onClick={()=>{setEditing(item);setForm({code:item.code,name:item.name,gradeId:item.gradeId,status:item.status});setFormOpen(true)}}>•••</button></header><dl><div><dt>Sĩ số</dt><dd>{item.studentCount}</dd></div><div><dt>Nhiệm vụ mở</dt><dd>{stat.openTasks}</dd></div><div><dt>Tiến độ TB</dt><dd>{stat.average}%</dd></div><div className="attention"><dt>Cần chú ý</dt><dd>{stat.attention} hs</dd></div></dl><footer><span className={`status-chip status-${item.status.toLowerCase()}`}>{item.status}</span><button className="danger-link" onClick={()=>{if(confirm(`Xóa lớp “${item.name}”?`))deleteMutation.mutate(item.id)}}>Xóa</button></footer></article>})}</div>{!classes.length&&<EmptyState text="Chưa có lớp học."/>}{formOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">{editing?"CHỈNH SỬA LỚP":"THÊM LỚP HỌC"}</p><h2>{editing?editing.name:"Lớp học mới"}</h2></div><button onClick={reset}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Mã lớp<input required placeholder="Ví dụ: 10A1" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select required value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(grade=><option key={grade.id} value={grade.id}>{grade.name}</option>)}</select></label><label>Trạng thái<select required value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button type="button" onClick={reset}>Hủy</button><button className="primary">{editing?"Lưu thay đổi":"Tạo lớp"}</button></div></form></section></div>}</section>
 }
 
 function TeacherRoster({session,classes}:{session:AuthSession;classes:Classroom[]}){
- const [classId,setClassId]=useState(classes[0].id),[students,setStudents]=useState<Enrollment[]>([]),[available,setAvailable]=useState<UserAccount[]>([]),[studentId,setStudentId]=useState(0),[search,setSearch]=useState("");
+ const queryClient=useQueryClient();
+ const [classId,setClassId]=useState(classes[0].id),[studentId,setStudentId]=useState(0),[search,setSearch]=useState("");
  const [progress,setProgress]=useState<{name:string;items:Progress[]}|null>(null);
- const load=useCallback(async()=>{const [enrolled,candidates]=await Promise.all([getEnrollments(session,"class-students",classId),getAvailableStudents(session,search)]);setStudents(enrolled);setAvailable(candidates)},[session,classId,search]);useEffect(()=>{void load()},[load]);
- return <section className="audit-panel"><div className="panel-head"><h2>Học sinh trong lớp</h2><select value={classId} onChange={e=>setClassId(Number(e.target.value))}>{classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div><div className="filter-bar roster-add"><input placeholder="Tìm học sinh" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh…</option>{available.map(x=><option key={x.id} value={x.id}>{x.fullName} (@{x.username})</option>)}</select><button onClick={async()=>{if(studentId){await addEnrollment(session,"class-students",{classId,userId:studentId});await load()}}}>Thêm vào lớp</button></div>{students.map(x=><div className="live-row" key={x.id}><b>{x.label}</b><div className="row-actions"><button onClick={async()=>{if(x.userId)setProgress({name:x.label,items:await getStudentProgress(session,x.userId)})}}>Tiến độ</button><button onClick={async()=>{if(!x.userId)return;const password=prompt(`Mật khẩu mới cho ${x.label}`);if(password)await resetUserPassword(session,x.userId,password)}}>Reset mật khẩu</button><button onClick={async()=>{await removeEnrollment(session,"class-students",x.id);await load()}}>Gỡ khỏi lớp</button></div></div>)}{progress&&<div className="student-grade-detail"><div className="panel-head"><h3>Tiến độ bài học · {progress.name}</h3><button onClick={()=>setProgress(null)}>Đóng</button></div>{progress.items.map(x=><div className="live-row" key={x.id}><b>Bài học #{x.lessonId}</b><span>{x.completedAt?"Đã hoàn thành":x.openedAt?"Đang học":"Chưa mở"} · {x.completionPercent}%</span></div>)}{!progress.items.length&&<EmptyState text="Học sinh chưa có tiến độ bài học."/>}</div>}</section>
+ const rosterQuery=useQuery({queryKey:["teacher-roster",session.accessToken,classId,search],queryFn:async()=>{const [enrolled,candidates]=await Promise.all([getEnrollments(session,"class-students",classId),getAvailableStudents(session,search)]);return {students:enrolled,available:candidates}}});
+ const students=rosterQuery.data?.students??[],available=rosterQuery.data?.available??[];
+ const invalidate=()=>queryClient.invalidateQueries({queryKey:["teacher-roster"]});
+ const addMutation=useMutation({mutationFn:(id:number)=>addEnrollment(session,"class-students",{classId,userId:id}),onSuccess:invalidate});
+ const removeMutation=useMutation({mutationFn:(id:number)=>removeEnrollment(session,"class-students",id),onSuccess:invalidate});
+ return <section className="audit-panel"><div className="panel-head"><h2>Học sinh trong lớp</h2><select value={classId} onChange={e=>setClassId(Number(e.target.value))}>{classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div><div className="filter-bar roster-add"><input placeholder="Tìm học sinh" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh…</option>{available.map(x=><option key={x.id} value={x.id}>{x.fullName} (@{x.username})</option>)}</select><button onClick={()=>{if(studentId)addMutation.mutate(studentId)}}>Thêm vào lớp</button></div>{students.map(x=><div className="live-row" key={x.id}><b>{x.label}</b><div className="row-actions"><button onClick={async()=>{if(x.userId)setProgress({name:x.label,items:await getStudentProgress(session,x.userId)})}}>Tiến độ</button><button onClick={async()=>{if(!x.userId)return;const password=prompt(`Mật khẩu mới cho ${x.label}`);if(password)await resetUserPassword(session,x.userId,password)}}>Reset mật khẩu</button><button onClick={()=>removeMutation.mutate(x.id)}>Gỡ khỏi lớp</button></div></div>)}{progress&&<div className="student-grade-detail"><div className="panel-head"><h3>Tiến độ bài học · {progress.name}</h3><button onClick={()=>setProgress(null)}>Đóng</button></div>{progress.items.map(x=><div className="live-row" key={x.id}><b>Bài học #{x.lessonId}</b><span>{x.completedAt?"Đã hoàn thành":x.openedAt?"Đang học":"Chưa mở"} · {x.completionPercent}%</span></div>)}{!progress.items.length&&<EmptyState text="Học sinh chưa có tiến độ bài học."/>}</div>}</section>
 }
 
 function MathWorkspace({session}:{session:AuthSession}){
