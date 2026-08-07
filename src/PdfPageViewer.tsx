@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { API_BASE_URL } from "./api";
+import { LruCache } from "./lib/lruCache";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const pageCache = new Map<string, string>();
+// Giới hạn 24 trang đã render trong bộ nhớ — trang PDF full-size khá nặng
+// (data URL PNG), không cap sẽ phình RAM khi lướt qua nhiều trang/tài liệu.
+const pageCache = new LruCache<string, string>(24);
 
 type Props = {
   fileUrl: string;
@@ -33,8 +36,8 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
   useEffect(() => {
     if (!fileUrl && !onUseSignedUrl) return;
     const pageKey = `${fileUrl || ""}#p${pageNumber}@${fitWidth}#t${accessToken?.slice(-8) ?? "anon"}`;
-    if (cache.has(pageKey)) {
-      const url = cache.get(pageKey)!;
+    if (pageCache.has(pageKey)) {
+      const url = pageCache.get(pageKey)!;
       setDataUrl(url);
       setLoading(false);
       return;
@@ -92,7 +95,7 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
         if (!ctx) throw new Error("Không tạo được canvas context");
         await page.render({ canvasContext: ctx, viewport }).promise;
         const url = canvas.toDataURL("image/png");
-        cache.set(pageKey, url);
+        pageCache.set(pageKey, url);
         if (!cancelled) {
           setDims({ w: width, h: height });
           setDataUrl(url);

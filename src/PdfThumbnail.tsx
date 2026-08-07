@@ -3,10 +3,13 @@ import * as pdfjsLib from "pdfjs-dist";
 // Vite sẽ bundle worker vào asset và trả URL khi build; dev thì ?url trỏ tới dev server.
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { API_BASE_URL } from "./api";
+import { LruCache } from "./lib/lruCache";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const cache = new Map<string, string>();
+// Giới hạn 60 ảnh bìa — nhẹ hơn trang PDF full-size nhưng vẫn cần cap để
+// không phình RAM khi lướt qua danh sách nhiều tài liệu.
+const cache = new LruCache<string, string>(60);
 
 type Props = {
   fileUrl: string;
