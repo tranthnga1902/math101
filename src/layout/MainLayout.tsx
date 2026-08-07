@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { AuthSession } from "../api";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import "../teacher/teacher-theme.css";
 
 type MainLayoutProps = {
   session: AuthSession;
@@ -60,7 +61,7 @@ export function MainLayout({ session, children, onChangePassword, onLogout }: Ma
   });
 
   return (
-    <div className="teacher-shell">
+    <div className="teacher-app teacher-shell">
       <Sidebar active={active} onNavigate={navigate} />
       <div className="teacher-main">
         <Topbar session={session} onNavigate={navigate} onChangePassword={onChangePassword} onLogout={onLogout} />
