@@ -1135,8 +1135,40 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
 
       {activeSection === "teacher-settings" && <>
         <div id="teacher-settings" data-teacher-section data-search="Cài đặt tài khoản" className="section-anchor" />
-        <PageHeading eyebrow="HỆ THỐNG" title="Cài đặt" text="Quản lý thông tin tài khoản và tùy chọn không gian làm việc." />
-        <section className="teacher-settings-grid"><article><h2>Thông tin tài khoản</h2><dl><div><dt>Tài khoản</dt><dd>{session.email}</dd></div><div><dt>Vai trò</dt><dd>Giáo viên</dd></div><div><dt>Mã người dùng</dt><dd>#{session.userId}</dd></div></dl><p>Mật khẩu và đăng xuất được quản lý trong menu tài khoản ở góc trên bên phải.</p></article><article><h2>Tùy chọn hiển thị</h2><div className="settings-choice"><span><b>Ngôn ngữ</b><small>Tiếng Việt</small></span><span><b>Môn học</b><small>Toán 10</small></span><span><b>Giao diện</b><small>Sáng · Theo chuẩn Stitch</small></span></div></article><article><h2>Quyền riêng tư</h2><p>Dữ liệu lớp và tiến độ học sinh chỉ được lấy qua API có phân quyền giáo viên. Ứng dụng không truy cập trực tiếp cơ sở dữ liệu hoặc kho tài liệu.</p></article></section>
+        <div className="flex flex-col gap-4">
+         <header>
+          <h1 className="text-2xl font-bold text-on-surface">Cài đặt</h1>
+          <p className="text-sm text-on-surface-variant">Quản lý thông tin tài khoản và tùy chọn không gian làm việc.</p>
+         </header>
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section className="border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest">
+           <div className="px-4 py-3 border-b border-outline-variant"><h2 className="text-sm font-bold text-on-surface">Thông tin tài khoản</h2></div>
+           <div className="divide-y divide-outline-variant">
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface-variant">Tài khoản</span><span className="text-sm font-medium text-on-surface truncate">{session.email}</span></div>
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface-variant">Vai trò</span><span className="text-sm font-medium text-on-surface">Giáo viên</span></div>
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface-variant">Mã người dùng</span><span className="text-sm font-medium text-on-surface data-tabular">#{session.userId}</span></div>
+           </div>
+           <p className="px-4 py-3 text-xs text-on-surface-variant border-t border-outline-variant">Mật khẩu và đăng xuất được quản lý trong menu tài khoản ở góc trên bên phải.</p>
+          </section>
+
+          <section className="border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest">
+           <div className="px-4 py-3 border-b border-outline-variant"><h2 className="text-sm font-bold text-on-surface">Tùy chọn hiển thị</h2></div>
+           <div className="divide-y divide-outline-variant">
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface">Ngôn ngữ</span><span className="text-xs text-on-surface-variant">Tiếng Việt</span></div>
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface">Môn học</span><span className="text-xs text-on-surface-variant">Toán 10</span></div>
+            <div className="flex items-center justify-between gap-4 px-4 py-3"><span className="text-sm text-on-surface">Giao diện</span><span className="text-xs text-on-surface-variant">Sáng · Theo chuẩn Stitch</span></div>
+           </div>
+          </section>
+         </div>
+
+         <section className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest flex items-start gap-3">
+          <span className="material-symbols-outlined text-primary text-[20px] shrink-0">privacy_tip</span>
+          <div>
+           <h2 className="text-sm font-bold text-on-surface mb-1">Quyền riêng tư</h2>
+           <p className="text-sm text-on-surface-variant">Dữ liệu lớp và tiến độ học sinh chỉ được lấy qua API có phân quyền giáo viên. Ứng dụng không truy cập trực tiếp cơ sở dữ liệu hoặc kho tài liệu.</p>
+          </div>
+         </section>
+        </div>
       </>}
     </div>
   );
