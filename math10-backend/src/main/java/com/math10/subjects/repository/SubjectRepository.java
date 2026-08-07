@@ -1,0 +1,9 @@
+package com.math10.subjects.repository;
+
+import com.math10.subjects.entity.Subject;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface SubjectRepository extends JpaRepository<Subject, Long> {
+    boolean existsByCode(String code);
+    boolean existsByCodeAndIdNot(String code, Long id);
+}

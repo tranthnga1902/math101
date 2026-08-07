@@ -1,0 +1,45 @@
+# QUY TẮC VÀNG CỦA DỰ ÁN MATH10
+
+## 0. Single Source Of Truth
+
+- Trước khi viết hoặc sửa code, phải đọc `MATH10_MASTER_PLAN.md`.
+- Nếu yêu cầu người dùng mâu thuẫn với plan, ưu tiên hỏi lại hoặc cập nhật plan trước khi code.
+- Không tạo `MATH9_MASTER_PLAN.md`; dự án hiện là MATH10 và phạm vi MVP là Toán 10.
+
+## 1. Dữ Liệu Động
+
+- Tuyệt đối không hardcode danh sách dữ liệu nghiệp vụ trong frontend hoặc backend.
+- Dropdown, Select, Radio, Tabs, Badge nghiệp vụ phải lấy từ API hoặc `/api/metadata`.
+- Không tạo mảng tĩnh cho chủ đề, dạng toán, vai trò, trạng thái, độ khó, lớp, khóa học, bài học, tài liệu hoặc quyền truy cập.
+- Nếu API còn thiếu, phải bổ sung API thay vì mock dữ liệu trong UI.
+
+## 2. Backend
+
+- Spring Boot kiểm soát 100% phân quyền bằng `@PreAuthorize` và logic service.
+- Mọi API chi tiết phải chống IDOR.
+- Không trả entity trực tiếp ra API; dùng DTO.
+- Không xóa cứng dữ liệu nghiệp vụ; dùng soft delete `deleted_at`.
+- Không sửa migration đã chạy. Mọi đổi schema tạo Flyway migration mới.
+- Hibernate luôn dùng `ddl-auto=validate`.
+- Không dùng Supabase SDK. Dùng JDBC/JPA cho PostgreSQL và REST API cho Supabase Storage.
+
+## 3. Frontend
+
+- Dùng API client tập trung trong `src/api.ts`.
+- Ưu tiên TanStack Query cho dữ liệu server.
+- Loading phải có trạng thái rõ ràng; lỗi/empty phải có empty state.
+- Không để học sinh truy cập kho tài liệu gốc; học sinh chỉ xem tài liệu qua bài học.
+- Mọi sắp xếp dùng nút `Lên`/`Xuống`, không dùng Drag & Drop trong MVP.
+
+## 4. Toán Học
+
+- Nội dung Toán lưu dạng HTML/Markdown kết hợp LaTeX.
+- Frontend render công thức bằng KaTeX.
+- Không thay công thức bằng ảnh chụp màn hình.
+
+## 5. Kiểm Tra Trước Khi Kết Thúc
+
+- Build frontend khi sửa frontend.
+- Chạy test backend khi sửa backend.
+- Quét `MATH9`, `Toán 9`, `Lớp 9`, ký tự lỗi `�`.
+- Dọn artifact build dư nếu không cần bàn giao.

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+target/
+math9-backend/target/
+.env*
+!.env.example
+npm-debug.log*
+*.log
+*.tsbuildinfo
+.admin-staging-credentials.txt
+.DS_Store

@@ -1,0 +1,480 @@
+openapi: 3.0.3
+info:
+  title: MATH10 MVP API
+  version: 1.3.0
+  description: API-first contract for the MATH10 modular monolith MVP.
+servers:
+  - url: /api
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with username or email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Token pair
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password for the authenticated user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+        '400':
+          description: Invalid current password or confirmation
+  /metadata:
+    get:
+      tags: [Metadata]
+      summary: Dynamic business metadata for frontend selects and labels
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Roles from database and enum/status labels from backend
+  /courses:
+    get:
+      tags: [Courses]
+      summary: List courses
+      responses:
+        '200':
+          description: Course page
+    post:
+      tags: [Courses]
+      summary: Create course
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseRequest'
+      responses:
+        '201':
+          description: Created course
+  /courses/{id}:
+    get:
+      tags: [Courses]
+      summary: Get course
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Course detail
+    put:
+      tags: [Courses]
+      summary: Update course
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseRequest'
+      responses:
+        '200':
+          description: Updated course
+    delete:
+      tags: [Courses]
+      summary: Soft delete course
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Deleted
+  /courses/reorder:
+    patch:
+      tags: [Courses]
+      summary: Reorder using Up/Down UI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderRequest'
+      responses:
+        '200':
+          description: Reordered
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      responses:
+        '200':
+          description: User page
+    post:
+      tags: [Users]
+      summary: Create user
+      responses:
+        '201':
+          description: Created user
+  /users/{id}/reset-password:
+    patch:
+      tags: [Users]
+      summary: Admin or teacher resets a user password
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Password reset
+  /chapters:
+    get:
+      tags: [Chapters]
+      summary: List chapters by course
+      parameters:
+        - name: courseId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Chapter list
+    post:
+      tags: [Chapters]
+      summary: Create chapter
+      responses:
+        '201':
+          description: Created chapter
+  /chapters/reorder:
+    patch:
+      tags: [Chapters]
+      summary: Reorder chapters using an ordered ID array
+      responses:
+        '200':
+          description: Reordered chapters
+  /lessons:
+    get:
+      tags: [Lessons]
+      summary: List lessons by chapter
+      parameters:
+        - name: chapterId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Lesson list
+    post:
+      tags: [Lessons]
+      summary: Create lesson
+      responses:
+        '201':
+          description: Created lesson
+  /lessons/reorder:
+    patch:
+      tags: [Lessons]
+      summary: Reorder lessons using an ordered ID array
+      responses:
+        '200':
+          description: Reordered lessons
+  /lessons/{id}/progress:
+    patch:
+      tags: [Lessons, Progress]
+      summary: Student marks a lesson opened or completed
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [IN_PROGRESS, COMPLETED]
+      responses:
+        '200':
+          description: Lesson progress updated; completion requires at least one minute after opening
+  /resources:
+    get:
+      tags: [Resources]
+      summary: List lesson resources
+      parameters:
+        - name: lessonId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Resource list
+    post:
+      tags: [Resources]
+      summary: Create lesson resource
+      responses:
+        '201':
+          description: Created resource
+  /resources/reorder:
+    patch:
+      tags: [Resources]
+      summary: Reorder resources using an ordered ID array
+      responses:
+        '200':
+          description: Reordered resources
+  /classes:
+    get:
+      tags: [Classes]
+      summary: List classes
+      responses:
+        '200':
+          description: Class page
+    post:
+      tags: [Classes]
+      summary: Create class
+      responses:
+        '201':
+          description: Created class
+  /enrollments/class-teachers:
+    post:
+      tags: [Enrollments]
+      summary: Assign teacher to class
+      responses:
+        '200':
+          description: Assigned
+  /enrollments/class-students:
+    post:
+      tags: [Enrollments]
+      summary: Add student to class
+      responses:
+        '200':
+          description: Added
+  /enrollments/class-courses:
+    post:
+      tags: [Enrollments]
+      summary: Assign course to class
+      responses:
+        '200':
+          description: Assigned
+  /progress/opened:
+    patch:
+      tags: [Progress]
+      summary: Mark lesson as opened
+      responses:
+        '200':
+          description: Opened progress saved
+  /progress/completed:
+    patch:
+      tags: [Progress]
+      summary: Mark lesson as completed
+      responses:
+        '200':
+          description: Completed progress saved
+  /public/lessons/{publicCode}:
+    get:
+      tags: [Public]
+      summary: Public QR access to a published lesson
+      parameters:
+        - name: publicCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Published lesson
+  /files/{id}:
+    get:
+      tags: [Files]
+      summary: Authorize and return protected file metadata or URL
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Authorized file metadata
+  /subjects:
+    get: {tags: [Admin], summary: List subjects, responses: {'200': {description: Subject list}}}
+    post: {tags: [Admin], summary: Create subject, responses: {'201': {description: Created}}}
+  /grades:
+    get: {tags: [Admin], summary: List grades, responses: {'200': {description: Grade list}}}
+    post: {tags: [Admin], summary: Create grade, responses: {'201': {description: Created}}}
+  /admin/dashboard:
+    get: {tags: [Admin], summary: Admin counters, responses: {'200': {description: Dashboard}}}
+  /audit-logs:
+    get: {tags: [Admin], summary: Paginated audit log, responses: {'200': {description: Audit page}}}
+  /files:
+    post:
+      tags: [Files]
+      summary: Upload protected PDF or image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties: {file: {type: string, format: binary}}
+      responses: {'201': {description: Stored file metadata}}
+  /math/topics:
+    get: {tags: [Math Content], summary: List topics, responses: {'200': {description: Topic list}}}
+    post: {tags: [Math Content], summary: Create topic, responses: {'201': {description: Created}}}
+  /math/types:
+    get: {tags: [Math Content], summary: List problem types by topic, responses: {'200': {description: Type list}}}
+    post: {tags: [Math Content], summary: Create problem type, responses: {'201': {description: Created}}}
+  /math/problems:
+    get: {tags: [Math Content], summary: List problems by type, responses: {'200': {description: Problem list}}}
+    post:
+      tags: [Math Content]
+      summary: Create PRACTICE or EXAM problem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProblemRequest'}
+      responses: {'201': {description: Created; PRACTICE receives stable QR, EXAM receives no QR}}
+  /math/hints:
+    post: {tags: [Math Content], summary: Add ordered hint, responses: {'201': {description: Created}}}
+  /math/solutions:
+    post: {tags: [Math Content], summary: Add ordered solution step, responses: {'201': {description: Created}}}
+  /public/problems/{slug}:
+    get:
+      tags: [Public]
+      summary: Public QR problem with hints, solutions and similar problems
+      security: []
+      parameters:
+        - {name: slug, in: path, required: true, schema: {type: string}}
+      responses: {'200': {description: Public problem}}
+  /worksheets:
+    get: {tags: [Worksheets], summary: List owned worksheets, responses: {'200': {description: Worksheet list}}}
+    post: {tags: [Worksheets], summary: Create printable worksheet from PRACTICE problems, responses: {'201': {description: Created}}}
+  /worksheets/{id}/lesson:
+    patch:
+      tags: [Worksheets, Lessons]
+      summary: Attach or detach an owned worksheet at the end of an owned lesson
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {lessonId: {type: integer, format: int64, nullable: true}}
+      responses: {'200': {description: Attachment updated}}
+  /assignments:
+    get: {tags: [Assignments], summary: List assignments by class, responses: {'200': {description: Assignment list}}}
+    post: {tags: [Assignments], summary: Assign lesson or worksheet to class, responses: {'201': {description: Created}}}
+  /student/courses:
+    get: {tags: [Student], summary: Assigned course tree with resources and progress, responses: {'200': {description: My courses}}}
+  /teacher/dashboard:
+    get: {tags: [Teacher], summary: Teacher dashboard counters, responses: {'200': {description: Dashboard}}}
+  /teacher/gradebook:
+    get: {tags: [Teacher], summary: Student by assignment gradebook, responses: {'200': {description: Gradebook}}}
+  /assignment-progress/{assignmentId}/opened:
+    patch:
+      tags: [Progress]
+      summary: Mark an assigned lesson or worksheet in progress
+      parameters:
+        - {name: assignmentId, in: path, required: true, schema: {type: integer, format: int64}}
+      responses: {'200': {description: Assignment and unified learning progress updated}}
+  /assignment-progress/{assignmentId}/completed:
+    patch:
+      tags: [Progress]
+      summary: Complete an assigned lesson or worksheet
+      parameters:
+        - {name: assignmentId, in: path, required: true, schema: {type: integer, format: int64}}
+      responses: {'200': {description: Assignment and unified learning progress updated}}
+  /problem-progress/{problemId}/opened:
+    patch:
+      tags: [Progress]
+      summary: Mark a public PRACTICE problem in progress for the authenticated Student
+      parameters:
+        - {name: problemId, in: path, required: true, schema: {type: integer, format: int64}}
+      responses: {'200': {description: Progress updated}}
+  /problem-progress/{problemId}/completed:
+    patch:
+      tags: [Progress]
+      summary: Complete a public PRACTICE problem for the authenticated Student
+      parameters:
+        - {name: problemId, in: path, required: true, schema: {type: integer, format: int64}}
+      responses: {'200': {description: Progress updated}}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+  schemas:
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: Username or email
+        password:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword, confirmPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+        confirmPassword:
+          type: string
+    CourseRequest:
+      type: object
+      required: [code, name, status]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, HIDDEN, ARCHIVED]
+    ReorderRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    ProblemRequest:
+      type: object
+      required: [problemTypeId, statementLatex, difficulty, status, problemKind]
+      properties:
+        problemTypeId: {type: integer, format: int64}
+        publicCode: {type: string}
+        statementLatex: {type: string}
+        contentHtml: {type: string}
+        difficulty: {type: string, enum: [REINFORCEMENT, ADVANCED, CHALLENGE]}
+        status: {type: string, enum: [DRAFT, PUBLISHED, HIDDEN, ARCHIVED]}
+        problemKind: {type: string, enum: [PRACTICE, EXAM]}
+        examPart: {type: string, nullable: true}
+        easierProblemId: {type: integer, format: int64, nullable: true}
+        equivalentProblemId: {type: integer, format: int64, nullable: true}
+        harderProblemId: {type: integer, format: int64, nullable: true}

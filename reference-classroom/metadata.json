@@ -1,0 +1,6 @@
+{
+  "name": "Quản trị Học vụ THPT",
+  "description": "Hệ thống Quản lý Lớp học, Học sinh, Tiến độ học tập và Nhiệm vụ THPT",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

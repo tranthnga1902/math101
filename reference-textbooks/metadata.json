@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Sách Giáo Khoa",
+  "description": "Hệ thống Quản lý Sách Giáo Khoa và công cụ Khớp trang & Gắn bài học",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

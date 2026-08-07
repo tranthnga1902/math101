@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quản lý Giáo dục - Kho Tài Liệu</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#b4c5ff",
+                        "secondary-fixed-dim": "#62df7d",
+                        "secondary-fixed": "#7ffc97",
+                        "on-surface-variant": "#434655",
+                        "outline-variant": "#c3c6d7",
+                        "inverse-primary": "#b4c5ff",
+                        "on-primary-fixed": "#00174b",
+                        "surface-container-low": "#f2f3ff",
+                        "primary-container": "#2563eb",
+                        "on-primary-container": "#eeefff",
+                        "on-secondary-fixed": "#002109",
+                        "on-error-container": "#93000a",
+                        "surface-variant": "#dae2fd",
+                        "on-primary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-container": "#ffede7",
+                        "secondary-container": "#7cf994",
+                        "on-tertiary-fixed-variant": "#7f2b00",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-container": "#c04400",
+                        "on-background": "#131b2e",
+                        "surface-bright": "#faf8ff",
+                        "on-surface": "#131b2e",
+                        "tertiary": "#973400",
+                        "surface-tint": "#0053db",
+                        "on-tertiary-fixed": "#370e00",
+                        "background": "#faf8ff",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "error": "#ba1a1a",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#283044",
+                        "surface-container-high": "#e2e7ff",
+                        "tertiary-fixed-dim": "#ffb599",
+                        "on-error": "#ffffff",
+                        "primary-fixed": "#dbe1ff",
+                        "tertiary-fixed": "#ffdbce",
+                        "surface-container": "#eaedff",
+                        "outline": "#737686",
+                        "primary": "#004ac6",
+                        "on-secondary-container": "#007230",
+                        "inverse-on-surface": "#eef0ff",
+                        "on-secondary-fixed-variant": "#005320",
+                        "surface-dim": "#d2d9f4",
+                        "surface-container-highest": "#dae2fd",
+                        "secondary": "#006e2d",
+                        "error-container": "#ffdad6",
+                        "surface": "#faf8ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "topbar-height": "56px",
+                        "table-row-height": "44px",
+                        "tap-target-min": "40px",
+                        "sidebar-collapsed": "64px",
+                        "panel-width-md": "640px",
+                        "grid-gutter": "16px",
+                        "grid-margin": "24px",
+                        "sidebar-expanded": "240px"
+                    },
+                    "fontFamily": {
+                        "title-md": ["Be Vietnam Pro"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "table-content": ["Be Vietnam Pro"],
+                        "metric-lg": ["Be Vietnam Pro"],
+                        "label-sm": ["Be Vietnam Pro"],
+                        "title-lg": ["Be Vietnam Pro"]
+                    },
+                    "fontSize": {
+                        "title-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "table-content": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "metric-lg": ["32px", { "lineHeight": "40px", "fontWeight": "700" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "title-lg": ["24px", { "lineHeight": "32px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined.filled { font-variation-settings: 'FILL' 1; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest h-[56px] w-full fixed top-0 z-40 pl-[240px] border-b border-outline-variant flex justify-between items-center px-grid-margin">
+<div class="flex items-center gap-4">
+<span class="font-title-md text-title-md font-bold text-on-surface">Quản lý Giáo dục</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="h-tap-target-min pl-10 pr-4 rounded-full bg-surface-container border-none focus:ring-2 focus:ring-primary w-64 font-body-md text-body-md text-on-surface placeholder:text-outline" placeholder="Tìm kiếm tài liệu..." type="text"/>
+</div>
+<button class="w-tap-target-min h-tap-target-min rounded-full flex items-center justify-center hover:bg-surface-container transition-colors text-on-surface-variant relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="w-tap-target-min h-tap-target-min rounded-full flex items-center justify-center hover:bg-surface-container transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">help</span>
+</button>
+<button class="h-tap-target-min px-3 rounded-full flex items-center justify-center hover:bg-surface-container transition-colors text-on-surface-variant font-body-md text-body-md">
+<span class="material-symbols-outlined mr-1">language</span>
+                Ngôn ngữ
+            </button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-variant">
+<img alt="Admin Profile" class="w-full h-full object-cover" data-alt="A small, professional headshot of an administrative user in a brightly lit modern office setting. The lighting is soft and neutral, conveying a corporate and approachable aesthetic. The image is cropped closely to the face, suitable for an avatar." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAuqfhHramQNn_wjHngybDBXh3LGNOSU-3WQEGV6tYYj7kEvdFUw_aCHsMaVU2G8FgIfNH4vS18CyP4Chn1DC-CgEFwnB9efh_NavFb4vDhqfvJqyrh2WK7fIp8ccm3FWvqYiPD_QEvsnUDV2Qssk3uBAx7DPRsUyqmEi929zGB9nQDJXMCw5xLCr6BWDECWCHacguEGNPTTtIMkdDnQJK6GcOFdfttMrqfaB9hcXJF4aDBWIBtmPBsXw"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest w-[240px] h-screen fixed left-0 top-0 border-r border-outline-variant flex flex-col py-6 z-50">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden bg-primary-container text-on-primary-container flex items-center justify-center font-bold font-title-lg">
+                    Q
+                </div>
+<div>
+<h2 class="font-title-md text-title-md font-bold text-primary truncate">Quản trị Viên</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Toán lớp 10 - VN</p>
+</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto hide-scrollbar flex flex-col gap-1">
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Tổng quan
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">group</span>
+                Tài khoản
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">school</span>
+                Lớp học
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+                SGK
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-primary font-title-md border-r-4 border-primary bg-surface-container-low" href="#">
+<span class="material-symbols-outlined filled">description</span>
+                Tài liệu
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">topic</span>
+                Chuyên đề
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined">history</span>
+                Nhật ký
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant font-body-md hover:bg-surface-container-low transition-colors mt-auto" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Cài đặt
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="ml-[240px] pt-[56px] min-h-screen flex">
+<!-- Filter Sidebar -->
+<aside class="w-[240px] border-r border-outline-variant bg-surface p-4 flex flex-col gap-6 h-[calc(100vh-56px)] sticky top-[56px] overflow-y-auto">
+<div>
+<h3 class="font-label-sm text-label-sm text-outline uppercase tracking-wider mb-3">Loại file</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-2 cursor-pointer group">
+<input checked="" class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="font-table-content text-table-content text-on-surface group-hover:text-primary transition-colors">Tất cả tài liệu</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-error text-[20px]">picture_as_pdf</span>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">PDF (124)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-primary text-[20px]">movie</span>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Video (45)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-secondary text-[20px]">image</span>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Hình ảnh (89)</span>
+</label>
+</div>
+</div>
+<div>
+<h3 class="font-label-sm text-label-sm text-outline uppercase tracking-wider mb-3">Chuyên đề lớp 10</h3>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Đại số &amp; Giải tích</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Hình học không gian</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Thống kê &amp; Xác suất</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-outline-variant text-primary focus:ring-primary w-4 h-4" type="checkbox"/>
+<span class="font-table-content text-table-content text-on-surface-variant group-hover:text-primary transition-colors">Đề thi &amp; Kiểm tra</span>
+</label>
+</div>
+</div>
+</aside>
+<!-- Document Grid -->
+<section class="flex-1 p-grid-margin flex flex-col relative pb-24">
+<!-- Toolbar -->
+<div class="flex justify-between items-center mb-6">
+<h1 class="font-title-lg text-title-lg text-on-surface">Kho Tài Liệu</h1>
+<div class="flex items-center gap-3">
+<button class="h-tap-target-min px-4 rounded border border-outline-variant bg-surface flex items-center gap-2 hover:bg-surface-container-low transition-colors text-on-surface font-label-sm">
+<span class="material-symbols-outlined text-[20px]">filter_list</span>
+                        Lọc
+                    </button>
+<div class="flex border border-outline-variant rounded overflow-hidden h-tap-target-min">
+<button class="w-10 flex items-center justify-center bg-surface-container-high text-primary">
+<span class="material-symbols-outlined">grid_view</span>
+</button>
+<button class="w-10 flex items-center justify-center bg-surface hover:bg-surface-container-low text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined">view_list</span>
+</button>
+</div>
+<button class="h-tap-target-min px-5 rounded bg-primary text-on-primary flex items-center gap-2 hover:bg-primary/90 transition-colors font-label-sm">
+<span class="material-symbols-outlined text-[20px]">upload</span>
+                        Tải lên
+                    </button>
+</div>
+</div>
+<!-- Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Card 1 (PDF) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden group hover:border-primary transition-colors relative">
+<div class="absolute top-2 left-2 z-10">
+<input class="rounded border-outline text-primary focus:ring-primary w-5 h-5 shadow-sm" type="checkbox"/>
+</div>
+<div class="h-40 bg-surface-variant relative flex items-center justify-center overflow-hidden">
+<div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+<span class="material-symbols-outlined text-6xl text-error opacity-80">picture_as_pdf</span>
+</div>
+<div class="p-4 flex flex-col gap-2">
+<div class="flex items-start justify-between gap-2">
+<h3 class="font-title-md text-title-md text-on-surface line-clamp-2 text-[16px] leading-tight">Đề cương Ôn tập Giữa kỳ I - Toán 10</h3>
+<button class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined">more_vert</span></button>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-error-container text-on-error-container font-label-sm text-[10px]">
+<span class="material-symbols-outlined text-[14px]">picture_as_pdf</span> PDF
+                            </span>
+<span class="font-table-content text-table-content text-outline text-[12px]">2.4 MB • 12/10/2023</span>
+</div>
+</div>
+</div>
+<!-- Card 2 (Video) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden group hover:border-primary transition-colors relative ring-2 ring-primary">
+<div class="absolute top-2 left-2 z-10">
+<input checked="" class="rounded border-outline text-primary focus:ring-primary w-5 h-5 shadow-sm" type="checkbox"/>
+</div>
+<div class="h-40 bg-surface-variant relative">
+<img alt="Video Thumbnail" class="w-full h-full object-cover opacity-80" data-alt="A stylized placeholder image representing a video thumbnail for an educational math lesson. The image features soft, corporate blue tones with faint geometric shapes like triangles and parabolas faintly visible in the background, overlaid with a clean, modern aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBuDRBFyKbY2F3h-NOe-9OKot7FlzalqptIvM_3MSGPIMeEcunli55r1UWSd-Wg25G4G3Sl0mta3n0wru-WZC7VBzLRMEehzPa3goTqonz0aY4UwbAs28HkbtAN7oCtWX9ny3REbMoBUoHYWHpeGCVOdwD1FsuaDe_OiJKRmD71DOwQ8rJwc6kPGv6cFivhcgEI58qYMX5VH-MsngybSXHcH_WAcHJcfTNODzoxDJvKSWencCvwToDzLQ"/>
+<div class="absolute inset-0 flex items-center justify-center bg-on-background/20 group-hover:bg-on-background/10 transition-colors">
+<span class="material-symbols-outlined text-white text-5xl">play_circle</span>
+</div>
+</div>
+<div class="p-4 flex flex-col gap-2">
+<div class="flex items-start justify-between gap-2">
+<h3 class="font-title-md text-title-md text-on-surface line-clamp-2 text-[16px] leading-tight">Bài giảng: Véctơ và các phép toán</h3>
+<button class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined">more_vert</span></button>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-primary-container/20 text-primary font-label-sm text-[10px]">
+<span class="material-symbols-outlined text-[14px]">movie</span> Video
+                            </span>
+<span class="font-table-content text-table-content text-outline text-[12px]">45:20 • 150 MB</span>
+</div>
+</div>
+</div>
+<!-- Card 3 (Image) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg overflow-hidden group hover:border-primary transition-colors relative ring-2 ring-primary">
+<div class="absolute top-2 left-2 z-10">
+<input checked="" class="rounded border-outline text-primary focus:ring-primary w-5 h-5 shadow-sm" type="checkbox"/>
+</div>
+<div class="h-40 bg-surface-variant relative">
+<img alt="Image Thumbnail" class="w-full h-full object-cover" data-alt="A clean, professional diagram illustrating a geometric math problem. The image shows a beautifully rendered Cartesian coordinate system plotted with precise lines, maintaining a high-contrast corporate look suitable for an educational textbook." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDDFUCLd2AsGMU5f7BhAjCIVl-ewuzDioLLEDxW36PZrTlLL2eww-XuAo-m4G4XlI1-tlGN-PogmooOkg9VcUKzb-5WCoz_BMwMjXVO6KLDPZbUI1MqdRUlCfcg0PIOLjpQ9WFqhTRTtTXQ1huOmHBVk2X-wUC-F9cjqCBmiFd2rhccxQQykAwRwcQK2JIpQcRMrSLs3vy3oNbLur8AtK01B2yhYSaJAPYLLxLBlGcLZIQBKu5MmwkNA"/>
+</div>
+<div class="p-4 flex flex-col gap-2">
+<div class="flex items-start justify-between gap-2">
+<h3 class="font-title-md text-title-md text-on-surface line-clamp-2 text-[16px] leading-tight">Sơ đồ tư duy Hình học phẳng</h3>
+<button class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined">more_vert</span></button>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-secondary-container/30 text-secondary font-label-sm text-[10px]">
+<span class="material-symbols-outlined text-[14px]">image</span> PNG
+                            </span>
+<span class="font-table-content text-table-content text-outline text-[12px]">1.2 MB • Hôm qua</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Floating Action Bar (Multi-select) -->
+<div class="fixed bottom-6 left-[calc(240px+240px+50%)] -translate-x-1/2 bg-surface-container-lowest border border-outline-variant rounded-full shadow-[0px_4px_12px_rgba(15,23,42,0.08)] px-6 py-3 flex items-center gap-6 z-30">
+<div class="flex items-center gap-2 border-r border-outline-variant pr-6">
+<span class="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-sm font-bold text-[12px]">2</span>
+<span class="font-body-md text-body-md text-on-surface font-medium">Đã chọn</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="h-tap-target-min px-4 rounded-full hover:bg-surface-container transition-colors flex items-center gap-2 text-on-surface font-label-sm">
+<span class="material-symbols-outlined text-[20px]">sell</span> Gán chuyên đề
+                    </button>
+<button class="h-tap-target-min px-4 rounded-full hover:bg-surface-container transition-colors flex items-center gap-2 text-on-surface font-label-sm">
+<span class="material-symbols-outlined text-[20px]">swap_horiz</span> Đổi loại
+                    </button>
+<button class="h-tap-target-min px-4 rounded-full hover:bg-surface-container transition-colors flex items-center gap-2 text-on-surface font-label-sm">
+<span class="material-symbols-outlined text-[20px]">download</span> Tải xuống
+                    </button>
+<button class="h-tap-target-min px-4 rounded-full hover:bg-surface-container transition-colors flex items-center gap-2 text-error font-label-sm">
+<span class="material-symbols-outlined text-[20px]">inventory_2</span> Lưu trữ
+                    </button>
+</div>
+<button class="ml-2 w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center text-outline">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+</section>
+</main>
+</body></html>

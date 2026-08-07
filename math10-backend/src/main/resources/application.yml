@@ -1,0 +1,91 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: math10-backend
+  config:
+    # Spring Boot does not load dotenv files by default. This optional import
+    # makes `mvn spring-boot:run` from math10-backend use the repository's
+    # local staging variables, while deployed environment variables still win.
+    import: optional:file:${MATH10_ENV_FILE:../.env.staging}[.properties]
+
+  datasource:
+    # Use the Neon pooled URL for normal application traffic.
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    # Schema migrations use Neon's direct (non-pooler) endpoint.
+    url: ${DATABASE_DIRECT_URL:${DATABASE_URL}}
+    user: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 110MB
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+math10:
+  file-storage-path: ${FILE_STORAGE_PATH:./uploads/math10}
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  jwt-secret: ${JWT_SECRET}
+  jwt-expiration: ${JWT_EXPIRATION:3600000}
+  staging-seed-enabled: ${E2E_SEED_ENABLED:false}
+  e2e-student-username: ${E2E_STUDENT_USERNAME:}
+  e2e-student-email: ${E2E_STUDENT_EMAIL:}
+  e2e-student-password: ${E2E_STUDENT_PASSWORD:}
+  e2e-teacher-username: ${E2E_TEACHER_USERNAME:}
+  e2e-teacher-email: ${E2E_TEACHER_EMAIL:}
+  e2e-teacher-password: ${E2E_TEACHER_PASSWORD:}
+  staging-admin-seed-enabled: ${E2E_ADMIN_SEED_ENABLED:false}
+  e2e-admin-username: ${E2E_ADMIN_USERNAME:}
+  e2e-admin-email: ${E2E_ADMIN_EMAIL:}
+  e2e-admin-password: ${E2E_ADMIN_PASSWORD:}
+  supabase:
+  cloudflare:
+    r2:
+      account-id: ${R2_ACCOUNT_ID:}
+      access-key: ${R2_ACCESS_KEY:}
+      secret-key: ${R2_SECRET_KEY:}
+      bucket: ${R2_BUCKET:math10-files}
+      public-url: ${R2_PUBLIC_URL:}
