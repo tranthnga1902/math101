@@ -1561,8 +1561,140 @@ function TeacherOperationsView({session,classes,mode}:{session:AuthSession;class
  const overdue=assignments.filter(item=>item.dueAt&&new Date(item.dueAt).getTime()<Date.now()&&item.status!=="COMPLETED");
  const upcoming=assignments.filter(item=>item.dueAt&&new Date(item.dueAt).getTime()>=Date.now()).sort((a,b)=>new Date(a.dueAt!).getTime()-new Date(b.dueAt!).getTime());
  const heading={grading:["CHẤM BÀI","Chấm bài","Theo dõi bài nộp và mức độ hoàn thành của học sinh theo lớp."],reports:["BÁO CÁO","Báo cáo học tập","Tổng hợp tiến độ thực tế từ sổ điểm của lớp."],tasks:["CÔNG VIỆC","Nhiệm vụ","Các đầu việc cần xử lý dựa trên hạn giao bài và tiến độ lớp."],notifications:["HỆ THỐNG","Thông báo","Những cập nhật cần chú ý từ lớp học và bài tập."]}[mode];
- return <section className="teacher-operation-page"><PageHeading eyebrow={heading[0]} title={heading[1]} text={heading[2]}/><div className="operation-toolbar"><label>Lớp học<select value={classId} onChange={e=>setClassId(Number(e.target.value))}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>{selectedClass?`${selectedClass.studentCount} học sinh · ${selectedClass.code}`:"Chưa có lớp học"}</span></div>{error&&<div className="api-error">{error}</div>}{loading&&<p>Đang tải dữ liệu…</p>}
- {mode==="reports"&&(()=>{const studentStats=Array.from(new Map(rows.map(row=>[row.student_id,{id:row.student_id,name:row.full_name,username:row.username,items:rows.filter(item=>item.student_id===row.student_id)}])).values()).map(student=>({...student,average:Math.round(student.items.reduce((sum,item)=>sum+(Number(item.completion_percent)||0),0)/student.items.length)})).sort((a,b)=>a.average-b.average);const attention=studentStats.filter(student=>student.average<50);const assignmentStats=assignments.map(item=>{const related=rows.filter(row=>row.assignment_id===item.id),done=related.filter(row=>row.status==="COMPLETED").length,started=related.filter(row=>row.status==="IN_PROGRESS").length;return {...item,total:related.length,done,started,percent:related.length?Math.round(done*100/related.length):0}}).sort((a,b)=>a.percent-b.percent);return <div className="report-dashboard"><div className="report-metrics"><article><small>Tỉ lệ hoàn thành</small><b>{average}%</b><div className="report-meter"><span style={{width:`${average}%`}}/></div></article><article><small>Lượt bài đã hoàn thành</small><b>{completed}</b><span>{rows.length?`${Math.round(completed*100/rows.length)}% tổng lượt bài`:'Chưa có dữ liệu'}</span></article><article><small>Đang thực hiện</small><b>{inProgress}</b><span>{assignments.length} nhiệm vụ trong lớp</span></article><article className="risk"><small>Cần xem lại</small><b>{attention.length}</b><span>Học sinh có tiến độ dưới 50%</span></article></div><div className="report-chart-grid"><section className="report-card"><header><h2>Tiến độ theo nhiệm vụ</h2><span>{assignmentStats.length} nhiệm vụ</span></header>{assignmentStats.length?<div className="report-bars">{assignmentStats.map(item=><div key={item.id}><div className="report-bar-label"><span title={item.title}>{item.title}</span><b>{item.percent}%</b></div><div className="report-bar-track"><span className={item.percent<50?'low':''} style={{width:`${item.percent}%`}}/></div><small>{item.done}/{item.total} hoàn thành · {item.started} đang làm</small></div>)}</div>:<EmptyState text="Lớp chưa có nhiệm vụ để lập báo cáo."/>}</section><section className="report-card"><header><h2>Phân bố tiến độ học sinh</h2><span>{studentStats.length} học sinh có dữ liệu</span></header><div className="report-distribution">{[{label:'Tốt',min:80,color:'good'},{label:'Đang tiến bộ',min:50,color:'medium'},{label:'Cần chú ý',min:0,color:'low'}].map((bucket,index)=>{const upper=index===0?101:index===1?80:50,count=studentStats.filter(student=>student.average>=bucket.min&&student.average<upper).length,percent=studentStats.length?Math.round(count*100/studentStats.length):0;return <div key={bucket.label}><span className={bucket.color}/><div><b>{bucket.label}</b><small>{bucket.min}{index===0?'+':index===1?'–79':'–49'}%</small></div><strong>{count}</strong><em>{percent}%</em></div>})}</div></section></div><div className="report-table-grid"><section className="report-card"><header><h2>Nhiệm vụ cần xem lại</h2><span>Xếp theo tỉ lệ hoàn thành</span></header><div className="report-table"><table><thead><tr><th>Nhiệm vụ</th><th>Đã xong</th><th>Tỉ lệ</th><th>Nhận định</th></tr></thead><tbody>{assignmentStats.slice(0,5).map(item=><tr key={item.id}><td><b>{item.title}</b><small>#{item.id}</small></td><td>{item.done}/{item.total}</td><td><strong className={item.percent<50?'danger':''}>{item.percent}%</strong></td><td>{item.percent<50?'Cần hỗ trợ thêm':item.percent<80?'Đang tiến triển':'Tiến độ tốt'}</td></tr>)}</tbody></table></div>{!assignmentStats.length&&<EmptyState text="Chưa có nhiệm vụ để phân tích."/>}</section><section className="report-card risk-list"><header><h2><AlertTriangle size={19}/> Học sinh cần xem lại</h2><span>Tiến độ dưới 50%</span></header>{attention.slice(0,6).map(student=><article key={student.id}><span className="student-initial">{student.name.split(/\s+/).slice(-2).map(part=>part[0]).join('').toUpperCase()}</span><div><b>{student.name}</b><small>@{student.username} · {student.items.filter(item=>item.status==="COMPLETED").length}/{student.items.length} lượt bài hoàn thành</small></div><strong>{student.average}%</strong></article>)}{!attention.length&&<EmptyState text="Không có học sinh nào dưới ngưỡng cần chú ý."/>}</section></div></div>})()}
+ return <section className="flex flex-col gap-4">
+  <div id={mode==="reports"?"teacher-reports":mode==="notifications"?"teacher-notifications":undefined} data-teacher-section data-search={heading[1]} className="section-anchor" />
+  <header>
+   <h1 className="text-2xl font-bold text-on-surface">{heading[1]}</h1>
+   <p className="text-sm text-on-surface-variant">{heading[2]}</p>
+  </header>
+  <div className="flex items-center gap-3 flex-wrap">
+   <select value={classId} onChange={e=>setClassId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
+    {classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+   </select>
+   <span className="text-xs text-on-surface-variant">{selectedClass?`${selectedClass.studentCount} học sinh · ${selectedClass.code}`:"Chưa có lớp học"}</span>
+  </div>
+  {error&&<div className="api-error">{error}</div>}
+  {loading&&<p className="text-sm text-on-surface-variant">Đang tải dữ liệu…</p>}
+ {mode==="reports"&&(()=>{const studentStats=Array.from(new Map(rows.map(row=>[row.student_id,{id:row.student_id,name:row.full_name,username:row.username,items:rows.filter(item=>item.student_id===row.student_id)}])).values()).map(student=>({...student,average:Math.round(student.items.reduce((sum,item)=>sum+(Number(item.completion_percent)||0),0)/student.items.length)})).sort((a,b)=>a.average-b.average);const attention=studentStats.filter(student=>student.average<50);const assignmentStats=assignments.map(item=>{const related=rows.filter(row=>row.assignment_id===item.id),done=related.filter(row=>row.status==="COMPLETED").length,started=related.filter(row=>row.status==="IN_PROGRESS").length;return {...item,total:related.length,done,started,percent:related.length?Math.round(done*100/related.length):0}}).sort((a,b)=>a.percent-b.percent);return (
+  <div className="flex flex-col gap-4">
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
+     <p className="text-xs text-on-surface-variant">Tỉ lệ hoàn thành</p>
+     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{average}%</p>
+     <div className="h-1.5 rounded-full bg-surface-variant overflow-hidden mt-2"><span className="block h-full bg-primary rounded-full" style={{width:`${average}%`}}/></div>
+    </article>
+    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
+     <p className="text-xs text-on-surface-variant">Lượt bài đã hoàn thành</p>
+     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{completed}</p>
+     <p className="text-[11px] text-on-surface-variant mt-1">{rows.length?`${Math.round(completed*100/rows.length)}% tổng lượt bài`:"Chưa có dữ liệu"}</p>
+    </article>
+    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
+     <p className="text-xs text-on-surface-variant">Đang thực hiện</p>
+     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{inProgress}</p>
+     <p className="text-[11px] text-on-surface-variant mt-1">{assignments.length} nhiệm vụ trong lớp</p>
+    </article>
+    <article className="p-4 border border-error/30 rounded-lg bg-error-container/20">
+     <p className="text-xs text-on-surface-variant">Cần xem lại</p>
+     <p className="text-2xl font-bold text-error data-tabular mt-1">{attention.length}</p>
+     <p className="text-[11px] text-on-surface-variant mt-1">Học sinh có tiến độ dưới 50%</p>
+    </article>
+   </div>
+
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <section className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
+     <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-bold text-on-surface">Tiến độ theo nhiệm vụ</h2>
+      <span className="text-xs text-on-surface-variant">{assignmentStats.length} nhiệm vụ</span>
+     </div>
+     {assignmentStats.length?(
+      <div className="flex flex-col gap-3">
+       {assignmentStats.map(item=>(
+        <div key={item.id}>
+         <div className="flex items-center justify-between gap-2 text-xs mb-1">
+          <span className="text-on-surface truncate" title={item.title}>{item.title}</span>
+          <b className="text-on-surface shrink-0">{item.percent}%</b>
+         </div>
+         <div className="h-1.5 rounded-full bg-surface-variant overflow-hidden"><span className={`block h-full rounded-full ${item.percent<50?"bg-error":"bg-primary"}`} style={{width:`${item.percent}%`}}/></div>
+         <p className="text-[11px] text-on-surface-variant mt-1">{item.done}/{item.total} hoàn thành · {item.started} đang làm</p>
+        </div>
+       ))}
+      </div>
+     ):<EmptyState text="Lớp chưa có nhiệm vụ để lập báo cáo."/>}
+    </section>
+
+    <section className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
+     <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-bold text-on-surface">Phân bố tiến độ học sinh</h2>
+      <span className="text-xs text-on-surface-variant">{studentStats.length} học sinh có dữ liệu</span>
+     </div>
+     <div className="flex flex-col gap-2.5">
+      {[{label:"Tốt",min:80,color:"bg-secondary"},{label:"Đang tiến bộ",min:50,color:"bg-primary"},{label:"Cần chú ý",min:0,color:"bg-error"}].map((bucket,index)=>{
+       const upper=index===0?101:index===1?80:50;
+       const count=studentStats.filter(student=>student.average>=bucket.min&&student.average<upper).length;
+       const percent=studentStats.length?Math.round(count*100/studentStats.length):0;
+       return (
+        <div key={bucket.label} className="flex items-center gap-3 text-sm">
+         <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${bucket.color}`}/>
+         <div className="min-w-[110px]">
+          <b className="text-on-surface">{bucket.label}</b>
+          <span className="block text-[11px] text-on-surface-variant">{bucket.min}{index===0?"+":index===1?"–79":"–49"}%</span>
+         </div>
+         <strong className="text-on-surface data-tabular">{count}</strong>
+         <em className="text-xs text-on-surface-variant not-italic ml-auto">{percent}%</em>
+        </div>
+       );
+      })}
+     </div>
+    </section>
+   </div>
+
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <section className="border border-outline-variant rounded-lg overflow-hidden">
+     <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between">
+      <h2 className="text-sm font-bold text-on-surface">Nhiệm vụ cần xem lại</h2>
+      <span className="text-xs text-on-surface-variant">Xếp theo tỉ lệ hoàn thành</span>
+     </div>
+     {assignmentStats.length?(
+      <table className="w-full text-sm">
+       <thead><tr className="text-xs text-on-surface-variant bg-surface-container-low"><th className="text-left px-4 py-2 font-semibold">Nhiệm vụ</th><th className="text-left px-3 py-2 font-semibold">Đã xong</th><th className="text-left px-3 py-2 font-semibold">Tỉ lệ</th><th className="text-left px-3 py-2 font-semibold">Nhận định</th></tr></thead>
+       <tbody className="divide-y divide-outline-variant">
+        {assignmentStats.slice(0,5).map(item=>(
+         <tr key={item.id} className="bg-surface-container-lowest">
+          <td className="px-4 py-2"><b className="text-on-surface">{item.title}</b><br/><span className="text-[11px] text-on-surface-variant">#{item.id}</span></td>
+          <td className="px-3 py-2 text-on-surface">{item.done}/{item.total}</td>
+          <td className="px-3 py-2"><strong className={item.percent<50?"text-error":"text-on-surface"}>{item.percent}%</strong></td>
+          <td className="px-3 py-2 text-on-surface-variant text-xs">{item.percent<50?"Cần hỗ trợ thêm":item.percent<80?"Đang tiến triển":"Tiến độ tốt"}</td>
+         </tr>
+        ))}
+       </tbody>
+      </table>
+     ):<EmptyState text="Chưa có nhiệm vụ để phân tích."/>}
+    </section>
+
+    <section className="border border-outline-variant rounded-lg overflow-hidden">
+     <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between">
+      <h2 className="text-sm font-bold text-on-surface flex items-center gap-1.5"><span className="material-symbols-outlined text-error text-[18px]">warning</span> Học sinh cần xem lại</h2>
+      <span className="text-xs text-on-surface-variant">Tiến độ dưới 50%</span>
+     </div>
+     <div className="divide-y divide-outline-variant">
+      {attention.slice(0,6).map(student=>(
+       <div key={student.id} className="flex items-center justify-between gap-3 p-3 bg-surface-container-lowest">
+        <div className="flex items-center gap-3 min-w-0">
+         <span className="w-8 h-8 rounded-full bg-error-container/40 text-on-error-container flex items-center justify-center text-xs font-bold shrink-0">{student.name.split(/\s+/).slice(-2).map(part=>part[0]).join("").toUpperCase()}</span>
+         <div className="min-w-0">
+          <p className="text-sm font-medium text-on-surface truncate">{student.name}</p>
+          <p className="text-[11px] text-on-surface-variant truncate">@{student.username} · {student.items.filter(item=>item.status==="COMPLETED").length}/{student.items.length} lượt bài hoàn thành</p>
+         </div>
+        </div>
+        <strong className="text-error text-sm shrink-0">{student.average}%</strong>
+       </div>
+      ))}
+     </div>
+     {!attention.length&&<EmptyState text="Không có học sinh nào dưới ngưỡng cần chú ý."/>}
+    </section>
+   </div>
+  </div>
+ );})()}
  {mode==="grading"&&<section className="audit-panel"><div className="panel-head"><div><p className="eyebrow">BÀI NỘP THEO TIẾN ĐỘ</p><h2>{selectedClass?.name??"Chọn lớp"}</h2></div></div>{rows.length?<div className="operation-table"><table><thead><tr><th>Học sinh</th><th>Bài tập</th><th>Trạng thái</th><th>Hoàn thành</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.student_id}-${row.assignment_id}`}><td><b>{row.full_name}</b><small>@{row.username}</small></td><td>{row.title}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{row.status==="COMPLETED"?"Đã hoàn thành":row.status==="IN_PROGRESS"?"Đang làm":"Chưa mở"}</span></td><td>{row.completion_percent}%</td></tr>)}</tbody></table></div>:<EmptyState text="Chưa có bài nộp trong lớp này."/>}</section>}
  {mode==="tasks"&&<section className="operation-feed"><h2>Việc cần làm</h2>{overdue.map(item=><article className="urgent" key={item.id}><span>Quá hạn</span><div><b>Kiểm tra tiến độ: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{upcoming.map(item=><article key={item.id}><span>Sắp tới</span><div><b>Theo dõi: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{!overdue.length&&!upcoming.length&&<EmptyState text="Không có nhiệm vụ theo hạn bài tập."/>}</section>}
  {mode==="notifications"&&<section className="operation-feed"><h2>Cập nhật mới nhất</h2>{overdue.map(item=><article className="urgent" key={`due-${item.id}`}><span>Cần chú ý</span><div><b>Bài “{item.title}” đã quá hạn</b><small>{selectedClass?.name} · Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")}</small></div></article>)}{average<50&&rows.length>0&&<article><span>Tiến độ</span><div><b>Tiến độ trung bình của lớp đang dưới 50%</b><small>{selectedClass?.name} · Hiện tại {average}%</small></div></article>}{completed>0&&<article><span>Hoàn thành</span><div><b>{completed} lượt bài đã hoàn thành</b><small>Dữ liệu cập nhật từ sổ điểm</small></div></article>}{!overdue.length&&!(average<50&&rows.length)&&!completed&&<EmptyState text="Hiện chưa có thông báo mới."/>}</section>}
