@@ -11,7 +11,6 @@ import { UserAccountsPage } from "./admin/UserAccountsPage";
 import { TextbookManagement } from "./admin/TextbookManagement";
 import { DocumentManagement } from "./admin/DocumentManagement";
 import { TopicManagement } from "./admin/TopicManagement";
-import { DocumentLibrary } from "./admin/DocumentLibrary";
 import { AuditManagement } from "./admin/AuditManagement";
 import { StudentExperience } from "./student/StudentExperience";
 import {
@@ -327,18 +326,6 @@ function AdminClasses({session}:{session:AuthSession}){
  return <section className={`classroom-module ${selected?"has-detail":""}`}><div className="classroom-master"><header className="classroom-heading"><div><p>QUẢN TRỊ HỆ THỐNG</p><h1>Danh sách lớp học</h1><span>Quản lý và theo dõi tiến độ các lớp khối 10.</span></div><div><button className="secondary-action" onClick={()=>alert("Chức năng import lớp cần API kiểm tra và xác nhận ba bước; hệ thống chưa ghi dữ liệu giả.")}>Import danh sách học sinh</button><button className="primary-action" onClick={()=>{reset();setFormOpen(true)}}>+ Tạo lớp</button></div></header>{error&&<div className="accounts-error"><span>{error}</span><button onClick={()=>void classesQuery.refetch()}>Thử lại</button></div>}<div className="classroom-card"><div className="classroom-filters"><input aria-label="Tìm lớp" placeholder="Tìm kiếm lớp học, giáo viên…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={gradeId} onChange={e=>setGradeId(Number(e.target.value))}><option value={0}>Tất cả khối</option>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div><div className="classroom-table-wrap"><table><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Giáo viên</th><th>Học sinh</th><th>Khóa học</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{rows.map(row=><tr className={selected?.id===row.id?"selected":""} key={row.id} onClick={()=>setSelected(row)}><td><b>{row.code}</b><small>{row.name}</small></td><td className="numeric">{new Date(row.createdAt??Date.now()).getFullYear()}–{new Date(row.createdAt??Date.now()).getFullYear()+1}</td><td>{gradeName(row.gradeId)}</td><td className="class-teacher-name">{teacherNames[row.id]||<button className="assign-teacher" onClick={event=>{event.stopPropagation();setSelected(row)}}>Chưa phân công</button>}</td><td className="numeric">{row.studentCount}</td><td className="numeric">{row.courseCount}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusName(row.status)}</span></td><td className="class-actions"><button onClick={e=>{e.stopPropagation();edit(row)}}>Sửa</button><button className="danger-link" onClick={e=>{e.stopPropagation();void archive(row)}}>Xóa</button></td></tr>)}</tbody></table>{!rows.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div><footer>{rows.length.toLocaleString("vi-VN")} lớp học</footer></div></div>{selected&&<ClassEnrollmentPanel session={session} classroom={selected} onClose={()=>setSelected(null)}/>} {formOpen&&<div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)reset()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA LỚP":"TẠO LỚP MỚI"}</p><h2>{editing?form.name:"Thông tin lớp học"}</h2></div><button onClick={reset}>×</button></header><form onSubmit={save}><label>Mã lớp<input required maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><footer><button type="button" className="secondary-action" onClick={reset}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo lớp"}</button></footer></form></aside></div>}</section>;
 }
 
-function AdminDocumentLibrary({session}:{session:AuthSession}) {
- const metadata=useMetadata(session);
- const [rows,setRows]=useState<DocumentItem[]>([]),[title,setTitle]=useState(""),[docType,setDocType]=useState(""),[audience,setAudience]=useState(""),[file,setFile]=useState<File|null>(null),[editing,setEditing]=useState<DocumentItem|null>(null),[error,setError]=useState("");
- const load=useCallback(async()=>{try{setRows(await getDocuments(session))}catch(reason){setError(messageOf(reason))}},[session]);
- useEffect(()=>{void load()},[load]);
- useEffect(()=>{setDocType(current=>current||firstMetadataValue(metadata,"documentTypes"));setAudience(current=>current||firstMetadataValue(metadata,"documentAudiences"))},[metadata]);
- const reset=()=>{setTitle("");setFile(null);setEditing(null);setDocType(firstMetadataValue(metadata,"documentTypes"));setAudience(firstMetadataValue(metadata,"documentAudiences"))};
- const edit=(row:DocumentItem)=>{setEditing(row);setTitle(row.title);setDocType(row.docType);setAudience(row.audience);setFile(null)};
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing)await updateDocument(session,editing.id,{title,docType,audience,gradeId:editing.gradeId});else{if(!file)return;await uploadDocument(session,{title,docType,audience,file})}reset();await load()}catch(reason){setError(messageOf(reason))}};
- const label=(key:keyof Metadata,value:string)=>metadataOptions(metadata,key).find(option=>option.value===value)?.label||value;
- return <section className="audit-panel document-library"><div className="panel-head"><div><p className="eyebrow">THƯ VIỆN TÀI LIỆU</p><h2>Tài liệu gốc Toán 10</h2></div></div>{error&&<div className="api-error">{error}</div>}<form className="compact-form document-upload-form" onSubmit={save}><input required placeholder="Tên tài liệu" value={title} onChange={e=>setTitle(e.target.value)}/><select required value={docType} onChange={e=>setDocType(e.target.value)}>{metadataOptions(metadata,"documentTypes").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><select required value={audience} onChange={e=>setAudience(e.target.value)}>{metadataOptions(metadata,"documentAudiences").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>{editing?<span className="form-note">Giữ nguyên file đã upload</span>:<input required type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={e=>setFile(e.target.files?.[0]||null)}/>}<button className="primary">{editing?"Cập nhật":"Tải lên"}</button>{editing&&<button type="button" onClick={reset}>Hủy</button>}</form><div className="document-grid">{rows.map(row=><article key={row.id}><small>{label("documentTypes",row.docType)} · {label("documentAudiences",row.audience)}</small><b>{row.title}</b><button onClick={()=>void openDocumentFile(session,row.fileUrl,row.title)}>Xem tài liệu</button><button onClick={()=>edit(row)}>Sửa</button><button className="danger-link" onClick={async()=>{if(confirm(`Xóa tài liệu “${row.title}”?`)){await deleteDocument(session,row.id);await load()}}}>Xóa</button></article>)}</div>{!rows.length&&<EmptyState text="Chưa có tài liệu trong thư viện."/>}</section>
-}
 function ClassEnrollmentPanel({session,classroom,onClose}:{session:AuthSession;classroom:Classroom;onClose:()=>void}){
  const queryClient=useQueryClient();
  const [teacherId,setTeacherId]=useState(0),[studentId,setStudentId]=useState(0),[courseId,setCourseId]=useState(0);
@@ -357,27 +344,6 @@ function ClassEnrollmentPanel({session,classroom,onClose}:{session:AuthSession;c
  return <aside className="class-detail-panel"><header><div><h2>{classroom.name}</h2><span>{classroom.code} · {classroom.status}</span></div><button aria-label="Đóng panel" onClick={onClose}>×</button></header><nav><button className={tab==="students"?"active":""} onClick={()=>setTab("students")}>Học sinh <b>{students.length}</b></button><button className={tab==="assignments"?"active":""} onClick={()=>setTab("assignments")}>Phân công</button><button className={tab==="settings"?"active":""} onClick={()=>setTab("settings")}>Cài đặt</button></nav>{error&&<div className="accounts-error">{error}</div>}{tab==="students"&&<div className="class-detail-content"><div className="detail-toolbar"><input placeholder="Tìm học sinh…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh để thêm</option>{users.filter(x=>x.roleCode==="STUDENT"&&!students.some(s=>s.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button className="primary-action" disabled={!studentId} onClick={()=>void add("class-students",studentId)}>Thêm học sinh</button></div><div className="detail-table"><table><thead><tr><th>STT</th><th>Họ và tên</th><th>Tiến độ</th><th>Thao tác</th></tr></thead><tbody>{visibleStudents.map((row,index)=>{const p=progress.get(row.userId??0),percent=p?Math.round(p.sum/Math.max(p.count,1)):0;return <tr key={row.id}><td className="numeric">{index+1}</td><td><b>{row.label}</b><small>{users.find(x=>x.id===row.userId)?.username??"—"}</small></td><td><div className="student-progress"><span style={{width:`${Math.min(percent,100)}%`}}/><b>{percent}%</b></div></td><td><button onClick={()=>removeMutation.mutate({type:"class-students",id:row.id})}>Gỡ</button></td></tr>})}</tbody></table>{!visibleStudents.length&&<EmptyState text="Chưa có học sinh phù hợp."/>}</div></div>}{tab==="assignments"&&<div className="class-detail-content assignment-groups"><article><h3>Giáo viên phụ trách</h3><div className="detail-add"><select value={teacherId} onChange={e=>setTeacherId(Number(e.target.value))}><option value={0}>Chọn giáo viên</option>{users.filter(x=>x.roleCode==="TEACHER"&&!teachers.some(t=>t.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button onClick={()=>void add("class-teachers",teacherId)}>Phân công</button></div>{teachers.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-teachers",id:x.id})}>Gỡ</button></div>)}</article><article><h3>Khóa học</h3><div className="detail-add"><select value={courseId} onChange={e=>setCourseId(Number(e.target.value))}><option value={0}>Chọn khóa học</option>{courses.filter(x=>!assignedCourses.some(c=>c.courseId===x.id)).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><button onClick={()=>void add("class-courses",courseId)}>Gán khóa</button></div>{assignedCourses.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-courses",id:x.id})}>Gỡ</button></div>)}</article></div>}{tab==="settings"&&<div className="class-detail-content privacy-note"><h3>Quyền riêng tư</h3><p>Quản trị viên chỉ xem tiến độ tổng hợp. Câu trả lời cá nhân và ghi chú riêng của giáo viên không được hiển thị.</p><h3>Dữ liệu lớp</h3><dl><div><dt>Giáo viên</dt><dd>{teachers.length}</dd></div><div><dt>Học sinh</dt><dd>{students.length}</dd></div><div><dt>Khóa học</dt><dd>{assignedCourses.length}</dd></div></dl></div>}</aside>;
 }
 
-function AdminCatalog({session}:{session:AuthSession}){
- const [subjects,setSubjects]=useState<Subject[]>([]),[grades,setGrades]=useState<Grade[]>([]);
- const [subject,setSubject]=useState({code:"",name:""}),[grade,setGrade]=useState({code:"",gradeNumber:9,name:""});
- const [subjectId,setSubjectId]=useState<number|null>(null),[gradeId,setGradeId]=useState<number|null>(null),[error,setError]=useState("");
- const load=useCallback(async()=>{try{const [a,b]=await Promise.all([getSubjects(session),getGrades(session)]);setSubjects(a);setGrades(b)}catch(e){setError(messageOf(e))}},[session]);
- useEffect(()=>{void load()},[load]);
- const saveSubject=async(e:React.FormEvent)=>{e.preventDefault();try{subjectId?await updateSubject(session,subjectId,subject):await createSubject(session,subject);setSubjectId(null);setSubject({code:"",name:""});await load()}catch(x){setError(messageOf(x))}};
- const saveGrade=async(e:React.FormEvent)=>{e.preventDefault();try{gradeId?await updateGrade(session,gradeId,grade):await createGrade(session,grade);setGradeId(null);setGrade({code:"",gradeNumber:9,name:""});await load()}catch(x){setError(messageOf(x))}};
- return <section className="admin-grid catalog-panel">
-  <article><h2>Môn học</h2><form className="compact-form" onSubmit={saveSubject}><input required placeholder="Mã môn" value={subject.code} onChange={e=>setSubject({...subject,code:e.target.value})}/><input required placeholder="Tên môn học" value={subject.name} onChange={e=>setSubject({...subject,name:e.target.value})}/><button className="primary">Lưu</button></form>{subjects.map(x=><div className="live-row" key={x.id}><div><b>{x.name}</b><small>{x.code}</small></div><div className="row-actions"><button onClick={()=>{setSubjectId(x.id);setSubject({code:x.code,name:x.name})}}>Sửa</button><button className="danger-link" onClick={async()=>{await deleteSubject(session,x.id);await load()}}>Xóa</button></div></div>)}</article>
-  <article><h2>Khối lớp</h2><form className="compact-form" onSubmit={saveGrade}><input required placeholder="Mã khối" value={grade.code} onChange={e=>setGrade({...grade,code:e.target.value})}/><input required min="1" max="12" type="number" value={grade.gradeNumber} onChange={e=>setGrade({...grade,gradeNumber:Number(e.target.value)})}/><input required placeholder="Tên khối" value={grade.name} onChange={e=>setGrade({...grade,name:e.target.value})}/><button className="primary">Lưu</button></form>{grades.map(x=><div className="live-row" key={x.id}><div><b>{x.name}</b><small>{x.code}</small></div><div className="row-actions"><button onClick={()=>{setGradeId(x.id);setGrade({code:x.code,gradeNumber:x.gradeNumber,name:x.name})}}>Sửa</button><button className="danger-link" onClick={async()=>{await deleteGrade(session,x.id);await load()}}>Xóa</button></div></div>)}</article>
-  {error&&<div className="api-error">{error}</div>}
- </section>
-}
-
-function AdminTopicManager({session}:{session:AuthSession}){
- const [rows,setRows]=useState<Topic[]>([]),[name,setName]=useState(""),[editing,setEditing]=useState<Topic|null>(null),[error,setError]=useState("");
- const load=useCallback(async()=>{try{setRows(await getTopics(session))}catch(reason){setError(messageOf(reason))}},[session]);useEffect(()=>{void load()},[load]);
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveTopic(session,{name,description:editing?.description||""},editing?.id);setName("");setEditing(null);await load()}catch(reason){setError(messageOf(reason))}};
- return <section className="audit-panel"><h2>Chủ đề Toán học</h2>{error&&<div className="api-error">{error}</div>}<form className="compact-form" onSubmit={save}><input required placeholder="Tên chủ đề" value={name} onChange={e=>setName(e.target.value)}/><button className="primary">{editing?"Cập nhật":"Thêm chủ đề"}</button></form>{rows.map(item=><div className="live-row" key={item.id}><b>{item.name}</b><div className="row-actions"><button onClick={()=>{setEditing(item);setName(item.name)}}>Sửa</button><button className="danger-link" onClick={async()=>{await deleteTopic(session,item.id);await load()}}>Xóa</button></div></div>)}</section>
-}
 
 type TextbookOffsetSlot = {
  offset: number;
@@ -485,63 +451,6 @@ return (
    </div>}
   </article>
  );
-}
-
-function AdminTextbookLibrary({session}:{session:AuthSession}){
- const metadata=useMetadata(session);
- const [rows,setRows]=useState<TextbookItem[]>([]);
- const [title,setTitle]=useState(""),[docType,setDocType]=useState("SGK"),[audience,setAudience]=useState("STUDENT_ALLOWED"),[gradeId,setGradeId]=useState<number|null>(null),[subjectId,setSubjectId]=useState<number|null>(null),[baseOffset,setBaseOffset]=useState<number>(1),[file,setFile]=useState<File|null>(null);
- const [editing,setEditing]=useState<TextbookItem|null>(null),[editingOffset,setEditingOffset]=useState<{id:number;offset:number}|null>(null);
- const [error,setError]=useState("");
- const load=useCallback(async()=>{try{setRows(await getAdminTextbooks(session))}catch(reason){setError(messageOf(reason))}},[session]);
- useEffect(()=>{void load()},[load]);
- const reset=()=>{setTitle("");setFile(null);setEditing(null);setEditingOffset(null);setDocType("SGK");setAudience("STUDENT_ALLOWED");setGradeId(null);setSubjectId(null);setBaseOffset(1)};
- const label=(key:keyof Metadata,value:string)=>metadataOptions(metadata,key).find(option=>option.value===value)?.label||value;
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing){await updateTextbook(session,editing.id,{title,docType,audience,gradeId:gradeId||null,subjectId:subjectId||null,totalPages:editing.totalPages,basePageOffset:editing.basePageOffset});setEditing(null);setTitle("")}else{if(!file)return;const created=await uploadTextbook(session,{title,docType,audience,gradeId:gradeId||null,subjectId:subjectId||null,basePageOffset:baseOffset,file});if(created?.id&&audience!=="TEACHER_RESTRICTED"){try{await publishTextbook(session,created.id)}catch{/* có thể đã PUBLISHED từ upload */}}reset()}await load()}catch(reason){setError(messageOf(reason))}};
- const openBook=(row:TextbookItem)=>void openTextbookInBrowser(session,row.id);
- const editRow=(row:TextbookItem)=>{setEditing(row);setTitle(row.title);setDocType(row.docType);setAudience(row.audience);setGradeId(row.gradeId);setSubjectId(row.subjectId)};
- const saveOffset=async()=>{if(!editingOffset)return;try{await setTextbookPageOffset(session,editingOffset.id,editingOffset.offset);setEditingOffset(null);await load()}catch(reason){setError(messageOf(reason))}};
- const docTypeLabel=(v:string)=>metadataOptions(metadata,"documentTypes").find(o=>o.value===v)?.label||v;
-  return <section className="audit-panel textbook-library">
-   <div className="panel-head"><div><p className="eyebrow">SÁCH GIÁO KHOA</p><h2>Quản lý SGK / SBT Toán 10</h2></div></div>
-   {error&&<div className="api-error">{error}</div>}
-   <form className="compact-form textbook-upload-form" onSubmit={save}>
-    <input required placeholder="Tên sách" value={title} onChange={e=>setTitle(e.target.value)}/>
-    <select required value={docType} onChange={e=>setDocType(e.target.value)}>{metadataOptions(metadata,"documentTypes").filter(o=>["SGK","SBT"].includes(o.value)).map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
-    <select required value={audience} onChange={e=>setAudience(e.target.value)}>{metadataOptions(metadata,"documentAudiences").map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
-    <input type="number" min={1} placeholder="Offset" value={baseOffset} onChange={e=>setBaseOffset(Number(e.target.value))} title="PDF page cho trang sách 1"/>
-    {editing?<span className="form-note">File giữ nguyên</span>:<input required type="file" accept="application/pdf" onChange={e=>setFile(e.target.files?.[0]||null)}/>}
-    <button className="primary">{editing?"Cập nhật":"Upload sách"}</button>
-    {editing&&<button type="button" onClick={reset}>Hủy</button>}
-   </form>
-   <div className="flex flex-col gap-4">{rows.map(row=><TextbookCard
-    key={row.id}
-    title={row.title}
-    fileUrl={row.fileUrl}
-    accessToken={session.accessToken}
-    totalPages={row.totalPages}
-    bookPageStart={1}
-    pdfPageStart={row.basePageOffset}
-    isPublished={row.status==="PUBLISHED"}
-    canStudentView={row.audience==="STUDENT_ALLOWED"}
-    status={row.status}
-    typeLabel={docTypeLabel(row.docType)}
-    onRead={()=>openBook(row)}
-    onMapPage={()=>setEditingOffset({id:row.id,offset:row.basePageOffset})}
-    onEdit={()=>editRow(row)}
-    onHide={async()=>{try{await hideTextbook(session,row.id);await load()}catch(reason){setError(messageOf(reason))}}}
-    onShow={async()=>{try{await publishTextbook(session,row.id);await load()}catch(reason){setError(messageOf(reason))}}}
-    onPublish={async()=>{try{await publishTextbook(session,row.id);await load()}catch(reason){setError(messageOf(reason))}}}
-    onDelete={async()=>{if(confirm(`Xóa sách "${row.title}"?`)){try{await deleteDocument(session,row.id);await load()}catch(reason){setError(messageOf(reason))}}}}
-    offsetSlot={editingOffset?.id===row.id?{
-     offset:editingOffset.offset,
-     onChange:(value:number)=>setEditingOffset({id:row.id,offset:value}),
-     onSave:saveOffset,
-     onCancel:()=>setEditingOffset(null),
-    }:null}
-   />)}</div>
-   {!rows.length&&<EmptyState text="Chưa có sách giáo khoa nào."/>}
-  </section>;
 }
 
 function ChangePasswordDialog({session,onClose}:{session:AuthSession;onClose:()=>void}) {
