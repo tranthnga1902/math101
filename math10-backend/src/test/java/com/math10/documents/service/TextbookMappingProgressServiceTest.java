@@ -103,8 +103,6 @@ class TextbookMappingProgressServiceTest {
     void rejectsInvalidZoom() {
         when(currentUserService.requireUserId()).thenReturn(7L);
         when(documentRepo.findById(100L)).thenReturn(Optional.of(textbook));
-        when(progressRepo.findByUserIdAndDocumentId(7L, 100L)).thenReturn(Optional.of(new TextbookMappingProgress()));
-
         TextbookMappingProgressRequest bad = new TextbookMappingProgressRequest(10, 10, 1, 200, 1);
         assertThatThrownBy(() -> service.saveProgress(100L, bad))
                 .isInstanceOf(BusinessException.class)
@@ -115,8 +113,6 @@ class TextbookMappingProgressServiceTest {
     void rejectsPdfPageExceedingTotal() {
         when(currentUserService.requireUserId()).thenReturn(7L);
         when(documentRepo.findById(100L)).thenReturn(Optional.of(textbook));
-        when(progressRepo.findByUserIdAndDocumentId(7L, 100L)).thenReturn(Optional.of(new TextbookMappingProgress()));
-
         TextbookMappingProgressRequest bad = new TextbookMappingProgressRequest(999, 10, 1, 100, 1);
         assertThatThrownBy(() -> service.saveProgress(100L, bad))
                 .isInstanceOf(BusinessException.class);

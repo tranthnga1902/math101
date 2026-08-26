@@ -5,6 +5,8 @@ import com.math10.classes.dto.ClassroomRequest;
 import com.math10.classes.entity.ClassStatus;
 import com.math10.classes.entity.Classroom;
 import com.math10.classes.repository.ClassroomRepository;
+import com.math10.classes.repository.ClassCurriculumRepository;
+import com.math10.classes.repository.ClassDocumentRepository;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.enrollments.entity.ClassTeacher;
 import com.math10.enrollments.repository.ClassTeacherRepository;
@@ -31,8 +33,8 @@ class ClassroomServiceImplTest {
             return classroom;
         });
 
-        var result = new ClassroomServiceImpl(classrooms, teachers, mock(ClassStudentRepository.class), mock(ClassCourseRepository.class), current, audit)
-                .create(new ClassroomRequest("M10-A", "Lớp 10A", 2L, ClassStatus.ACTIVE));
+        var result = new ClassroomServiceImpl(classrooms, teachers, mock(ClassStudentRepository.class), mock(ClassCourseRepository.class), mock(ClassCurriculumRepository.class), mock(ClassDocumentRepository.class), current, audit)
+                .create(new ClassroomRequest("M10-A", "Lớp 10A", 2L, ClassStatus.ACTIVE, null));
 
         assertThat(result.id()).isEqualTo(11L);
         verify(teachers).save(argThat((ClassTeacher row) -> row.getClassId().equals(11L) && row.getTeacherId().equals(7L)));
