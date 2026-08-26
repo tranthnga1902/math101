@@ -20,7 +20,7 @@ public class ClassroomController {
     private final ClassroomService classroomService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public ApiResponse<Page<ClassroomResponse>> findAll(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long gradeId,

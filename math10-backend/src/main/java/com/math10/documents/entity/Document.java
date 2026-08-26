@@ -41,6 +41,19 @@ public class Document extends BaseEntity {
     @Column(name = "grade_id")
     private Long gradeId;
 
+    @Column(name = "chapter_id")
+    private Long chapterId;
+
+    @Column(name = "owner_id")
+    private Long ownerId;
+
+    @Column(name = "folder_id")
+    private Long folderId;
+
+    /** Mục trong cây phân loại mà tài liệu này thuộc về. Dùng Long thuần thay vì @ManyToOne để module documents không phụ thuộc module taxonomy. */
+    @Column(name = "taxonomy_node_id")
+    private Long taxonomyNodeId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private DocumentStatus status = DocumentStatus.DRAFT;
@@ -54,4 +67,7 @@ public class Document extends BaseEntity {
 
     @Column(name = "base_page_offset", nullable = false)
     private Integer basePageOffset = 1;
+
+    @Column(name = "content_markdown", columnDefinition = "text")
+    private String contentMarkdown;
 }

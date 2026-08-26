@@ -33,6 +33,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -102,6 +104,12 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<UserImportPresignResponse> presignImport(@Valid @RequestBody UserImportPresignRequest request) {
         return ApiResponse.ok("Tạo URL tải lên thành công", userImportService.presign(request.fileName(), request.contentType()));
+    }
+
+    @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<UserImportPreviewResponse> uploadImport(@RequestPart("file") MultipartFile file) {
+        return ApiResponse.ok("Đọc file import thành công", userImportService.uploadAndPreview(file));
     }
 
     @GetMapping("/import/template")

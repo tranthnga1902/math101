@@ -171,18 +171,32 @@ public class R2StorageServiceImpl implements StorageService {
                 .url().toString());
     }
 
+    /** Upload to a caller-owned private object key (used by server-proxied imports). */
+    public void putObject(String objectKey, byte[] bytes, String contentType) {
+        if (s3 == null) {
+            throw new BusinessException("R2 Storage chưa được cấu hình");
+        }
+        s3.putObject(
+                PutObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(objectKey)
+                        .contentType(contentType)
+                        .contentLength((long) bytes.length)
+                        .build(),
+                RequestBody.fromBytes(bytes)
+        );
+    }
+
     public byte[] readObject(String objectKey) {
         if (s3 == null) {
             throw new BusinessException("R2 Storage chưa được cấu hình");
         }
-        var response = s3.getObjectAsBytes(GetObjectRequest.builder()
+        // Không chặn dung lượng ở đây: hàm này còn dùng để đọc PDF (sách giáo khoa vài trăm
+        // trang thường nặng hơn 10MB). Giới hạn của luồng import Excel nằm trong UserImportService.
+        return s3.getObjectAsBytes(GetObjectRequest.builder()
                 .bucket(bucket)
                 .key(objectKey)
-                .build());
-        if (response.asByteArray().length > 10 * 1024 * 1024) {
-            throw new BusinessException("File import vượt quá 10MB");
-        }
-        return response.asByteArray();
+                .build()).asByteArray();
     }
 
     private String getExtension(String filename) {

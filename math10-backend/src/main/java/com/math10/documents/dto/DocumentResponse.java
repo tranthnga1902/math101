@@ -13,11 +13,15 @@ public record DocumentResponse(
         DocumentAudience audience,
         String fileUrl,
         Long gradeId,
+        Long chapterId,
         DocumentStatus status,
         Long subjectId,
         Integer totalPages,
         Integer basePageOffset,
         LocalDateTime createdAt,
-        String thumbnailUrl
+        String thumbnailUrl,
+        Long folderId,
+        String contentMarkdown,
+        Long taxonomyNodeId
 ) {
 }

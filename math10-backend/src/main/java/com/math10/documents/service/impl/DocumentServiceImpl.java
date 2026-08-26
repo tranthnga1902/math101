@@ -1,6 +1,7 @@
 package com.math10.documents.service.impl;
 
 import com.math10.chapters.repository.ChapterRepository;
+import com.math10.classes.repository.ClassDocumentRepository;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
 import com.math10.configuration.security.CurrentUserService;
@@ -34,7 +35,11 @@ import com.math10.documents.repository.LessonDocumentQuestionRepository;
 import com.math10.documents.repository.LessonDocumentRepository;
 import com.math10.documents.service.DocumentService;
 import com.math10.common.storage.StorageService;
+import com.math10.common.storage.StorageUrlSupport;
+import com.math10.documents.service.PdfMarkdownService;
 import com.math10.documents.service.PdfThumbnailService;
+import com.math10.enrollments.entity.ClassStudent;
+import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.lessons.entity.Lesson;
 import java.io.IOException;
 import com.math10.lessons.repository.LessonRepository;
@@ -48,6 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -66,6 +72,8 @@ public class DocumentServiceImpl implements DocumentService {
     );
     private static final Set<String> ANSWERS = Set.of("A", "B", "C", "D");
     private static final List<DocumentType> TEXTBOOK_TYPES = List.of(DocumentType.SGK, DocumentType.SBT);
+    private static final List<DocumentType> MATERIALS_EXCLUDED_TYPES =
+            List.of(DocumentType.SGK, DocumentType.SBT, DocumentType.DE_THI);
 
     private final DocumentRepository documents;
     private final LessonDocumentRepository lessonDocuments;
@@ -73,56 +81,135 @@ public class DocumentServiceImpl implements DocumentService {
     private final LessonDocumentProgressRepository lessonDocumentProgress;
     private final DocumentPageMappingRepository pageMappings;
     private final LessonRepository lessons;
+    private final ClassDocumentRepository classDocuments;
+    private final ClassStudentRepository classStudents;
     private final ChapterRepository chapters;
     private final SubjectRepository subjects;
     private final SecurityService securityService;
     private final CurrentUserService currentUserService;
     private final StorageService storageService;
+    private final StorageUrlSupport storageUrls;
     private final PdfThumbnailService pdfThumbnailService;
+    private final PdfMarkdownService pdfMarkdownService;
 
     @Override
     @Transactional(readOnly = true)
     public List<DocumentResponse> listDocuments() {
-        return documents.findAllByOrderByCreatedAtDesc().stream().map(this::map).toList();
+        if ("TEACHER".equals(currentUserService.requireRoleCode())) {
+            return documents.findLibraryForTeacher(currentUserService.requireUserId()).stream().map(this::map).toList();
+        }
+        // ADMIN chỉ quản lý kho tài liệu chung (ownerId=null); tài liệu riêng của giáo viên
+        // thuộc phạm vi quản lý của chính giáo viên đó, không hiển thị lẫn ở đây.
+        return documents.findByOwnerIdIsNullOrderByCreatedAtDesc().stream().map(this::map).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> listStudentDocuments() {
+        return documents.findStudentVisibleDocuments(MATERIALS_EXCLUDED_TYPES).stream().map(this::map).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> listStudentExamDocuments() {
+        return documents.findByDocTypeAndAudienceAndStatusNotOrderByCreatedAtDesc(
+                        DocumentType.DE_THI, DocumentAudience.STUDENT_ALLOWED, DocumentStatus.HIDDEN)
+                .stream().map(this::map).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> listMyDocuments() {
+        return documents.findByOwnerIdOrderByCreatedAtDesc(currentUserService.requireUserId()).stream()
+                .map(this::map)
+                .toList();
     }
 
     @Override
     @Transactional
-    public DocumentResponse upload(String title, DocumentType docType, DocumentAudience audience, Long gradeId, MultipartFile file) {
-        if (docType != DocumentType.VIDEO && (file == null || file.isEmpty() || file.getOriginalFilename() == null)) {
-            throw new BusinessException("File tài liệu là bắt buộc");
-        }
-        if (docType == DocumentType.VIDEO) {
-            throw new BusinessException("Giai đoạn 1 chỉ upload PDF/DOCX. Video sẽ dùng URL ở giai đoạn sau.");
-        }
+    public DocumentResponse upload(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long taxonomyNodeId, MultipartFile file, String videoUrl) {
+        return uploadDocument(title, docType, audience, gradeId, null, taxonomyNodeId, file, videoUrl, null);
+    }
 
-        String mime = Optional.ofNullable(file.getContentType()).orElse("application/octet-stream");
-        if (!ALLOWED_MIME_TYPES.contains(mime)) {
-            throw new BusinessException("Chỉ hỗ trợ PDF, DOC hoặc DOCX");
-        }
+    @Override
+    @Transactional(readOnly = true)
+    public List<DocumentResponse> listByTaxonomyNode(Long taxonomyNodeId) {
+        return documents.findByTaxonomyNodeIdOrderByCreatedAtDesc(taxonomyNodeId).stream().map(this::map).toList();
+    }
 
+    @Override
+    @Transactional
+    public DocumentResponse attachToTaxonomyNode(Long documentId, Long taxonomyNodeId) {
+        Document document = document(documentId);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể gắn vào cây phân loại");
+        }
+        document.setTaxonomyNodeId(taxonomyNodeId);
+        return map(documents.save(document));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> countsByTaxonomyNode() {
+        Map<Long, Integer> counts = new HashMap<>();
+        for (Object[] row : documents.countGroupedByTaxonomyNode()) {
+            counts.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return counts;
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse uploadMyDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, MultipartFile file, String videoUrl) {
+        if (TEXTBOOK_TYPES.contains(docType)) {
+            throw new BusinessException("Sách giáo khoa và sách bài tập do Admin quản lý");
+        }
+        return uploadDocument(title, docType, audience, gradeId, chapterId, null, file, videoUrl, currentUserService.requireUserId());
+    }
+
+    private DocumentResponse uploadDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, Long taxonomyNodeId, MultipartFile file, String videoUrl, Long ownerId) {
         String fileUrl;
         String thumbnailUrl = null;
-        try {
-            fileUrl = storageService.upload(file, "documents");
-        } catch (IOException e) {
-            throw new BusinessException("Upload thất bại: " + e.getMessage());
-        }
+        String resolvedTitle;
 
-        if ("application/pdf".equals(mime)) {
-            try (var in = file.getInputStream()) {
-                byte[] png = pdfThumbnailService.renderFirstPagePng(in, 240);
-                thumbnailUrl = storageService.uploadBytes(png, "image/png", "math10-files/thumbnails", "png");
-            } catch (Exception e) {
-                log.warn("Render thumbnail thất bại cho tài liệu {}: {}", title, e.getMessage());
+        if (docType == DocumentType.VIDEO) {
+            if (videoUrl == null || videoUrl.isBlank() || !videoUrl.trim().matches("(?i)^https://(www\\.|m\\.|music\\.)?youtube\\.com/(watch\\?[^#]*v=[A-Za-z0-9_-]{11}.*|(?:embed|shorts|live)/[A-Za-z0-9_-]{11}.*)$|^https://youtu\\.be/[A-Za-z0-9_-]{11}.*$")) {
+                throw new BusinessException("Link YouTube không hợp lệ. Hãy dùng link youtube.com hoặc youtu.be");
             }
+            fileUrl = videoUrl.trim();
+            resolvedTitle = title == null || title.isBlank() ? "Video" : title.trim();
+        } else {
+            if (file == null || file.isEmpty() || file.getOriginalFilename() == null) {
+                throw new BusinessException("File tài liệu là bắt buộc");
+            }
+            String mime = Optional.ofNullable(file.getContentType()).orElse("application/octet-stream");
+            if (!ALLOWED_MIME_TYPES.contains(mime)) {
+                throw new BusinessException("Chỉ hỗ trợ PDF, DOC hoặc DOCX");
+            }
+            try {
+                fileUrl = storageService.upload(file, "documents");
+            } catch (IOException e) {
+                throw new BusinessException("Upload thất bại: " + e.getMessage());
+            }
+            if ("application/pdf".equals(mime)) {
+                try (var in = file.getInputStream()) {
+                    byte[] png = pdfThumbnailService.renderFirstPagePng(in, 240);
+                    thumbnailUrl = storageService.uploadBytes(png, "image/png", "math10-files/thumbnails", "png");
+                } catch (Exception e) {
+                    log.warn("Render thumbnail thất bại cho tài liệu {}: {}", title, e.getMessage());
+                }
+            }
+            resolvedTitle = title == null || title.isBlank() ? file.getOriginalFilename() : title.trim();
         }
 
         Document document = new Document();
-        document.setTitle(title == null || title.isBlank() ? file.getOriginalFilename() : title.trim());
+        document.setTitle(resolvedTitle);
         document.setDocType(docType);
         document.setAudience(audience);
         document.setGradeId(gradeId);
+        document.setChapterId(chapterId);
+        document.setTaxonomyNodeId(taxonomyNodeId);
+        document.setOwnerId(ownerId);
         document.setFileUrl(fileUrl);
         document.setThumbnailUrl(thumbnailUrl);
         return map(documents.save(document));
@@ -130,12 +217,55 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     @Transactional
-    public DocumentResponse updateDocument(Long id, DocumentUpdateRequest request) {
-        Document document = document(id);
+    public DocumentResponse updateMyDocument(Long id, DocumentUpdateRequest request) {
+        Document document = ownedDocument(id);
+        if (TEXTBOOK_TYPES.contains(request.docType())) {
+            throw new BusinessException("Giáo viên không thể chuyển tài liệu thành sách giáo khoa");
+        }
         document.setTitle(request.title().trim());
         document.setDocType(request.docType());
         document.setAudience(request.audience());
         document.setGradeId(request.gradeId());
+        document.setChapterId(request.chapterId());
+        return map(documents.save(document));
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse archiveMyDocument(Long id) {
+        Document document = ownedDocument(id);
+        document.setStatus(DocumentStatus.HIDDEN);
+        return map(documents.save(document));
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse restoreMyDocument(Long id) {
+        Document document = ownedDocument(id);
+        document.setStatus(DocumentStatus.DRAFT);
+        return map(documents.save(document));
+    }
+
+    private Document ownedDocument(Long id) {
+        Document document = document(id);
+        if (!currentUserService.requireUserId().equals(document.getOwnerId())) {
+            throw new AccessDeniedException("Bạn không có quyền thay đổi tài liệu này");
+        }
+        return document;
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse updateDocument(Long id, DocumentUpdateRequest request) {
+        Document document = document(id);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể chỉnh sửa");
+        }
+        document.setTitle(request.title().trim());
+        document.setDocType(request.docType());
+        document.setAudience(request.audience());
+        document.setGradeId(request.gradeId());
+        document.setChapterId(request.chapterId());
         if (request.subjectId() != null) {
             subject(request.subjectId());
             document.setSubject(subjects.getReferenceById(request.subjectId()));
@@ -155,7 +285,109 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public void deleteDocument(Long id) {
-        document(id).markDeleted();
+        Document document = document(id);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể xóa");
+        }
+        document.markDeleted();
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse convertToMarkdown(Long id) {
+        Document document = document(id);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể chuyển đổi");
+        }
+        if (document.getFileUrl() == null || !document.getFileUrl().toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new BusinessException("Chỉ hỗ trợ chuyển đổi file PDF sang Markdown");
+        }
+        try {
+            byte[] pdfBytes = storageService.readObject(storageUrls.objectKeyFor(document.getFileUrl()));
+            String markdown = pdfMarkdownService.extractMarkdown(new java.io.ByteArrayInputStream(pdfBytes));
+            document.setContentMarkdown(markdown);
+            return map(documents.save(document));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new BusinessException("Chuyển đổi Markdown thất bại: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Lưu Markdown do phía Admin tạo ra — dùng cho PDF scan, khi trình duyệt đã OCR xong
+     * và gửi kết quả lên. Backend không tự OCR nên chỉ nhận và lưu nội dung.
+     */
+    @Override
+    @Transactional
+    public DocumentResponse saveMarkdown(Long id, String markdown) {
+        Document document = document(id);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể sửa nội dung");
+        }
+        String content = markdown == null ? "" : markdown.strip();
+        if (content.isEmpty()) {
+            throw new BusinessException("Nội dung Markdown trống, không có gì để lưu");
+        }
+        document.setContentMarkdown(content);
+        return map(documents.save(document));
+    }
+
+    /**
+     * Byte PDF cho trình xem trong app. Đi qua backend (chứ không để trình duyệt gọi thẳng
+     * domain R2) để không phụ thuộc cấu hình CORS của domain đó — cùng lý do như ảnh bìa.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readDocumentBytes(Long id) {
+        Document document = document(id);
+        if ("STUDENT".equals(currentUserService.requireRoleCode())) {
+            // Hai đường đọc hợp lệ: tài liệu vốn đã mở cho học sinh (đúng điều kiện của
+            // findStudentVisibleDocuments), hoặc tài liệu giáo viên gắn vào lớp em đó học.
+            // Tài liệu bị ẩn thì chặn ở cả hai đường.
+            if (document.getStatus() == DocumentStatus.HIDDEN
+                    || (document.getAudience() != DocumentAudience.STUDENT_ALLOWED
+                        && !attachedToStudentClass(document.getId()))) {
+                throw new AccessDeniedException("Bạn không có quyền mở tài liệu này");
+            }
+        }
+        return pdfBytes(document);
+    }
+
+    /**
+     * Tài liệu được gắn vào một lớp mà học sinh đang học thì em đó đọc được, kể cả khi
+     * tài liệu gốc trong kho chung không đặt audience STUDENT_ALLOWED — quyền đến từ việc
+     * giáo viên chủ động gắn nó vào lớp, không phải từ thuộc tính của tài liệu.
+     */
+    private boolean attachedToStudentClass(Long documentId) {
+        List<Long> classIds = classStudents.findByStudentId(currentUserService.requireUserId())
+                .stream().map(ClassStudent::getClassId).toList();
+        return !classIds.isEmpty() && classDocuments.existsByDocumentIdAndClassIdIn(documentId, classIds);
+    }
+
+    /**
+     * Byte PDF của tài liệu gắn trong bài học. Tài liệu ở đây không nhất thiết là
+     * STUDENT_ALLOWED — học sinh được đọc vì đang học bài đó, nên dùng lại đúng guard của
+     * {@link #openLessonDocument}. Khác {@code /open}, hàm này không ghi tiến độ để một
+     * lần mở không bị đếm hai lượt.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readLessonDocumentBytes(Long lessonId, Long id) {
+        LessonDocument row = requireLessonDocument(lessonId, id);
+        if ("STUDENT".equals(currentUserService.requireRoleCode())) {
+            ensureStudentCanRead(lessonId, row);
+        } else {
+            checkLessonOwnership(lesson(lessonId));
+        }
+        return pdfBytes(document(row.getDocumentId()));
+    }
+
+    private byte[] pdfBytes(Document document) {
+        if (document.getFileUrl() == null || document.getFileUrl().isBlank()) {
+            throw new BusinessException("Tài liệu này không có file để xem");
+        }
+        return storageService.readObject(storageUrls.objectKeyFor(document.getFileUrl()));
     }
 
     @Override
@@ -183,7 +415,8 @@ public class DocumentServiceImpl implements DocumentService {
     public LessonDocumentResponse attachToLesson(Long lessonId, LessonDocumentRequest request) {
         Lesson lesson = lesson(lessonId);
         checkLessonOwnership(lesson);
-        document(request.documentId());
+        Document targetDocument = document(request.documentId());
+        ensureDocumentAttachable(targetDocument);
         LessonDocument row = new LessonDocument();
         row.setLessonId(lessonId);
         row.setDocumentId(request.documentId());
@@ -554,8 +787,7 @@ public class DocumentServiceImpl implements DocumentService {
                 continue;
             }
             try {
-                String key = extractR2Key(doc.getFileUrl());
-                byte[] pdfBytes = storageService.readObject(key);
+                byte[] pdfBytes = storageService.readObject(storageUrls.objectKeyFor(doc.getFileUrl()));
                 byte[] png = pdfThumbnailService.renderFirstPagePng(new java.io.ByteArrayInputStream(pdfBytes), 240);
                 String thumbnailUrl = storageService.uploadBytes(png, "image/png", "math10-files/thumbnails", "png");
                 doc.setThumbnailUrl(thumbnailUrl);
@@ -568,11 +800,6 @@ public class DocumentServiceImpl implements DocumentService {
         }
         log.info("Thumbnail backfill done: processed={}/total={}", processed, missing.size());
         return Map.of("processed", processed, "total", missing.size());
-    }
-
-    private String extractR2Key(String fileUrl) {
-        int idx = fileUrl.indexOf("/", fileUrl.indexOf("://") + 3);
-        return fileUrl.substring(idx + 1);
     }
 
     private int resolvePdfPage(Long documentId, int bookPage, int basePageOffset) {
@@ -604,6 +831,15 @@ public class DocumentServiceImpl implements DocumentService {
     private LessonDocument requireLessonDocument(Long lessonId, Long id) {
         return lessonDocuments.findByIdAndLessonId(id, lessonId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu trong bài học"));
+    }
+
+    private void ensureDocumentAttachable(Document document) {
+        if ("TEACHER".equals(currentUserService.requireRoleCode())) {
+            Long ownerId = document.getOwnerId();
+            if (ownerId != null && !ownerId.equals(currentUserService.requireUserId())) {
+                throw new AccessDeniedException("Chỉ được gắn tài liệu dùng chung hoặc tài liệu của chính mình");
+            }
+        }
     }
 
     private void checkLessonOwnership(Lesson lesson) {
@@ -648,12 +884,16 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getAudience(),
                 document.getFileUrl(),
                 document.getGradeId(),
+                document.getChapterId(),
                 document.getStatus(),
                 document.getSubject() != null ? document.getSubject().getId() : null,
                 document.getTotalPages(),
                 document.getBasePageOffset(),
                 document.getCreatedAt(),
-                document.getThumbnailUrl()
+                document.getThumbnailUrl(),
+                document.getFolderId(),
+                document.getContentMarkdown(),
+                document.getTaxonomyNodeId()
         );
     }
 

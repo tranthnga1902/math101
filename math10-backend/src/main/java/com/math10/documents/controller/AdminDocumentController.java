@@ -8,6 +8,8 @@ import com.math10.documents.dto.TextbookPageOffsetRequest;
 import com.math10.documents.entity.DocumentAudience;
 import com.math10.documents.entity.DocumentType;
 import com.math10.documents.service.DocumentService;
+import com.math10.common.storage.StorageService;
+import com.math10.common.storage.StorageUrlSupport;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -31,11 +35,21 @@ import java.util.List;
 public class AdminDocumentController {
 
     private final DocumentService documentService;
+    private final StorageService storageService;
+    private final StorageUrlSupport storageUrls;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
     public ApiResponse<List<DocumentResponse>> list() {
         return ApiResponse.ok("Lấy thư viện tài liệu thành công", documentService.listDocuments());
+    }
+
+    @GetMapping("/content")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public ResponseEntity<byte[]> content(@RequestParam String url) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(storageService.readObject(storageUrls.objectKeyFor(url)));
     }
 
     @PostMapping(consumes = "multipart/form-data")
@@ -45,9 +59,29 @@ public class AdminDocumentController {
             @RequestParam DocumentType docType,
             @RequestParam DocumentAudience audience,
             @RequestParam(required = false) Long gradeId,
-            @RequestParam("file") MultipartFile file
+            @RequestParam(required = false) Long taxonomyNodeId,
+            @RequestParam(required = false) MultipartFile file,
+            @RequestParam(required = false) String videoUrl
     ) {
-        return ApiResponse.created("Tải tài liệu lên thành công", documentService.upload(title, docType, audience, gradeId, file));
+        return ApiResponse.created("Tải tài liệu lên thành công", documentService.upload(title, docType, audience, gradeId, taxonomyNodeId, file, videoUrl));
+    }
+
+    /** Tài liệu học của một mục trong cây phân loại (Chuyên đề / Bài / Dạng). */
+    @GetMapping("/by-node/{nodeId}")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public ApiResponse<List<DocumentResponse>> listByNode(@PathVariable Long nodeId) {
+        return ApiResponse.ok("Lấy tài liệu của mục thành công", documentService.listByTaxonomyNode(nodeId));
+    }
+
+    /** Gắn tài liệu vào một mục, hoặc gỡ khỏi mục khi taxonomyNodeId là null. */
+    @PatchMapping("/{id}/taxonomy-node")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DocumentResponse> setTaxonomyNode(@PathVariable Long id, @RequestBody TaxonomyNodeAssignRequest request) {
+        return ApiResponse.ok(request.taxonomyNodeId() == null ? "Đã gỡ tài liệu khỏi mục" : "Đã gắn tài liệu vào mục",
+                documentService.attachToTaxonomyNode(id, request.taxonomyNodeId()));
+    }
+
+    public record TaxonomyNodeAssignRequest(Long taxonomyNodeId) {
     }
 
     @PutMapping("/{id}")
@@ -61,6 +95,24 @@ public class AdminDocumentController {
     public ApiResponse<Void> delete(@PathVariable Long id) {
         documentService.deleteDocument(id);
         return ApiResponse.noContent("Xóa tài liệu thành công");
+    }
+
+    @PostMapping("/{id}/convert-markdown")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DocumentResponse> convertToMarkdown(@PathVariable Long id) {
+        return ApiResponse.ok("Chuyển đổi sang Markdown thành công", documentService.convertToMarkdown(id));
+    }
+
+    /**
+     * Lưu Markdown do trình duyệt của Admin OCR ra (dùng cho PDF scan — backend không có OCR).
+     */
+    @PatchMapping("/{id}/markdown")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DocumentResponse> saveMarkdown(@PathVariable Long id, @RequestBody MarkdownSaveRequest request) {
+        return ApiResponse.ok("Lưu nội dung Markdown thành công", documentService.saveMarkdown(id, request.contentMarkdown()));
+    }
+
+    public record MarkdownSaveRequest(String contentMarkdown) {
     }
 
     // ==================== TEXTBOOK (SGK/SBT) ====================

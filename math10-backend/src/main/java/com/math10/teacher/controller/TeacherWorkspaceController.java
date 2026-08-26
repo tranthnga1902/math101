@@ -30,7 +30,7 @@ public class TeacherWorkspaceController {
  @GetMapping("/gradebook") public ApiResponse<List<Map<String,Object>>> gradebook(@RequestParam Long classId){check(classId);return ApiResponse.ok("Sổ điểm",jdbc.queryForList("""
    select u.id student_id,u.full_name,u.username,a.id assignment_id,a.title,
    case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end status,
-   coalesce(ap.completion_percent,0) completion_percent
+   coalesce(ap.completion_percent,0) completion_percent,ap.score,ap.max_score,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,ap.returned_at
    from class_students cs join users u on u.id=cs.student_id and u.deleted_at is null
    cross join assignments a left join assignment_progress ap on ap.student_id=u.id and ap.assignment_id=a.id and ap.deleted_at is null
    where cs.class_id=? and cs.deleted_at is null and a.class_id=? and a.deleted_at is null order by u.full_name,a.created_at
@@ -48,7 +48,9 @@ public class TeacherWorkspaceController {
        ap.completion_percent,
        ap.completed_at,
        ap.opened_at,
-       ap.quiz_score
+       ap.score,
+       ap.max_score,
+       ap.returned_at
      from assignments a
      cross join class_students cs
      left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=cs.student_id and ap.deleted_at is null
@@ -61,6 +63,7 @@ public class TeacherWorkspaceController {
        class_id,
        student_id,
        coalesce(avg(completion_percent),0) as avg_percent,
+       avg(score) filter (where returned_at is not null) as avg_score,
        count(*) as total_assignments,
        sum(case when completed_at is not null then 1 else 0 end) as completed_count
      from latest_assignments
@@ -72,7 +75,7 @@ public class TeacherWorkspaceController {
        c.name as class_name,
        c.code as class_code,
        u.full_name as teacher_name,
-       coalesce(round(avg(ss.avg_percent),1),0) as avg_grade,
+       coalesce(round(avg(ss.avg_score),2),0) as avg_grade,
        coalesce(round(avg(ss.total_assignments) filter (where ss.avg_percent>=0),1),0) as avg_completion,
        coalesce(round(100.0*sum(ss.completed_count)/nullif(sum(ss.total_assignments),0),0),0) as completion_rate
      from class_teachers ct

@@ -4,5 +4,6 @@ public enum DocumentType {
     SGK,
     SBT,
     KHBD,
-    VIDEO
+    VIDEO,
+    DE_THI
 }

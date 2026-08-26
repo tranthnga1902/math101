@@ -29,4 +29,11 @@ public class Classroom extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private ClassStatus status = ClassStatus.ACTIVE;
+
+    @Column(length = 500)
+    private String description;
+
+    /** Người tạo lớp — để Admin biết lớp nào do giáo viên nào lập ra. */
+    @Column(name = "created_by")
+    private Long createdBy;
 }

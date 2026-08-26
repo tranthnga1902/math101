@@ -12,6 +12,7 @@ public record DocumentUpdateRequest(
         @NotNull DocumentType docType,
         @NotNull DocumentAudience audience,
         Long gradeId,
+        Long chapterId,
         Long subjectId,
         DocumentStatus status,
         Integer totalPages,

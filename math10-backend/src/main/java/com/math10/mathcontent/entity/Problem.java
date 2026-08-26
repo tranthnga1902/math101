@@ -11,6 +11,11 @@ public class Problem extends BaseEntity {
  @Column(name="qr_slug",unique=true,length=8) private String qrSlug;
  @Column(name="statement_latex",nullable=false,columnDefinition="text") private String statementLatex;
  @Column(name="content_html",columnDefinition="text") private String contentHtml;
+ @Column(name="option_a",columnDefinition="text") private String optionA;
+ @Column(name="option_b",columnDefinition="text") private String optionB;
+ @Column(name="option_c",columnDefinition="text") private String optionC;
+ @Column(name="option_d",columnDefinition="text") private String optionD;
+ @Column(name="correct_option",length=1) private String correctOption;
  @Column(name="problem_kind",nullable=false,length=20) private String problemKind;
  @Column(name="easier_problem_id") private Long easierProblemId;
  @Column(name="equivalent_problem_id") private Long equivalentProblemId;

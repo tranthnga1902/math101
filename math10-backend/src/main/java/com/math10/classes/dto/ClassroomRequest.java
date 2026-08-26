@@ -12,6 +12,7 @@ public record ClassroomRequest(
         @NotNull(message = "Khối là bắt buộc")
         Long gradeId,
         @NotNull(message = "Trạng thái là bắt buộc")
-        ClassStatus status
+        ClassStatus status,
+        String description
 ) {
 }

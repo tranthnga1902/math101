@@ -16,6 +16,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.time.Duration;
@@ -32,6 +33,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserImportService {
     private static final int MAX_ROWS = 1_000;
+    private static final int MAX_FILE_BYTES = 10 * 1024 * 1024;
     private static final Set<String> ROLES = Set.of("ADMIN", "TEACHER", "STUDENT");
     private static final String XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -52,10 +54,36 @@ public class UserImportService {
         );
     }
 
+    public UserImportPreviewResponse uploadAndPreview(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new BusinessException("File import không được rỗng");
+        if (file.getSize() > MAX_FILE_BYTES) throw new BusinessException("File import vượt quá 10MB");
+        String fileName = file.getOriginalFilename() == null ? "import.xlsx" : file.getOriginalFilename();
+        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
+            throw new BusinessException("Chỉ hỗ trợ file Excel .xlsx");
+        }
+        String objectKey = "admin/user-imports/" + UUID.randomUUID() + "-"
+                + fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+        try {
+            storage.putObject(objectKey, file.getBytes(), XLSX_CONTENT_TYPE);
+        } catch (java.io.IOException exception) {
+            throw new BusinessException("Không thể đọc file tải lên");
+        }
+        return preview(objectKey);
+    }
+
     public UserImportPreviewResponse preview(String objectKey) {
-        List<UserImportRow> rows = parse(storage.readObject(objectKey));
+        List<UserImportRow> rows = parse(readImportFile(objectKey));
         int valid = (int) rows.stream().filter(UserImportRow::valid).count();
         return new UserImportPreviewResponse(objectKey, rows.size(), valid, rows.size() - valid, rows);
+    }
+
+    /** File danh sách tài khoản là Excel, không có lý do để nặng — chặn ngay để khỏi ngốn RAM. */
+    private byte[] readImportFile(String objectKey) {
+        byte[] bytes = storage.readObject(objectKey);
+        if (bytes.length > MAX_FILE_BYTES) {
+            throw new BusinessException("File import vượt quá 10MB");
+        }
+        return bytes;
     }
 
     public byte[] template() {
@@ -77,7 +105,7 @@ public class UserImportService {
 
     @Transactional
     public UserImportResult confirm(String objectKey) {
-        List<UserImportRow> rows = parse(storage.readObject(objectKey));
+        List<UserImportRow> rows = parse(readImportFile(objectKey));
         List<String> errors = new ArrayList<>();
         int created = 0;
         int skipped = 0;
@@ -87,9 +115,9 @@ public class UserImportService {
                 errors.add("Dòng " + row.rowNumber() + ": " + String.join(", ", row.errors()));
                 continue;
             }
-            if (users.existsByUsernameIgnoreCase(row.username()) || users.existsByEmail(row.email())) {
+            if (users.existsUsernameIncludingDeleted(row.username()) || users.existsEmailIncludingDeleted(row.email())) {
                 skipped++;
-                errors.add("Dòng " + row.rowNumber() + ": username hoặc email đã tồn tại");
+                errors.add("Dòng " + row.rowNumber() + ": username hoặc email đã tồn tại (kể cả tài khoản đã xóa)");
                 continue;
             }
             var user = new com.math10.users.entity.User();

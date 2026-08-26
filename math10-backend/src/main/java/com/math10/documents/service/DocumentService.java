@@ -23,9 +23,23 @@ import java.util.Map;
 
 public interface DocumentService {
     List<DocumentResponse> listDocuments();
-    DocumentResponse upload(String title, DocumentType docType, DocumentAudience audience, Long gradeId, MultipartFile file);
+    List<DocumentResponse> listStudentDocuments();
+    List<DocumentResponse> listStudentExamDocuments();
+    DocumentResponse upload(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long taxonomyNodeId, MultipartFile file, String videoUrl);
+    List<DocumentResponse> listByTaxonomyNode(Long taxonomyNodeId);
+    DocumentResponse attachToTaxonomyNode(Long documentId, Long taxonomyNodeId);
+    Map<Long, Integer> countsByTaxonomyNode();
+    List<DocumentResponse> listMyDocuments();
+    DocumentResponse uploadMyDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, MultipartFile file, String videoUrl);
+    DocumentResponse updateMyDocument(Long id, DocumentUpdateRequest request);
+    DocumentResponse archiveMyDocument(Long id);
+    DocumentResponse restoreMyDocument(Long id);
     DocumentResponse updateDocument(Long id, DocumentUpdateRequest request);
     void deleteDocument(Long id);
+    DocumentResponse convertToMarkdown(Long id);
+    DocumentResponse saveMarkdown(Long id, String markdown);
+    byte[] readDocumentBytes(Long id);
+    byte[] readLessonDocumentBytes(Long lessonId, Long id);
     List<LessonDocumentResponse> listLessonDocuments(Long lessonId);
     LessonDocumentResponse attachToLesson(Long lessonId, LessonDocumentRequest request);
     LessonDocumentResponse updateLessonDocument(Long lessonId, Long id, LessonDocumentUpdateRequest request);

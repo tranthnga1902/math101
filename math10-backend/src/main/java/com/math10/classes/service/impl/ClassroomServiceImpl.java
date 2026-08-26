@@ -4,6 +4,8 @@ import com.math10.classes.dto.ClassroomRequest;
 import com.math10.classes.dto.ClassroomResponse;
 import com.math10.classes.entity.ClassStatus;
 import com.math10.classes.entity.Classroom;
+import com.math10.classes.repository.ClassCurriculumRepository;
+import com.math10.classes.repository.ClassDocumentRepository;
 import com.math10.classes.repository.ClassroomRepository;
 import com.math10.classes.service.ClassroomService;
 import com.math10.common.exception.ResourceNotFoundException;
@@ -28,12 +30,19 @@ public class ClassroomServiceImpl implements ClassroomService {
     private final ClassTeacherRepository classTeachers;
     private final ClassStudentRepository classStudents;
     private final ClassCourseRepository classCourses;
+    private final ClassCurriculumRepository classCurriculum;
+    private final ClassDocumentRepository classDocuments;
     private final CurrentUserService current;
     private final AuditService audit;
 
     @Override
     @Transactional(readOnly = true)
     public Page<ClassroomResponse> findAll(String search, Long gradeId, ClassStatus status, Pageable pageable) {
+        // Giáo viên chỉ thấy lớp mình phụ trách; admin thấy tất cả.
+        java.util.List<Long> ownClassIds = "ADMIN".equals(current.requireRoleCode())
+                ? null
+                : classTeachers.findByTeacherId(current.requireUserId()).stream().map(ClassTeacher::getClassId).toList();
+        if (ownClassIds != null && ownClassIds.isEmpty()) return Page.empty(pageable);
         return classroomRepository.findAll((root, query, cb) -> {
             var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
             if (search != null && !search.isBlank()) {
@@ -42,6 +51,7 @@ public class ClassroomServiceImpl implements ClassroomService {
             }
             if (gradeId != null) predicates.add(cb.equal(root.get("gradeId"), gradeId));
             if (status != null) predicates.add(cb.equal(root.get("status"), status));
+            if (ownClassIds != null) predicates.add(root.get("id").in(ownClassIds));
             return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
         }, pageable).map(this::toResponse);
     }
@@ -51,8 +61,10 @@ public class ClassroomServiceImpl implements ClassroomService {
     public ClassroomResponse create(ClassroomRequest request) {
         Classroom classroom = new Classroom();
         apply(request, classroom);
+        classroom.setCreatedBy(current.requireUserId());
         classroom=classroomRepository.save(classroom);
         if("TEACHER".equals(current.requireRoleCode())){ClassTeacher assignment=new ClassTeacher();assignment.setClassId(classroom.getId());assignment.setTeacherId(current.requireUserId());classTeachers.save(assignment);}
+        // Audit là kênh báo cho Admin biết giáo viên vừa lập lớp — hiện ở màn Nhật ký hệ thống.
         ClassroomResponse response=toResponse(classroom);audit.record("CREATE","CLASS",classroom.getId(),null,response.toString());return response;
     }
 
@@ -88,11 +100,14 @@ public class ClassroomServiceImpl implements ClassroomService {
         classroom.setName(request.name());
         classroom.setGradeId(request.gradeId());
         classroom.setStatus(request.status());
+        classroom.setDescription(request.description());
     }
 
     private ClassroomResponse toResponse(Classroom classroom) {
         return new ClassroomResponse(classroom.getId(), classroom.getCode(), classroom.getName(), classroom.getGradeId(), classroom.getStatus(),
+                classroom.getDescription(), classroom.getCreatedBy(),
                 classTeachers.countByClassId(classroom.getId()), classStudents.countByClassId(classroom.getId()), classCourses.countByClassId(classroom.getId()),
+                classCurriculum.countByClassId(classroom.getId()), classDocuments.countByClassId(classroom.getId()),
                 classroom.getCreatedAt(), classroom.getUpdatedAt());
     }
 }
