@@ -23,6 +23,7 @@ const sectionTargets: Record<string, string> = {
 const mainSections = new Set([
   "teacher-overview",
   "teacher-content",
+  "teacher-documents",
   "teacher-courses",
   "teacher-problems",
   "teacher-worksheets",
@@ -41,6 +42,8 @@ export function MainLayout({ session, children, onChangePassword, onLogout }: Ma
   const [active, setActive] = useState("teacher-overview");
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const navigate = (target: string) => {
+    if (target === "problem-create") window.dispatchEvent(new CustomEvent("math10:content-tab", { detail: "problems" }));
+    if (target === "course-create") window.dispatchEvent(new CustomEvent("math10:content-tab", { detail: "courses" }));
     const nextSection = sectionTargets[target] ?? target;
     setActive(nextSection);
     setPendingTarget(mainSections.has(target) ? null : target);

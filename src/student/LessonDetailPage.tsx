@@ -16,6 +16,8 @@ import {
   type StudentCourse,
 } from "../api";
 import { flattenLessons, formatPercent } from "./format";
+import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
+import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
 
 type LessonDetailPageProps = {
   session: AuthSession;
@@ -58,6 +60,8 @@ export function LessonDetailPage({
   const [docQuizResult, setDocQuizResult] = useState<Record<number, string>>({});
   const [savingProgress, setSavingProgress] = useState(false);
   const [error, setError] = useState("");
+  const [videoDoc, setVideoDoc] = useState<LessonDocument | null>(null);
+  const [pdfDoc, setPdfDoc] = useState<LessonDocument | null>(null);
 
   useEffect(() => {
     if (!ctx) return;
@@ -115,6 +119,8 @@ export function LessonDetailPage({
   const prev = currentIndex > 0 ? courseLessons[currentIndex - 1] : null;
   const next = currentIndex >= 0 && currentIndex < courseLessons.length - 1 ? courseLessons[currentIndex + 1] : null;
   const docs = docsQuery.data ?? [];
+  const videoDocs = docs.filter((doc) => doc.docType === "VIDEO");
+  const learningDocs = docs.filter((doc) => doc.docType !== "VIDEO");
   const hasQuiz = docs.some((doc) => (docQuestions[doc.id] ?? []).length > 0);
   const quizPassed = !hasQuiz || docs.every((doc) => {
     const qs = docQuestions[doc.id] ?? [];
@@ -124,7 +130,14 @@ export function LessonDetailPage({
 
   const openDocument = async (doc: LessonDocument) => {
     try {
-      await openLessonDocumentFile(session, lesson.id, doc);
+      if (doc.docType === "VIDEO") {
+        setVideoDoc(doc);
+        await recordLessonDocumentStudy(session, lesson.id, doc.id, 30).catch(() => undefined);
+        return;
+      }
+      // PDF xem ngay trong app; định dạng khác (docx…) vẫn đẩy sang tab mới như trước.
+      if (isPdfDocument(doc)) setPdfDoc(doc);
+      else await openLessonDocumentFile(session, lesson.id, doc);
       await recordLessonDocumentStudy(session, lesson.id, doc.id, 30).catch(() => undefined);
     } catch (reason) {
       setError((reason as Error).message);
@@ -133,6 +146,9 @@ export function LessonDetailPage({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {videoDoc && <YoutubeVideoModal title={videoDoc.title} url={videoDoc.fileUrl} onClose={() => setVideoDoc(null)} />}
+      {pdfDoc && <PdfViewer session={session} lessonId={lesson.id} documentId={pdfDoc.id} title={pdfDoc.title}
+        fileUrl={pdfDoc.fileUrl} initialPage={pdfDoc.startPage} onClose={() => setPdfDoc(null)} />}
       <article className="lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-6 space-y-6">
         <header className="border-b border-outline-variant pb-5">
           <div className="flex items-center gap-2 text-xs text-on-surface-variant">
@@ -150,7 +166,7 @@ export function LessonDetailPage({
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-on-surface-variant text-[18px]">menu_book</span>
-              {docs.length} tài liệu đính kèm
+              {videoDocs.length ? `${videoDocs.length} video · ` : ""}{learningDocs.length} tài liệu đính kèm
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-on-surface-variant">Tiến độ bài học</span>
@@ -177,13 +193,37 @@ export function LessonDetailPage({
           )}
         </section>
 
-        {!!docs.length && (
+        {!!videoDocs.length && (
+          <section className="border-t border-outline-variant pt-6 space-y-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">smart_display</span>
+              Video bài học
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {videoDocs.map((doc) => (
+                <article key={doc.id} className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+                  <button type="button" onClick={() => void openDocument(doc)} className="group relative flex aspect-video w-full items-center justify-center overflow-hidden bg-slate-900 text-white">
+                    {youtubeThumbnailUrl(doc.fileUrl) && <img src={youtubeThumbnailUrl(doc.fileUrl)!} alt={`Ảnh video ${doc.title}`} className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105" />}
+                    <span className="material-symbols-outlined relative z-10 text-[64px] drop-shadow-lg transition-transform group-hover:scale-110">play_circle</span>
+                  </button>
+                  <div className="p-4">
+                    <b className="block text-sm">{doc.title}</b>
+                    {doc.teacherNote && <p className="mt-1 text-xs text-on-surface-variant">{doc.teacherNote}</p>}
+                    <small className="mt-2 block text-xs text-on-surface-variant">{doc.required ? "Video bắt buộc" : "Video tham khảo"}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!!learningDocs.length && (
           <section className="border-t border-outline-variant pt-6 space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">auto_stories</span>
               Tài liệu học tập
             </h2>
-            {docs.map((doc, index) => {
+            {learningDocs.map((doc, index) => {
               const qs = docQuestions[doc.id] ?? [];
               return (
                 <article key={doc.id} className="border border-outline-variant rounded-xl p-4 flex flex-col md:flex-row gap-4">
@@ -259,7 +299,7 @@ export function LessonDetailPage({
                     onClick={() => void openDocument(doc)}
                     className="inline-flex h-10 px-4 items-center justify-center rounded-lg border border-outline-variant text-sm font-medium hover:border-primary hover:text-primary transition-colors"
                   >
-                    {doc.docType === "VIDEO" ? "Mở video" : doc.docType === "SGK" ? "Mở SGK" : "Xem tài liệu"}
+                    {doc.docType === "SGK" ? "Mở SGK" : "Xem tài liệu"}
                   </button>
                 </article>
               );
@@ -314,7 +354,7 @@ export function LessonDetailPage({
               <button
                 type="button"
                 onClick={() => onOpenLesson(next.lesson.id)}
-                className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary-fixed text-on-primary text-sm font-medium"
+                className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium hover:opacity-90"
               >
                 Bài tiếp theo
                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>

@@ -49,7 +49,11 @@ export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, 
   // Chỉ fetch + render live khi không có thumbnailUrl
   useEffect(() => {
     if (!fileUrl || thumbnailUrl) return;
-    const resolved = resolveUrl(fileUrl);
+    // Read remote PDFs through our authenticated backend so rendering does
+    // not depend on the R2 public domain's browser CORS configuration.
+    const resolved = /^https?:\/\//i.test(fileUrl)
+      ? `${API_BASE_URL}/api/admin/documents/content?url=${encodeURIComponent(fileUrl)}`
+      : resolveUrl(fileUrl);
     const key = `${resolved}#p${pageNumber}#s${effectiveScale}`;
     if (cache.has(key)) {
       setDataUrl(cache.get(key)!);

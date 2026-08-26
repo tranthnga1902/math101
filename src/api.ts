@@ -29,21 +29,45 @@ export type Subject = { id:number; code:string; name:string };
 export type Grade = { id:number; code:string; gradeNumber:number; name:string };
 export type Topic = { id:number; name:string; description:string };
 export type ProblemType = { id:number; topicId:number; name:string; recognitionSigns:string; generalMethod:string; solutionOutline:string; commonMistakes:string };
-export type Problem = { id:number; problemTypeId:number; publicCode:string; qrSlug:string|null; statementLatex:string; contentHtml:string; difficulty:string; status:string; problemKind:"PRACTICE"|"EXAM"; examPart:string|null; easierProblemId:number|null; equivalentProblemId:number|null; harderProblemId:number|null };
+export type TaxonomyNode = {
+  id: number;
+  parentId: number | null;
+  depth: number;
+  title: string;
+  description: string | null;
+  slug: string;
+  orderNo: number;
+  proposedBy: number | null;
+  status: "ACTIVE" | "PENDING" | "MERGED" | "ARCHIVED";
+  mergedInto: number | null;
+  questionCountShared: number;
+  questionCountPrivate: number;
+  documentCount: number;
+  worksheetCount: number;
+  aliases: { id: number; alias: string }[];
+};
+export type TaxonomyDuplicateSuggestion = { nodeAId: number; nodeATitle: string; nodeBId: number; nodeBTitle: string; similarity: number };
+export type TaxonomyArchiveResult = { node: TaxonomyNode; nodesArchivedCount: number; openAssignmentsAffected: number; questionsKept: number };
+export type Problem = { id:number; problemTypeId:number; publicCode:string; qrSlug:string|null; statementLatex:string; contentHtml:string; difficulty:string; status:string; problemKind:"PRACTICE"|"EXAM"; examPart:string|null; easierProblemId:number|null; equivalentProblemId:number|null; harderProblemId:number|null;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null;correctOption:string|null };
 export type Hint = { id:number; problemId:number; contentLatex:string; orderIndex:number };
 export type SolutionStep = { id:number; problemId:number; title:string; contentLatex:string; orderIndex:number };
 export type Worksheet = { id:number; name:string; columnsCount:number; showQr:boolean; showStudentFields:boolean; createdBy:number; lessonId:number|null; items:{id:number;problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string}[] };
+export type WorksheetImportIssue={severity:"ERROR"|"WARNING";message:string};
+export type WorksheetImportQuestion={questionNo:number;statement:string;optionA:string;optionB:string;optionC:string;optionD:string;correctOption:string|null;answerSource:"BOLD_UNDERLINE"|"ANSWER_TABLE"|"INLINE_MARKER"|"NONE";confidence:number;issues:WorksheetImportIssue[]};
+export type WorksheetImportPreview={fileName:string;totalQuestions:number;errorCount:number;warningCount:number;questions:WorksheetImportQuestion[]};
 export type StudentCourse={id:number;code:string;name:string;description:string;status:string;chapters:{id:number;title:string;orderIndex:number;lessons:{id:number;title:string;summary:string;contentHtml:string;orderIndex:number;status:string;progressStatus:string;openedAt:string|null;completedAt:string|null;completionPercent:number;locked:boolean;resources:{id:number;type:string;title:string;externalUrl:string;fileAssetId:number|null;textContent:string;orderIndex:number}[];worksheets:{id:number;name:string}[]}[]}[]};
 export type PublicProblem={problem:Problem;problemType:ProblemType;hints:Hint[];solutions:SolutionStep[];similar:{relation:"EASIER"|"EQUIVALENT"|"HARDER";problem:Problem}[]};
 type GeneratedClassroom=components["schemas"]["ClassroomResponse"];
-export type Classroom=Required<Pick<GeneratedClassroom,"id"|"code"|"name"|"gradeId"|"status"|"teacherCount"|"studentCount"|"courseCount">>&Pick<GeneratedClassroom,"createdAt"|"updatedAt">;
-export type ClassroomInput=components["schemas"]["ClassroomRequest"];
+/** Các trường của module Lớp học khai báo tay vì src/api/types.ts chỉ sinh lại được khi backend đang chạy (npm run gen:api). */
+export type Classroom=Required<Pick<GeneratedClassroom,"id"|"code"|"name"|"gradeId"|"status"|"teacherCount"|"studentCount"|"courseCount">>&Pick<GeneratedClassroom,"createdAt"|"updatedAt">&{description?:string|null;createdBy?:number|null;curriculumCount?:number;documentCount?:number};
+export type ClassroomInput=components["schemas"]["ClassroomRequest"]&{description?:string|null};
 export type ClassroomPage=components["schemas"]["PageClassroomResponse"];
 export type TeacherStats={classes:number;studentsBelow50:number;worksheets:number};
 export type ClassResult={classId:number;className:string;classCode:string;teacherName:string|null;status:string;diemTb:number;hoanThanh:number;tiLe:number};
 export type GradebookRow={student_id:number;full_name:string;username:string;assignment_id:number;title:string;status:string;completion_percent:number};
 export type LessonResource={id:number;lessonId:number;type:string;title:string;externalUrl:string;fileAssetId:number|null;textContent:string;orderIndex:number};
-export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null};
+export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;chapterId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null;folderId:number|null;contentMarkdown:string|null;taxonomyNodeId:number|null};
+export type DocumentFolder={id:number;name:string;documentCount:number;createdAt:string};
 export type TextbookItem={id:number;title:string;docType:string;audience:string;gradeId:number|null;subjectId:number|null;status:string;totalPages:number|null;basePageOffset:number;fileUrl:string;thumbnailUrl:string|null;createdAt:string};
 export type TextbookDetail={id:number;title:string;docType:string;audience:string;gradeId:number|null;subjectId:number|null;status:string;totalPages:number|null;basePageOffset:number;fileUrl:string;pageMappings:{pdfPage:number;bookPageLabel:string|null;pageType:string;chapterTitle:string|null;lessonTitle:string|null}[]};
 export type TextbookOpen={documentId:number;title:string;fileUrl:string;pdfPage:number;totalPages:number|null};
@@ -53,8 +77,27 @@ export type LessonDocumentQuestion={id:number;lessonDocumentId:number;questionTe
 export type LessonDocumentProgress={id:number;lessonDocumentId:number;studentId:number;status:string;openedAt:string|null;lastOpenedAt:string|null;openCount:number;totalSeconds:number;quizScore:number|null;completedAt:string|null};
 export type FileAsset={id:number;fileName:string;fileUrl:string;mimeType:string;fileSize:number};
 export type Enrollment={id:number;classId:number;userId:number|null;courseId:number|null;label:string};
-export type Assignment={id:number;classId:number;lessonId:number|null;worksheetId:number|null;title:string;dueAt:string|null;status:string;createdBy:number};
-export type StudentAssignment={id:number;title:string;dueAt:string|null;status:string;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string}[]};
+export type Assignment={id:number;classId:number;lessonId:number|null;worksheetId:number|null;documentId:number|null;title:string;dueAt:string|null;status:string;requirement:ClassRequirement;createdBy:number};
+/** Bắt buộc thì vào sổ điểm; tự chọn chỉ tính mức độ tự giác, không trộn vào điểm. */
+export type ClassRequirement="BAT_BUOC"|"TU_CHON";
+export type ClassCurriculumItem={id:number;taxonomy_node_id:number;order_no:number;note:string|null;created_at:string;title:string;depth:number;slug:string;parent_title:string|null;document_count:number};
+export type ClassDocumentItem={id:number;document_id:number;requirement:ClassRequirement;note:string|null;attached_at:string;title:string;doc_type:string;file_url:string;thumbnail_url:string|null;total_pages:number|null;owner_id:number|null;has_markdown:boolean;source:"KHO_CHUNG"|"RIENG";owner_name:string|null;taxonomy_title:string|null;attached_by_name:string|null};
+export type ClassLibraryDocument={id:number;title:string;doc_type:string;file_url:string;thumbnail_url:string|null;total_pages:number|null;owner_id:number|null;taxonomy_node_id:number|null;created_at:string;source:"KHO_CHUNG"|"RIENG";taxonomy_title:string|null;attached:boolean};
+export type ClassProgressRow={student_id:number;full_name:string;username:string|null;required_total:number;required_submitted:number;required_avg_score:number|null;optional_total:number;optional_submitted:number;last_submitted_at:string|null};
+export type SubmissionLogRow={id:number;assignment_id:number;title:string;student_id:number;full_name:string;username:string|null;action:"SUBMITTED"|"GRADED"|"RETURNED";requirement:ClassRequirement;score:number|null;note:string|null;created_at:string;actor_id:number|null;actor_name:string|null};
+export type RosterStudent={id:number;student_id:number;joined_at:string;full_name:string;username:string|null;email:string;phone:string|null;status:string};
+export type RosterCandidate={id:number;full_name:string;username:string|null;email:string};
+export type RosterRowStatus="TAO_MOI"|"CO_SAN"|"DA_TRONG_LOP"|"LOI";
+export type RosterImportRow={rowNumber:number;username:string;email:string;fullName:string;phone:string;matchedUserId:number|null;status:RosterRowStatus;errors:string[]};
+export type RosterImportPreview={objectKey:string;total:number;newAccounts:number;existingAccounts:number;alreadyInClass:number;invalid:number;rows:RosterImportRow[]};
+export type RosterImportResult={created:number;enrolled:number;skipped:number;errors:string[]};
+export type MyClass={id:number;code:string;name:string;status:string;description:string|null;grade_name:string|null;teacher_names:string|null;student_count:number;curriculum_count:number;document_count:number;required_total:number;required_submitted:number;required_avg_score:number|null;optional_total:number;optional_submitted:number};
+export type MyClassTask={id:number;title:string;due_at:string|null;status:string;requirement:ClassRequirement;lesson_id:number|null;worksheet_id:number|null;document_id:number|null;worksheet_name:string|null;document_title:string|null;document_file_url:string|null;document_doc_type:string|null;grading_status:string;completion_percent:number;opened_at:string|null;submitted_at:string|null;returned_at:string|null;score:number|null;max_score:number|null;teacher_feedback:string|null};
+export type AdminClassOverviewRow={id:number;code:string;name:string;grade_id:number;status:string;description:string|null;created_at:string;grade_name:string|null;created_by_name:string|null;created_by_role:string|null;teacher_names:string|null;teacher_count:number;student_count:number;course_count:number;curriculum_count:number;document_count:number;required_total:number;optional_total:number;submission_count:number;last_submitted_at:string|null};
+export type StudentAssignment={id:number;title:string;dueAt:string|null;status:string;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;gradingStatus:string;score:number|null;maxScore:number|null;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null}[]};
+export type AssignmentResult={assignmentId:number;studentId:number;gradingStatus:string;completionPercent:number;submittedAt:string|null;gradedAt:string|null;returnedAt:string|null;score:number|null;maxScore:number|null;correctCount:number|null;totalQuestions:number|null;teacherFeedback:string|null;answers:Record<number,string>};
+export type TeacherSubmission={id:number;assignment_id:number;title:string;student_id:number;full_name:string;username:string;submitted_at:string;graded_at:string|null;returned_at:string|null;score:number|null;max_score:number;correct_count:number|null;total_questions:number|null;teacher_feedback:string|null;grading_status:string;answer_json:string};
+export type ItemAnalysis={problemId:number;orderNo:number;publicCode:string;correct:number;total:number;rate:number;warning:boolean};
 export type MetadataOption={value:string;label:string};
 export type Metadata={
   roles:MetadataOption[];
@@ -246,17 +289,14 @@ export const disableUser=(s:AuthSession,id:number)=>request<void>(`/users/${id}/
 export const resetUserPassword=(s:AuthSession,id:number,newPassword:string)=>request<void>(`/users/${id}/reset-password`,{method:"PATCH",body:JSON.stringify({newPassword,confirmPassword:newPassword})},s.accessToken);
 
 export async function uploadUserImport(session: AuthSession, file: File) {
-  const presign = await request<components["schemas"]["UserImportPresignResponse"]>("/users/import/presign", {
-    method: "POST",
-    body: JSON.stringify({fileName: file.name, contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
-  }, session.accessToken);
-  if (!presign.uploadUrl || !presign.objectKey) throw new Error("API không trả về URL tải lên");
-  const uploadUrl = presign.uploadUrl;
-  const uploaded = await withTimeout(UPLOAD_TIMEOUT_MS, signal =>
-    fetch(uploadUrl, {method: "PUT", headers: {"Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, body: file, signal})
-  );
-  if (!uploaded.ok) throw new Error(`Tải file lên R2 thất bại (${uploaded.status})`);
-  return request<UserImportPreview>("/users/import/preview", {method: "POST", body: JSON.stringify({objectKey: presign.objectKey})}, session.accessToken);
+  const form = new FormData();
+  form.append("file", file);
+  const response = await withTimeout(UPLOAD_TIMEOUT_MS, signal => fetch(`${API_BASE_URL}/api/users/import/upload`, {
+    method: "POST", headers: {Authorization: `Bearer ${session.accessToken}`}, body: form, signal,
+  }));
+  const payload = await response.json().catch(() => null) as ApiEnvelope<UserImportPreview> | null;
+  if (!response.ok || !payload?.success) throw new Error(payload?.message || `Không thể tải file (${response.status})`);
+  return payload.data;
 }
 
 export const confirmUserImport=(session:AuthSession,objectKey:string)=>request<UserImportResult>("/users/import/confirm",{method:"POST",body:JSON.stringify({objectKey})},session.accessToken);
@@ -286,8 +326,26 @@ export const deleteTopic=(s:AuthSession,id:number)=>request<void>(`/math/topics/
 export const getProblemTypes=(s:AuthSession,topicId:number)=>request<ProblemType[]>(`/math/types?topicId=${topicId}`,{},s.accessToken);
 export const saveProblemType=(s:AuthSession,x:Omit<ProblemType,"id">,id?:number)=>request<ProblemType>(`/math/types${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteProblemType=(s:AuthSession,id:number)=>request<void>(`/math/types/${id}`,{method:"DELETE"},s.accessToken);
+
+export const getTaxonomyTree=(s:AuthSession,subject?:string)=>request<TaxonomyNode[]>(`/admin/taxonomy/tree${subject?`?subject=${encodeURIComponent(subject)}`:""}`,{},s.accessToken);
+export const createTaxonomyNode=(s:AuthSession,x:{title:string;description?:string|null},parentId?:number)=>request<TaxonomyNode>(`/admin/taxonomy/nodes${parentId?`?parentId=${parentId}`:""}`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const updateTaxonomyNode=(s:AuthSession,id:number,x:{title:string;description?:string|null})=>request<TaxonomyNode>(`/admin/taxonomy/nodes/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const reorderTaxonomyNodes=(s:AuthSession,ids:number[],parentId?:number)=>request<void>(`/admin/taxonomy/reorder${parentId?`?parentId=${parentId}`:""}`,{method:"PATCH",body:JSON.stringify({ids})},s.accessToken);
+export const addTaxonomyAlias=(s:AuthSession,nodeId:number,alias:string)=>request<TaxonomyNode>(`/admin/taxonomy/nodes/${nodeId}/aliases`,{method:"POST",body:JSON.stringify({alias})},s.accessToken);
+export const removeTaxonomyAlias=(s:AuthSession,nodeId:number,aliasId:number)=>request<TaxonomyNode>(`/admin/taxonomy/nodes/${nodeId}/aliases/${aliasId}`,{method:"DELETE"},s.accessToken);
+export const archiveTaxonomyNode=(s:AuthSession,id:number)=>request<TaxonomyArchiveResult>(`/admin/taxonomy/nodes/${id}/archive`,{method:"POST"},s.accessToken);
+export const archiveTaxonomyBranch=(s:AuthSession,id:number)=>request<TaxonomyArchiveResult>(`/admin/taxonomy/nodes/${id}/archive-branch`,{method:"POST"},s.accessToken);
+export const unarchiveTaxonomyNode=(s:AuthSession,id:number)=>request<TaxonomyNode>(`/admin/taxonomy/nodes/${id}/unarchive`,{method:"POST"},s.accessToken);
+export const mergeTaxonomyNodes=(s:AuthSession,sourceId:number,targetId:number)=>request<void>(`/admin/taxonomy/merge`,{method:"POST",body:JSON.stringify({sourceId,targetId})},s.accessToken);
+export const moveTaxonomyNode=(s:AuthSession,id:number,newParentId:number|null)=>request<TaxonomyNode>(`/admin/taxonomy/nodes/${id}/move${newParentId?`?newParentId=${newParentId}`:""}`,{method:"PATCH"},s.accessToken);
+export const deleteTaxonomyNode=(s:AuthSession,id:number)=>request<void>(`/admin/taxonomy/nodes/${id}`,{method:"DELETE"},s.accessToken);
+/** Cây chỉ đọc cho giáo viên — chỉ gồm mục đang hoạt động, không kèm thao tác chỉnh sửa nào. */
+export const getTaxonomyTreeReadOnly=(s:AuthSession,subject?:string)=>request<TaxonomyNode[]>(`/taxonomy/tree${subject?`?subject=${encodeURIComponent(subject)}`:""}`,{},s.accessToken);
+export const getStudentTaxonomyTree=(s:AuthSession,subject?:string)=>request<TaxonomyNode[]>(`/student/taxonomy${subject?`?subject=${encodeURIComponent(subject)}`:""}`,{},s.accessToken);
+export const getTaxonomyDuplicates=(s:AuthSession)=>request<TaxonomyDuplicateSuggestion[]>(`/admin/taxonomy/duplicates`,{},s.accessToken);
+export const getTaxonomyHistory=(s:AuthSession,id:number)=>request<AuditLog[]>(`/admin/taxonomy/nodes/${id}/history`,{},s.accessToken);
 export const getProblems=(s:AuthSession,typeId:number)=>request<Problem[]>(`/math/problems?problemTypeId=${typeId}`,{},s.accessToken);
-export type ProblemInput={problemTypeId:number;publicCode?:string;statementLatex:string;contentHtml?:string;difficulty:string;status:string;problemKind:"PRACTICE"|"EXAM";examPart?:string|null;easierProblemId?:number|null;equivalentProblemId?:number|null;harderProblemId?:number|null};
+export type ProblemInput={problemTypeId:number;publicCode?:string;statementLatex:string;contentHtml?:string;difficulty:string;status:string;problemKind:"PRACTICE"|"EXAM";examPart?:string|null;easierProblemId?:number|null;equivalentProblemId?:number|null;harderProblemId?:number|null;optionA?:string|null;optionB?:string|null;optionC?:string|null;optionD?:string|null;correctOption?:string|null};
 export const saveProblem=(s:AuthSession,x:ProblemInput,id?:number)=>request<Problem>(`/math/problems${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteProblem=(s:AuthSession,id:number)=>request<void>(`/math/problems/${id}`,{method:"DELETE"},s.accessToken);
 export const getHints=(s:AuthSession,id:number)=>request<Hint[]>(`/math/problems/${id}/hints`,{},s.accessToken);
@@ -301,9 +359,15 @@ export const reorderSolutions=(s:AuthSession,problemId:number,ids:number[])=>req
 export const getWorksheets=(s:AuthSession)=>request<Worksheet[]>("/worksheets",{},s.accessToken);
 export const saveWorksheet=(s:AuthSession,x:{name:string;columnsCount:number;showQr:boolean;showStudentFields:boolean;problemIds:number[]},id?:number)=>request<Worksheet>(`/worksheets${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const attachWorksheetToLesson=(s:AuthSession,worksheetId:number,lessonId:number|null)=>request<Worksheet>(`/worksheets/${worksheetId}/lesson`,{method:"PATCH",body:JSON.stringify({lessonId})},s.accessToken);
+export async function parseWorksheetDocx(s:AuthSession,file:File){const form=new FormData();form.append("file",file);const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/worksheets/import/docx`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));const payload=await response.json().catch(()=>null) as ApiEnvelope<WorksheetImportPreview>|null;if(!response.ok||!payload?.success)throw new Error(payload?.message||`Không thể bóc đề (${response.status})`);return payload.data}
+export async function parseWorksheetFile(s:AuthSession,file:File){const extension=file.name.toLowerCase().endsWith(".pdf")?"pdf":"docx";const form=new FormData();form.append("file",file);const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/worksheets/import/${extension}`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));const payload=await response.json().catch(()=>null) as ApiEnvelope<WorksheetImportPreview>|null;if(!response.ok||!payload?.success)throw new Error(payload?.message||`Không thể bóc đề (${response.status})`);return payload.data}
+export const publishWorksheetImport=(s:AuthSession,input:{name:string;problemTypeId:number;questions:{statement:string;optionA:string;optionB:string;optionC:string;optionD:string;correctOption:string}[]})=>request<Worksheet>("/worksheets/import/publish",{method:"POST",body:JSON.stringify(input)},s.accessToken);
 export const getMyCourses=(s:AuthSession)=>request<StudentCourse[]>("/student/courses",{},s.accessToken);
 export const getMyAssignments=(s:AuthSession)=>request<StudentAssignment[]>("/student/assignments",{},s.accessToken);
 export const markAssignment=(s:AuthSession,id:number,completed:boolean)=>request<unknown>(`/assignment-progress/${id}/${completed?"completed":"opened"}`,{method:"PATCH"},s.accessToken);
+export const submitAssignment=(s:AuthSession,id:number,answers:Record<number,string>)=>request<AssignmentResult>(`/assignment-progress/${id}/submit`,{method:"POST",body:JSON.stringify({answers})},s.accessToken);
+export const saveAssignmentAnswers=(s:AuthSession,id:number,answers:Record<number,string>)=>request<AssignmentResult>(`/assignment-progress/${id}/answers`,{method:"PUT",body:JSON.stringify({answers})},s.accessToken);
+export const getAssignmentResult=(s:AuthSession,id:number)=>request<AssignmentResult>(`/assignment-progress/${id}/result`,{},s.accessToken);
 export const getPublicProblem=(slug:string)=>request<PublicProblem>(`/public/problems/${encodeURIComponent(slug)}`);
 export const markProblemProgress=(s:AuthSession,problemId:number,completed:boolean)=>request<{problem_id:number;status:string;opened_at:string;completed_at:string|null}>(`/problem-progress/${problemId}/${completed?"completed":"opened"}`,{method:"PATCH"},s.accessToken);
 export async function getClasses(s:AuthSession){const p=await getClassesPage(s,{size:100});return (p.content??[]) as Classroom[]}
@@ -315,6 +379,11 @@ export const getTeacherStats=(s:AuthSession)=>request<TeacherStats>("/teacher/da
 export const getTeacherClasses=(s:AuthSession)=>request<Classroom[]>("/teacher/classes",{},s.accessToken);
 export const getClassResults=(s:AuthSession)=>request<ClassResult[]>("/teacher/class-results",{},s.accessToken);
 export const getGradebook=(s:AuthSession,classId:number)=>request<GradebookRow[]>(`/teacher/gradebook?classId=${classId}`,{},s.accessToken);
+export const getTeacherSubmissions=(s:AuthSession,classId:number)=>request<TeacherSubmission[]>(`/teacher/submissions?classId=${classId}`,{},s.accessToken);
+export const gradeSubmission=(s:AuthSession,id:number,score:number,feedback:string)=>request<void>(`/teacher/submissions/${id}/grade`,{method:"PUT",body:JSON.stringify({score,feedback})},s.accessToken);
+export const returnSubmission=(s:AuthSession,id:number)=>request<void>(`/teacher/submissions/${id}/return`,{method:"PATCH"},s.accessToken);
+export const getItemAnalysis=(s:AuthSession,assignmentId:number)=>request<ItemAnalysis[]>(`/teacher/submissions/assignments/${assignmentId}/analysis`,{},s.accessToken);
+export const regradeAssignment=(s:AuthSession,assignmentId:number)=>request<{updated:number}>(`/teacher/submissions/assignments/${assignmentId}/regrade`,{method:"POST"},s.accessToken);
 export const getResources=(s:AuthSession,lessonId:number)=>request<LessonResource[]>(`/resources?lessonId=${lessonId}`,{},s.accessToken);
 export const saveResource=(s:AuthSession,x:Omit<LessonResource,"id">,id?:number)=>request<LessonResource>(`/resources${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteResource=(s:AuthSession,id:number)=>request<void>(`/resources/${id}`,{method:"DELETE"},s.accessToken);
@@ -325,8 +394,73 @@ export const getEnrollments=(s:AuthSession,type:"class-teachers"|"class-students
 export const addEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",x:{classId:number;userId?:number;courseId?:number})=>request<void>(`/enrollments/${type}`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
 export const removeEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",id:number)=>request<void>(`/enrollments/${type}/${id}`,{method:"DELETE"},s.accessToken);
 export const getAssignments=(s:AuthSession,classId:number)=>request<Assignment[]>(`/assignments?classId=${classId}`,{},s.accessToken);
-export const saveAssignment=(s:AuthSession,x:{classId:number;lessonId:number|null;worksheetId:number|null;title:string;dueAt:string|null;status:string})=>request<Assignment>("/assignments",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export type AssignmentInput={classId:number;lessonId:number|null;worksheetId:number|null;documentId?:number|null;title:string;dueAt:string|null;status:string;requirement?:ClassRequirement};
+export const saveAssignment=(s:AuthSession,x:AssignmentInput,id?:number)=>request<Assignment>(`/assignments${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
+export const deleteAssignment=(s:AuthSession,id:number)=>request<void>(`/assignments/${id}`,{method:"DELETE"},s.accessToken);
+
+// ==================== Lớp học: chương trình, tài liệu, theo dõi ====================
+export const getClassCurriculum=(s:AuthSession,classId:number)=>request<ClassCurriculumItem[]>(`/classes/${classId}/curriculum`,{},s.accessToken);
+export const addClassCurriculum=(s:AuthSession,classId:number,taxonomyNodeId:number,note?:string|null)=>request<void>(`/classes/${classId}/curriculum`,{method:"POST",body:JSON.stringify({taxonomyNodeId,note:note??null})},s.accessToken);
+export const removeClassCurriculum=(s:AuthSession,classId:number,id:number)=>request<void>(`/classes/${classId}/curriculum/${id}`,{method:"DELETE"},s.accessToken);
+export const getClassDocuments=(s:AuthSession,classId:number)=>request<ClassDocumentItem[]>(`/classes/${classId}/documents`,{},s.accessToken);
+export function getClassDocumentLibrary(s:AuthSession,classId:number,f:{search?:string;source?:string;taxonomyNodeId?:number}={}){
+ const p=new URLSearchParams();if(f.search)p.set("search",f.search);if(f.source)p.set("source",f.source);if(f.taxonomyNodeId)p.set("taxonomyNodeId",String(f.taxonomyNodeId));
+ const query=p.toString();return request<ClassLibraryDocument[]>(`/classes/${classId}/document-library${query?`?${query}`:""}`,{},s.accessToken);
+}
+export const attachClassDocument=(s:AuthSession,classId:number,x:{documentId:number;requirement:ClassRequirement;note?:string|null})=>request<void>(`/classes/${classId}/documents`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const updateClassDocument=(s:AuthSession,classId:number,id:number,x:{requirement?:ClassRequirement;note?:string|null})=>request<void>(`/classes/${classId}/documents/${id}`,{method:"PATCH",body:JSON.stringify(x)},s.accessToken);
+export const detachClassDocument=(s:AuthSession,classId:number,id:number)=>request<void>(`/classes/${classId}/documents/${id}`,{method:"DELETE"},s.accessToken);
+export const getClassProgress=(s:AuthSession,classId:number)=>request<ClassProgressRow[]>(`/classes/${classId}/progress`,{},s.accessToken);
+export function getClassSubmissionLog(s:AuthSession,classId:number,f:{studentId?:number;limit?:number}={}){
+ const p=new URLSearchParams();if(f.studentId)p.set("studentId",String(f.studentId));if(f.limit)p.set("limit",String(f.limit));
+ const query=p.toString();return request<SubmissionLogRow[]>(`/classes/${classId}/submission-log${query?`?${query}`:""}`,{},s.accessToken);
+}
+
+// ==================== Lớp học: danh sách học sinh ====================
+export const getClassRoster=(s:AuthSession,classId:number)=>request<RosterStudent[]>(`/classes/${classId}/roster`,{},s.accessToken);
+export const getRosterCandidates=(s:AuthSession,classId:number,search:string)=>request<RosterCandidate[]>(`/classes/${classId}/roster/candidates?search=${encodeURIComponent(search)}`,{},s.accessToken);
+export const addRosterStudent=(s:AuthSession,classId:number,x:{userId?:number;fullName?:string;username?:string;email?:string;phone?:string;password?:string})=>request<number>(`/classes/${classId}/roster/students`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const removeRosterStudent=(s:AuthSession,classId:number,enrollmentId:number)=>request<void>(`/classes/${classId}/roster/students/${enrollmentId}`,{method:"DELETE"},s.accessToken);
+export async function uploadClassRoster(s:AuthSession,classId:number,file:File){
+ const contentType=file.type||"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+ const presign=await request<{uploadUrl:string;objectKey:string}>(`/classes/${classId}/roster/import/presign`,{method:"POST",body:JSON.stringify({fileName:file.name,contentType})},s.accessToken);
+ if(!presign.uploadUrl||!presign.objectKey)throw new Error("API không trả về URL tải lên");
+ const uploaded=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(presign.uploadUrl,{method:"PUT",headers:{"Content-Type":contentType},body:file,signal}));
+ if(!uploaded.ok)throw new Error(`Tải file lên R2 thất bại (${uploaded.status})`);
+ return request<RosterImportPreview>(`/classes/${classId}/roster/import/preview`,{method:"POST",body:JSON.stringify({objectKey:presign.objectKey})},s.accessToken);
+}
+export const confirmClassRoster=(s:AuthSession,classId:number,objectKey:string)=>request<RosterImportResult>(`/classes/${classId}/roster/import/confirm`,{method:"POST",body:JSON.stringify({objectKey})},s.accessToken);
+export async function downloadRosterTemplate(s:AuthSession,classId:number){
+ const response=await withTimeout(FILE_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/classes/${classId}/roster/import/template`,{headers:{Authorization:`Bearer ${s.accessToken}`},signal}));
+ if(!response.ok)throw new Error("Không thể tải file mẫu");
+ const url=URL.createObjectURL(await response.blob());const link=document.createElement("a");link.href=url;link.download="danh-sach-hoc-sinh.xlsx";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// ==================== Lớp học: học sinh xem lớp của mình ====================
+export const getMyClasses=(s:AuthSession)=>request<MyClass[]>("/student/classes",{},s.accessToken);
+export const getMyClassTasks=(s:AuthSession,classId:number)=>request<MyClassTask[]>(`/student/classes/${classId}/tasks`,{},s.accessToken);
+export const getMyClassSubmissionLog=(s:AuthSession,classId:number,limit=100)=>request<SubmissionLogRow[]>(`/student/classes/${classId}/submission-log?limit=${limit}`,{},s.accessToken);
+
+// ==================== Lớp học: Admin xem lớp theo giáo viên phụ trách ====================
+export function getAdminClassOverview(s:AuthSession,f:{search?:string;gradeId?:number;status?:string}={}){
+ const p=new URLSearchParams();if(f.search)p.set("search",f.search);if(f.gradeId)p.set("gradeId",String(f.gradeId));if(f.status)p.set("status",f.status);
+ const query=p.toString();return request<AdminClassOverviewRow[]>(`/admin/class-overview${query?`?${query}`:""}`,{},s.accessToken);
+}
+
+// ==================== Vị trí học gần nhất (nền cho nút "Học tiếp") ====================
+/** Lưu ở server chứ không phải localStorage, để đổi máy vẫn học tiếp được. */
+export type LastPosition={userId:number;route:string;context:Record<string,unknown>|null;updatedAt:string};
+export const getLastPosition=(s:AuthSession)=>request<LastPosition|null>("/me/last-position",{},s.accessToken);
+export const saveLastPosition=(s:AuthSession,route:string,context:Record<string,unknown>)=>request<void>("/me/last-position",{method:"PUT",body:JSON.stringify({route,context})},s.accessToken);
+
 export const getDocuments=(s:AuthSession)=>request<DocumentItem[]>("/documents",{},s.accessToken);
+export const getStudentDocuments=(s:AuthSession)=>request<DocumentItem[]>("/documents/student",{},s.accessToken);
+export const getStudentExamDocuments=(s:AuthSession)=>request<DocumentItem[]>("/documents/student/exams",{},s.accessToken);
+export const convertDocumentToMarkdown=(s:AuthSession,id:number)=>request<DocumentItem>(`/admin/documents/${id}/convert-markdown`,{method:"POST"},s.accessToken);
+export const saveDocumentMarkdown=(s:AuthSession,id:number,contentMarkdown:string)=>request<DocumentItem>(`/admin/documents/${id}/markdown`,{method:"PATCH",body:JSON.stringify({contentMarkdown})},s.accessToken);
+export const getDocumentsByNode=(s:AuthSession,nodeId:number)=>request<DocumentItem[]>(`/admin/documents/by-node/${nodeId}`,{},s.accessToken);
+export const setDocumentTaxonomyNode=(s:AuthSession,id:number,taxonomyNodeId:number|null)=>request<DocumentItem>(`/admin/documents/${id}/taxonomy-node`,{method:"PATCH",body:JSON.stringify({taxonomyNodeId})},s.accessToken);
+export const getTeacherDocuments=(s:AuthSession)=>request<DocumentItem[]>("/teacher/documents",{},s.accessToken);
 export async function openDocumentFile(s:AuthSession,fileUrl:string,title:string,startPage?:number|null){
  const pageHash=startPage&&startPage>0?`#page=${startPage}`:"";
  if(/^https?:\/\//i.test(fileUrl)){window.open(`${fileUrl}${pageHash}`,"_blank","noreferrer");return}
@@ -337,15 +471,31 @@ export async function openDocumentFile(s:AuthSession,fileUrl:string,title:string
  if(!win){const a=document.createElement("a");a.href=url;a.download=title;a.click()}
  setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
 }
+/** URL byte PDF cho trình xem trong app (PdfViewer tự fetch kèm Authorization). */
+export const documentContentUrl=(id:number)=>`${API_BASE_URL}/api/documents/${id}/content`;
+export const lessonDocumentContentUrl=(lessonId:number,id:number)=>`${API_BASE_URL}/api/lessons/${lessonId}/documents/${id}/content`;
 export async function openLessonDocumentFile(s:AuthSession,lessonId:number,document:LessonDocument){
  const allowed=await request<DocumentOpen>(`/lessons/${lessonId}/documents/${document.id}/open`,{},s.accessToken);
  return openDocumentFile(s,allowed.fileUrl,allowed.title||document.title,allowed.startPage);
 }
-export async function uploadDocument(s:AuthSession,x:{title:string;docType:string;audience:string;gradeId?:number|null;file:File}){
- const form=new FormData();form.append("title",x.title);form.append("docType",x.docType);form.append("audience",x.audience);if(x.gradeId)form.append("gradeId",String(x.gradeId));form.append("file",x.file);
+export async function uploadDocument(s:AuthSession,x:{title:string;docType:string;audience:string;gradeId?:number|null;taxonomyNodeId?:number|null;file?:File|null;videoUrl?:string|null}){
+ const form=new FormData();form.append("title",x.title);form.append("docType",x.docType);form.append("audience",x.audience);if(x.gradeId)form.append("gradeId",String(x.gradeId));if(x.taxonomyNodeId)form.append("taxonomyNodeId",String(x.taxonomyNodeId));if(x.file)form.append("file",x.file);if(x.videoUrl)form.append("videoUrl",x.videoUrl);
  const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/admin/documents`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));
  const payload=await response.json() as ApiEnvelope<DocumentItem>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải tài liệu thất bại");return payload.data;
 }
+export async function uploadTeacherDocument(s:AuthSession,x:{title:string;docType:string;audience:string;gradeId?:number|null;chapterId?:number|null;file?:File|null;videoUrl?:string|null}){
+ const form=new FormData();form.append("title",x.title);form.append("docType",x.docType);form.append("audience",x.audience);if(x.gradeId)form.append("gradeId",String(x.gradeId));if(x.chapterId)form.append("chapterId",String(x.chapterId));if(x.file)form.append("file",x.file);if(x.videoUrl)form.append("videoUrl",x.videoUrl);
+ const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/teacher/documents`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));
+ const payload=await response.json() as ApiEnvelope<DocumentItem>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải tài liệu thất bại");return payload.data;
+}
+export const updateTeacherDocument=(s:AuthSession,id:number,x:{title:string;docType:string;audience:string;gradeId?:number|null;chapterId?:number|null})=>request<DocumentItem>(`/teacher/documents/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const archiveTeacherDocument=(s:AuthSession,id:number)=>request<DocumentItem>(`/teacher/documents/${id}/archive`,{method:"PATCH"},s.accessToken);
+export const restoreTeacherDocument=(s:AuthSession,id:number)=>request<DocumentItem>(`/teacher/documents/${id}/restore`,{method:"PATCH"},s.accessToken);
+export const getTeacherDocumentFolders=(s:AuthSession)=>request<DocumentFolder[]>("/teacher/document-folders",{},s.accessToken);
+export const createTeacherDocumentFolder=(s:AuthSession,name:string)=>request<DocumentFolder>("/teacher/document-folders",{method:"POST",body:JSON.stringify({name})},s.accessToken);
+export const renameTeacherDocumentFolder=(s:AuthSession,id:number,name:string)=>request<DocumentFolder>(`/teacher/document-folders/${id}`,{method:"PUT",body:JSON.stringify({name})},s.accessToken);
+export const deleteTeacherDocumentFolder=(s:AuthSession,id:number)=>request<void>(`/teacher/document-folders/${id}`,{method:"DELETE"},s.accessToken);
+export const moveTeacherDocument=(s:AuthSession,documentId:number,folderId:number|null)=>request<void>(`/teacher/document-folders/documents/${documentId}`,{method:"PATCH",body:JSON.stringify({folderId})},s.accessToken);
 export const updateDocument=(s:AuthSession,id:number,x:{title:string;docType:string;audience:string;gradeId?:number|null})=>request<DocumentItem>(`/admin/documents/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
 export const deleteDocument=(s:AuthSession,id:number)=>request<void>(`/admin/documents/${id}`,{method:"DELETE"},s.accessToken);
 export const getLessonDocuments=(s:AuthSession,lessonId:number)=>request<LessonDocument[]>(`/lessons/${lessonId}/documents`,{},s.accessToken);

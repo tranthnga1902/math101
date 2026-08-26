@@ -1,25 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import katex from "katex";
 import QRCode from "qrcode";
-import {useReactToPrint} from "react-to-print";
-import { AlertTriangle, BookOpen, BookOpenCheck, CheckCircle, ChevronDown, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, Filter, FileText, GraduationCap, Home, KeyRound, LibraryBig, Lock, LogOut, Menu, MoreVertical, PlayCircle, Plus, Search, Settings, UserRound, X } from "lucide-react";
+import { BookOpen, BookOpenCheck, CheckCircle, ChevronDown, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, Filter, FileText, GraduationCap, Home, KeyRound, LibraryBig, Lock, LogOut, Menu, MoreVertical, PlayCircle, Plus, Search, Settings, UserRound, X } from "lucide-react";
 import "katex/dist/katex.min.css";
 import { MainLayout } from "./layout/MainLayout";
 import { PdfThumbnail } from "./PdfThumbnail";
+import { PdfViewer, isPdfDocument } from "./components/PdfViewer";
 import { UserAccountsPage } from "./admin/UserAccountsPage";
 import { TextbookManagement } from "./admin/TextbookManagement";
 import { DocumentManagement } from "./admin/DocumentManagement";
-import { TopicManagement } from "./admin/TopicManagement";
+import { TaxonomyManagement } from "./admin/TaxonomyManagement";
 import { AuditManagement } from "./admin/AuditManagement";
 import { StudentExperience } from "./student/StudentExperience";
+import { TeacherDocumentLibrary } from "./teacher/TeacherDocumentLibrary";
+import { TaxonomyBrowser } from "./teacher/TaxonomyBrowser";
+import { TeacherSubmissionView } from "./teacher/TeacherSubmissionView";
+import { TeacherWorksheetView } from "./teacher/TeacherWorksheetView";
+import { TeacherTaskView } from "./teacher/TeacherTaskView";
+import { TeacherOperationsView } from "./teacher/TeacherOperationsView";
+import { TeacherClassManager } from "./teacher/TeacherClassManager";
+import { ClassDetail } from "./teacher/class/ClassDetail";
+import { TeacherRoster } from "./teacher/TeacherRoster";
+import { MathWorkspace } from "./teacher/MathWorkspace";
 import {
   createCourse,
   deleteCourse,
   changePassword,
   createChapter,
   createLesson,
-  createUser,
   deleteChapter,
   deleteLesson,
   reorderChapters,reorderLessons,
@@ -37,28 +46,22 @@ import {
   updateCourse,
   updateChapter,
   updateLesson,
-  updateUser,
-  setUserLocked,
-  deleteUser,
-  resetUserPassword,
-  getAvailableStudents,
-  getSubjects,createSubject,updateSubject,deleteSubject,getGrades,createGrade,updateGrade,deleteGrade,
-  getTopics,saveTopic,deleteTopic,getProblemTypes,saveProblemType,deleteProblemType,getProblems,saveProblem,deleteProblem,
-  getHints,saveHint,getSolutions,saveSolution,getWorksheets,saveWorksheet,
+  getGrades,
+  getTopics,
+  getWorksheets,
   attachWorksheetToLesson,
   getMyCourses,
   getMyAssignments,
   markAssignment,
   getPublicProblem,
   markProblemProgress,
-  getClasses,getClassesPage,createClass,updateClass,deleteClass,getTeacherStats,getTeacherClasses,getGradebook,getClassResults,
+  getClassesPage,getAdminClassOverview,createClass,updateClass,deleteClass,getTeacherStats,getTeacherClasses,getGradebook,getClassResults,
   getResources,saveResource,deleteResource,uploadFile,
   reorderResources,
-  getEnrollments,addEnrollment,removeEnrollment,getAssignments,saveAssignment,
-  getDocuments,openDocumentFile,openLessonDocumentFile,uploadDocument,updateDocument,deleteDocument,getLessonDocuments,getLessonDocumentQuestions,addLessonDocumentQuestion,deleteLessonDocumentQuestion,recordLessonDocumentStudy,submitLessonDocumentQuiz,attachLessonDocument,updateLessonDocument,deleteLessonDocument,moveLessonDocument,
-  getTextbooks,getTextbook,openTextbookInBrowser,getAdminTextbooks,uploadTextbook,updateTextbook,setTextbookPageOffset,publishTextbook,hideTextbook,
+  getEnrollments,addEnrollment,removeEnrollment,getAssignments,
+  getDocuments,openDocumentFile,openLessonDocumentFile,getLessonDocuments,getLessonDocumentQuestions,addLessonDocumentQuestion,deleteLessonDocumentQuestion,recordLessonDocumentStudy,submitLessonDocumentQuiz,attachLessonDocument,updateLessonDocument,deleteLessonDocument,moveLessonDocument,
+  getTextbooks,openTextbookInBrowser,
   downloadFile,
-  deleteHint,reorderHints,deleteSolution,reorderSolutions,
   type AuthSession,
   type Course,
   type CourseInput,
@@ -66,20 +69,13 @@ import {
   type ChapterInput,
   type Lesson,
   type LessonInput,
-  type UserAccount,
-  type UserAccountInput,
-  type AdminStats,
-  type AuditLog,
   type Progress,
-  type Subject,type Grade,
-  type Topic,type ProblemType,type Problem,type Hint,type SolutionStep,type Worksheet,
   type StudentCourse,
   type StudentAssignment,
-  type PublicProblem,
-  type Classroom,type ClassroomInput,type TeacherStats,type GradebookRow,type ClassResult,
+  type AdminClassOverviewRow,type Classroom,type ClassroomInput,
   type LessonResource,
-  type DocumentItem,type TextbookItem,type LessonDocument,type LessonDocumentQuestion,
-  type Enrollment,type Assignment,type Metadata,type MetadataOption,
+  type TextbookItem,type LessonDocument,type LessonDocumentQuestion,
+  type Metadata,type MetadataOption,
 } from "./api";
 
 function useMetadata(session: AuthSession) {
@@ -292,7 +288,7 @@ function AdminDashboard({session,activeSection}:{session:AuthSession;activeSecti
       </>}
       {activeSection==="textbooks"&&<TextbookManagement session={session}/>} 
       {activeSection==="documents"&&<DocumentManagement session={session}/>} 
-      {activeSection==="topics"&&<TopicManagement session={session}/>} 
+      {activeSection==="topics"&&<TaxonomyManagement session={session}/>} 
       {activeSection==="classes"&&<AdminClasses session={session}/>} 
       {activeSection==="audit"&&<AuditManagement session={session}/>} 
       {activeSection==="settings"&&<AdminSystemSettings session={session} metadata={metadata}/>}
@@ -304,18 +300,27 @@ function AdminSystemSettings({session,metadata}:{session:AuthSession;metadata:Me
  return <><PageHeading eyebrow="HỆ THỐNG" title="Cài đặt hệ thống" text="Thông tin cấu hình đang được backend áp dụng cho tài khoản quản trị."/><section className="admin-settings-grid"><article className="audit-panel"><h2>Tài khoản quản trị</h2><dl className="settings-details"><div><dt>Email</dt><dd>{session.email}</dd></div><div><dt>Vai trò</dt><dd>{session.role}</dd></div><div><dt>Mã người dùng</dt><dd>{session.userId}</dd></div></dl></article>{groups.map(([key,title])=><article className="audit-panel" key={key}><h2>{title}</h2><div className="settings-options">{metadataOptions(metadata,key).map(option=><span key={option.value}><b>{option.label}</b><code>{option.value}</code></span>)}{!metadataOptions(metadata,key).length&&<small>Backend chưa khai báo dữ liệu.</small>}</div></article>)}</section></>;
 }
 
+/** Dòng tổng quan (snake_case từ SQL) đổi về hình dạng Classroom mà các panel sẵn có đang dùng. */
+const asClassroom=(row:AdminClassOverviewRow):Classroom=>({id:row.id,code:row.code,name:row.name,gradeId:row.grade_id,status:row.status as Classroom["status"],teacherCount:Number(row.teacher_count),studentCount:Number(row.student_count),courseCount:Number(row.course_count),createdAt:row.created_at,description:row.description,curriculumCount:Number(row.curriculum_count),documentCount:Number(row.document_count)});
+/** Lớp do chính giáo viên lập trong 7 ngày gần đây — đây là cách Admin thấy có lớp mới, khớp với dòng audit ghi lúc tạo lớp. */
+const isNewTeacherClass=(row:AdminClassOverviewRow)=>row.created_by_role==="TEACHER"&&Date.now()-new Date(row.created_at).getTime()<7*86400000;
+
 function AdminClasses({session}:{session:AuthSession}){
  const metadata=useMetadata(session);
  const queryClient=useQueryClient();
  const [form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[editing,setEditing]=useState<number|null>(null),[selected,setSelected]=useState<Classroom|null>(null);
  const [search,setSearch]=useState(""),[gradeId,setGradeId]=useState(0),[status,setStatus]=useState(""),[formOpen,setFormOpen]=useState(false);
- const classesQuery=useQuery({queryKey:["admin-classes",session.accessToken,search,gradeId,status],queryFn:async()=>{const [page,nextGrades]=await Promise.all([getClassesPage(session,{search,gradeId:gradeId||undefined,status,size:100}),getGrades(session)]);const next=(page.content??[]) as Classroom[];const assignments=await Promise.all(next.map(async row=>[row.id,(await getEnrollments(session,"class-teachers",row.id)).map(item=>item.label).join(", ")] as const));return {rows:next,grades:nextGrades,teacherNames:Object.fromEntries(assignments) as Record<number,string>}}});
- const rows=classesQuery.data?.rows??[],grades=classesQuery.data?.grades??[],teacherNames=classesQuery.data?.teacherNames??{};
+ const [mode,setMode]=useState<"teacher"|"table">("teacher"),[detail,setDetail]=useState<Classroom|null>(null);
+ const classesQuery=useQuery({queryKey:["admin-classes",session.accessToken,search,gradeId,status],queryFn:async()=>{const [overview,nextGrades]=await Promise.all([getAdminClassOverview(session,{search,gradeId:gradeId||undefined,status}),getGrades(session)]);return {overview,grades:nextGrades}}});
+ const overview=classesQuery.data?.overview??[],grades=classesQuery.data?.grades??[];
+ const rows=overview.map(asClassroom),teacherNames=Object.fromEntries(overview.map(row=>[row.id,row.teacher_names??""])) as Record<number,string>;
+ /* Gom lớp theo giáo viên phụ trách; nhóm chưa phân công luôn đứng đầu vì đó là việc Admin cần xử lý. */
+ const teacherGroups=[...overview.reduce((map,row)=>map.set(row.teacher_names??"",[...(map.get(row.teacher_names??"")??[]),row]),new Map<string,AdminClassOverviewRow[]>()).entries()].sort((a,b)=>a[0]?(b[0]?a[0].localeCompare(b[0],"vi"):1):-1);
  const invalidate=()=>queryClient.invalidateQueries({queryKey:["admin-classes"]});
  const createMutation=useMutation({mutationFn:(input:ClassroomInput)=>createClass(session,input),onSuccess:invalidate});
  const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:ClassroomInput})=>updateClass(session,id,input),onSuccess:invalidate});
  const deleteMutation=useMutation({mutationFn:(id:number)=>deleteClass(session,id),onSuccess:invalidate});
- useEffect(()=>{const data=classesQuery.data;if(!data)return;setSelected(current=>current?data.rows.find(x=>x.id===current.id)??null:null);if(!form.gradeId&&data.grades[0])setForm(x=>({...x,gradeId:data.grades[0].id}))},[classesQuery.data]);
+ useEffect(()=>{const data=classesQuery.data;if(!data)return;setSelected(current=>current?data.overview.map(asClassroom).find(x=>x.id===current.id)??null:null);if(!form.gradeId&&data.grades[0])setForm(x=>({...x,gradeId:data.grades[0].id}))},[classesQuery.data]);
  useEffect(()=>{if(!editing)setForm(x=>({...x,status:x.status||firstMetadataValue(metadata,"classStatuses")}))},[editing,metadata]);
  const error=classesQuery.isError?messageOf(classesQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
  const reset=()=>{setEditing(null);setForm({code:"",name:"",gradeId:grades[0]?.id||0,status:firstMetadataValue(metadata,"classStatuses")});setFormOpen(false)};
@@ -323,7 +328,7 @@ function AdminClasses({session}:{session:AuthSession}){
  const edit=(row:Classroom)=>{setEditing(row.id);setForm({code:row.code,name:row.name,gradeId:row.gradeId,status:row.status});setFormOpen(true)};
  const archive=async(row:Classroom)=>{if(!confirm(`Xóa lớp “${row.name}”? Dữ liệu lịch sử vẫn được giữ lại.`))return;try{await deleteMutation.mutateAsync(row.id);if(selected?.id===row.id)setSelected(null)}catch{/* lỗi đã có trong mutation state */}};
  const gradeName=(id:number)=>grades.find(x=>x.id===id)?.name??`Khối ${id}`,statusName=(value:string)=>metadataOptions(metadata,"classStatuses").find(x=>x.value===value)?.label??value;
- return <section className={`classroom-module ${selected?"has-detail":""}`}><div className="classroom-master"><header className="classroom-heading"><div><p>QUẢN TRỊ HỆ THỐNG</p><h1>Danh sách lớp học</h1><span>Quản lý và theo dõi tiến độ các lớp khối 10.</span></div><div><button className="secondary-action" onClick={()=>alert("Chức năng import lớp cần API kiểm tra và xác nhận ba bước; hệ thống chưa ghi dữ liệu giả.")}>Import danh sách học sinh</button><button className="primary-action" onClick={()=>{reset();setFormOpen(true)}}>+ Tạo lớp</button></div></header>{error&&<div className="accounts-error"><span>{error}</span><button onClick={()=>void classesQuery.refetch()}>Thử lại</button></div>}<div className="classroom-card"><div className="classroom-filters"><input aria-label="Tìm lớp" placeholder="Tìm kiếm lớp học, giáo viên…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={gradeId} onChange={e=>setGradeId(Number(e.target.value))}><option value={0}>Tất cả khối</option>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div><div className="classroom-table-wrap"><table><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Giáo viên</th><th>Học sinh</th><th>Khóa học</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{rows.map(row=><tr className={selected?.id===row.id?"selected":""} key={row.id} onClick={()=>setSelected(row)}><td><b>{row.code}</b><small>{row.name}</small></td><td className="numeric">{new Date(row.createdAt??Date.now()).getFullYear()}–{new Date(row.createdAt??Date.now()).getFullYear()+1}</td><td>{gradeName(row.gradeId)}</td><td className="class-teacher-name">{teacherNames[row.id]||<button className="assign-teacher" onClick={event=>{event.stopPropagation();setSelected(row)}}>Chưa phân công</button>}</td><td className="numeric">{row.studentCount}</td><td className="numeric">{row.courseCount}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusName(row.status)}</span></td><td className="class-actions"><button onClick={e=>{e.stopPropagation();edit(row)}}>Sửa</button><button className="danger-link" onClick={e=>{e.stopPropagation();void archive(row)}}>Xóa</button></td></tr>)}</tbody></table>{!rows.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div><footer>{rows.length.toLocaleString("vi-VN")} lớp học</footer></div></div>{selected&&<ClassEnrollmentPanel session={session} classroom={selected} onClose={()=>setSelected(null)}/>} {formOpen&&<div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)reset()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA LỚP":"TẠO LỚP MỚI"}</p><h2>{editing?form.name:"Thông tin lớp học"}</h2></div><button onClick={reset}>×</button></header><form onSubmit={save}><label>Mã lớp<input required maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><footer><button type="button" className="secondary-action" onClick={reset}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo lớp"}</button></footer></form></aside></div>}</section>;
+ return <section className={`classroom-module ${selected?"has-detail":""}`}><div className="classroom-master"><header className="classroom-heading"><div><p>QUẢN TRỊ HỆ THỐNG</p><h1>Lớp học theo giáo viên phụ trách</h1><span>Ai đang quản lý lớp nào, lớp đã có chương trình học và tài liệu chưa, học sinh nộp bài tới đâu.</span></div><div><div className="class-view-toggle"><button className={mode==="teacher"?"active":""} onClick={()=>setMode("teacher")}>Theo giáo viên</button><button className={mode==="table"?"active":""} onClick={()=>setMode("table")}>Bảng lớp</button></div><button className="primary-action" onClick={()=>{reset();setFormOpen(true)}}>+ Tạo lớp</button></div></header>{error&&<div className="accounts-error"><span>{error}</span><button onClick={()=>void classesQuery.refetch()}>Thử lại</button></div>}<div className="classroom-card"><div className="classroom-filters"><input aria-label="Tìm lớp" placeholder="Tìm kiếm lớp học, giáo viên…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={gradeId} onChange={e=>setGradeId(Number(e.target.value))}><option value={0}>Tất cả khối</option>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div>{mode==="teacher"?<div className="teacher-groups">{teacherGroups.map(([teacher,list])=><article className={`teacher-group ${teacher?"":"unassigned"}`} key={teacher||"__none"}><header><h3>{teacher||"Chưa phân công giáo viên"}</h3><small>{list.length} lớp · {list.reduce((sum,row)=>sum+Number(row.student_count),0)} học sinh</small></header>{list.map(row=><div className="teacher-class-row" key={row.id}><span className="cell-title"><b>{row.name}{isNewTeacherClass(row)&&<span className="new-class-flag">GV vừa lập</span>}</b><small>Mã {row.code} · {row.grade_name??gradeName(row.grade_id)} · {statusName(row.status)}</small></span><span className="cell-metric"><b>{row.student_count}</b>học sinh</span><span className={`cell-metric ${Number(row.curriculum_count)?"":"warn"}`}><b>{row.curriculum_count}</b>mục chương trình</span><span className={`cell-metric ${Number(row.document_count)?"":"warn"}`}><b>{row.document_count}</b>tài liệu</span><span className="cell-metric"><b>{row.required_total}/{row.optional_total}</b>bắt buộc/tự chọn</span><span className="row-actions"><button onClick={()=>setDetail(asClassroom(row))}>Chi tiết</button><button onClick={()=>setSelected(asClassroom(row))}>Phân công</button><button onClick={()=>edit(asClassroom(row))}>Sửa</button></span></div>)}</article>)}{!overview.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div>:<div className="classroom-table-wrap"><table><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Giáo viên</th><th>Học sinh</th><th>Khóa học</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{rows.map(row=><tr className={selected?.id===row.id?"selected":""} key={row.id} onClick={()=>setSelected(row)}><td><b>{row.code}</b><small>{row.name}</small></td><td className="numeric">{new Date(row.createdAt??Date.now()).getFullYear()}–{new Date(row.createdAt??Date.now()).getFullYear()+1}</td><td>{gradeName(row.gradeId)}</td><td className="class-teacher-name">{teacherNames[row.id]||<button className="assign-teacher" onClick={event=>{event.stopPropagation();setSelected(row)}}>Chưa phân công</button>}</td><td className="numeric">{row.studentCount}</td><td className="numeric">{row.courseCount}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusName(row.status)}</span></td><td className="class-actions"><button onClick={e=>{e.stopPropagation();edit(row)}}>Sửa</button><button className="danger-link" onClick={e=>{e.stopPropagation();void archive(row)}}>Xóa</button></td></tr>)}</tbody></table>{!rows.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div>}<footer>{rows.length.toLocaleString("vi-VN")} lớp học · {teacherGroups.filter(([teacher])=>teacher).length} giáo viên phụ trách</footer></div></div>{detail&&<div className="class-detail-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setDetail(null)}}><div><ClassDetail session={session} classroom={detail} onClose={()=>setDetail(null)}/></div></div>}{selected&&<ClassEnrollmentPanel session={session} classroom={selected} onClose={()=>setSelected(null)}/>} {formOpen&&<div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)reset()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA LỚP":"TẠO LỚP MỚI"}</p><h2>{editing?form.name:"Thông tin lớp học"}</h2></div><button onClick={reset}>×</button></header><form onSubmit={save}><label>Mã lớp<input required maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><footer><button type="button" className="secondary-action" onClick={reset}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo lớp"}</button></footer></form></aside></div>}</section>;
 }
 
 function ClassEnrollmentPanel({session,classroom,onClose}:{session:AuthSession;classroom:Classroom;onClose:()=>void}){
@@ -355,6 +360,7 @@ type TextbookOffsetSlot = {
 type TextbookCardProps = {
  title: string;
  fileUrl: string;
+ thumbnailUrl?: string | null;
  accessToken?: string;
  totalPages: number | null;
  bookPageStart: number;
@@ -378,6 +384,7 @@ type TextbookCardProps = {
 function TextbookCard({
  title,
  fileUrl,
+ thumbnailUrl,
  accessToken,
  totalPages,
  bookPageStart,
@@ -405,18 +412,18 @@ function TextbookCard({
    ? "bg-slate-100 text-slate-600"
    : "bg-slate-100 text-slate-600";
 
- function TextbookCover({fileUrl,accessToken,title}:{fileUrl:string;accessToken?:string;title:string}){
- if(!fileUrl){
+ function TextbookCover({fileUrl,thumbnailUrl,accessToken,title}:{fileUrl:string;thumbnailUrl?:string|null;accessToken?:string;title:string}){
+ if(!fileUrl&&!thumbnailUrl){
   return <div className="flex h-[132px] w-[96px] shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-center text-[10px] font-medium text-slate-400">Chưa có<br/>file</div>;
  }
- const absoluteUrl=/^https?:\/\//i.test(fileUrl)?fileUrl:`${(import.meta.env.VITE_API_BASE_URL as string|undefined)??""}${fileUrl}`;
- return <PdfThumbnail fileUrl={absoluteUrl} accessToken={accessToken}/>;
+ const absoluteUrl=fileUrl&&(/^https?:\/\//i.test(fileUrl)?fileUrl:`${(import.meta.env.VITE_API_BASE_URL as string|undefined)??""}${fileUrl}`);
+ return <PdfThumbnail fileUrl={absoluteUrl||""} thumbnailUrl={thumbnailUrl} accessToken={accessToken}/>;
 }
 
 return (
   <article className="rounded-2xl border border-slate-200 bg-white shadow-sm">
    <div className="flex gap-4 p-5">
-    <TextbookCover fileUrl={fileUrl} accessToken={accessToken} title={title}/>
+    <TextbookCover fileUrl={fileUrl} thumbnailUrl={thumbnailUrl} accessToken={accessToken} title={title}/>
     <div className="flex min-w-0 flex-1 flex-col gap-2">
      <div className="flex flex-wrap items-center gap-2">
       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{typeLabel}</span>
@@ -620,6 +627,7 @@ function TextbookStudentView({session}:{session:AuthSession}){
     key={book.id}
     title={book.title}
     fileUrl={book.fileUrl}
+    thumbnailUrl={book.thumbnailUrl}
     accessToken={session.accessToken}
     totalPages={book.totalPages}
     bookPageStart={1}
@@ -672,6 +680,7 @@ function StudentLessonView({
   const [canComplete, setCanComplete] = useState(false);
   const [documentAnswers, setDocumentAnswers] = useState<Record<number, Record<number, string>>>({});
   const [documentQuizResult, setDocumentQuizResult] = useState<Record<number, string>>({});
+  const [studyPdf, setStudyPdf] = useState<LessonDocument | null>(null);
   const lesson = active.lesson;
   const docsQuery = useQuery({ queryKey: ["student-lesson-documents", session.accessToken, lesson.id], queryFn: async () => {
     const docs = await getLessonDocuments(session, lesson.id);
@@ -695,7 +704,9 @@ function StudentLessonView({
   const documentQuizPassed = !hasDocumentQuiz || lessonDocs.every(doc => !(documentQuestions[doc.id] || []).length || (documentQuizResult[doc.id] || "").includes("Hoàn thành"));
   useEffect(()=>{setCanComplete(false);setDocumentAnswers({});setDocumentQuizResult({})},[lesson.id]);
   const openStudyDocument=async(doc:LessonDocument)=>{
-    await openLessonDocumentFile(session,lesson.id,doc);
+    // PDF xem ngay trong app; định dạng khác (docx…) vẫn đẩy sang tab mới như trước.
+    if(isPdfDocument(doc))setStudyPdf(doc);
+    else await openLessonDocumentFile(session,lesson.id,doc);
     await recordLessonDocumentStudy(session,lesson.id,doc.id,30).catch(()=>undefined);
   };
   const answerQuestion=(docId:number,questionId:number,value:string)=>setDocumentAnswers(current=>({...current,[docId]:{...(current[docId]||{}),[questionId]:value}}));
@@ -743,6 +754,7 @@ function StudentLessonView({
       {curriculum}
     </section>
     {drawerOpen && <div className="student-curriculum-drawer"><button className="drawer-close" onClick={() => setDrawerOpen(false)}><X size={18}/></button>{curriculum}</div>}
+    {studyPdf && <PdfViewer session={session} lessonId={lesson.id} documentId={studyPdf.id} title={studyPdf.title} fileUrl={studyPdf.fileUrl} initialPage={studyPdf.startPage} onClose={() => setStudyPdf(null)} />}
   </main>;
 }
 
@@ -774,10 +786,9 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
   const [form, setForm] = useState<CourseInput>(() => emptyCourse(null));
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [gradeStudent,setGradeStudent]=useState<number|null>(null);
   const [gradebookClassId,setGradebookClassId]=useState<number|null>(null);
-  const [classTab,setClassTab]=useState<"students"|"tasks"|"gradebook"|"groups">("students");
-  const [contentTab,setContentTab]=useState<"courses"|"textbooks"|"problems"|"results">("problems");
+  const [contentTab,setContentTab]=useState<"taxonomy"|"courses"|"textbooks"|"problems"|"results">("problems");
+  useEffect(()=>{const selectTab=(event:Event)=>{const tab=(event as CustomEvent<string>).detail;if(["taxonomy","courses","textbooks","problems","results"].includes(tab))setContentTab(tab as typeof contentTab)};window.addEventListener("math10:content-tab",selectTab);return()=>window.removeEventListener("math10:content-tab",selectTab)},[]);
 
   const dashboardQuery=useQuery({queryKey:["teacher-dashboard",session.accessToken],queryFn:async()=>{
     const [nextCourses,stats,nextClasses]=await Promise.all([getCourses(session),getTeacherStats(session),getTeacherClasses(session)]);
@@ -795,14 +806,12 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
   const classes=dashboardQuery.data?.classes??[];
   const overviewAssignments=dashboardQuery.data?.overviewAssignments??[];
   const overviewProgress=dashboardQuery.data?.overviewProgress??[];
-  const gradebookQuery=useQuery({queryKey:["teacher-gradebook-select",session.accessToken,gradebookClassId],queryFn:()=>getGradebook(session,gradebookClassId as number),enabled:gradebookClassId!=null});
-  const gradebook=gradebookQuery.data??[];
   const invalidateDashboard=()=>queryClient.invalidateQueries({queryKey:["teacher-dashboard"]});
   const createMutation=useMutation({mutationFn:(input:CourseInput)=>createCourse(session,input),onSuccess:invalidateDashboard});
   const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:CourseInput})=>updateCourse(session,id,input),onSuccess:invalidateDashboard});
   const deleteMutation=useMutation({mutationFn:(id:number)=>deleteCourse(session,id),onSuccess:invalidateDashboard});
   const saving=createMutation.isPending||updateMutation.isPending;
-  const error=dashboardQuery.isError?messageOf(dashboardQuery.error):gradebookQuery.isError?messageOf(gradebookQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
+  const error=dashboardQuery.isError?messageOf(dashboardQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
 
   useEffect(()=>{if(!editingId)setForm(current=>({...current,status:current.status||firstMetadataValue(metadata,"courseStatuses")}))},[editingId,metadata]);
 
@@ -937,11 +946,12 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
           </header>
 
           <nav role="tablist" className="flex items-center gap-6 border-b border-outline-variant">
-            {([["courses","Chương trình"],["textbooks","Sách giáo khoa"],["problems","Ngân hàng câu hỏi"],["results","Kết quả các lớp"]] as const).map(([key,label])=>(
+            {([["taxonomy","Chuyên đề"],["courses","Chương trình"],["textbooks","Sách giáo khoa"],["problems","Ngân hàng câu hỏi"],["results","Kết quả các lớp"]] as const).map(([key,label])=>(
               <button key={key} role="tab" aria-selected={contentTab===key} onClick={()=>setContentTab(key)} className={`pb-2.5 text-sm border-b-2 transition-colors -mb-px ${contentTab===key?"border-primary text-primary font-bold":"border-transparent text-on-surface-variant font-medium hover:text-on-surface"}`}>{label}</button>
             ))}
           </nav>
 
+          {contentTab==="taxonomy"&&<TaxonomyBrowser session={session}/>}
           {contentTab==="courses" && (
            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 items-start">
             <article className="border border-outline-variant rounded-lg bg-surface-container-lowest p-4">
@@ -999,6 +1009,17 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
         {selectedCourse&&<CurriculumManager session={session} course={selectedCourse} onClose={()=>setSelectedCourse(null)}/>}
       </>}
 
+      {activeSection === "teacher-documents" && <>
+        <div id="teacher-documents" data-teacher-section data-search="Tài liệu của tôi giáo viên tải lên" className="section-anchor" />
+        <div className="flex flex-col gap-4">
+          <header>
+            <h1 className="text-2xl font-bold text-on-surface">Tài liệu của tôi</h1>
+            <p className="text-sm text-on-surface-variant">Kho tài liệu do bạn tự tải lên, tách riêng khỏi nội dung do Admin phân phối.</p>
+          </header>
+          <TeacherDocumentLibrary session={session}/>
+        </div>
+      </>}
+
       {activeSection === "teacher-courses" && <>
         <PageHeading eyebrow="NỘI DUNG HỌC" title="Khóa học" text="Tạo và cập nhật khóa học trực tiếp qua Spring Boot API." />
         <section id="teacher-courses" data-teacher-section data-search="Khóa học Courses" className="live-grid teacher-live">
@@ -1046,83 +1067,14 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
             classes={classes}
             onChanged={invalidateDashboard}
             selectedClassId={gradebookClassId}
-            onSelectClass={classroom => { setGradebookClassId(classroom.id); setGradeStudent(null); setClassTab("students"); }}
+            onSelectClass={classroom => setGradebookClassId(classroom.id)}
           />
 
-          {selectedClass && (
-            <section className="border border-outline-variant rounded-lg bg-surface-container-lowest p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-primary tracking-wide">CHI TIẾT LỚP</p>
-                  <h2 className="text-lg font-bold text-on-surface truncate">{selectedClass.name}</h2>
-                </div>
-                <button onClick={() => setGradebookClassId(null)} className="shrink-0 h-9 px-3 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">
-                  Đóng chi tiết
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 border-b border-outline-variant overflow-x-auto thin-scrollbar">
-                {([["students", "Học sinh"], ["tasks", "Nhiệm vụ"], ["gradebook", "Sổ điểm"], ["groups", "Nhóm học tập"]] as const).map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setClassTab(id)}
-                    className={`shrink-0 px-3 h-10 text-sm font-semibold border-b-2 -mb-px transition-colors ${classTab === id ? "border-primary text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-container-low border border-outline-variant flex-wrap">
-                <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">campaign</span>
-                <input disabled placeholder="Nhắn cả lớp (chưa khả dụng)" className="flex-1 min-w-[160px] h-8 px-2 rounded bg-surface-container-lowest border border-outline-variant text-sm text-on-surface-variant placeholder:text-on-surface-variant/70 disabled:cursor-not-allowed" />
-                <button disabled className="shrink-0 h-8 px-3 rounded bg-surface-variant text-on-surface-variant text-xs font-semibold cursor-not-allowed">Gửi</button>
-                <span className="text-[11px] text-on-surface-variant shrink-0">Hệ thống chưa có API nhắn tin lớp học.</span>
-              </div>
-
-              {classTab === "students" && <TeacherRoster session={session} classes={classes} fixedClassId={selectedClass.id} />}
-
-              {classTab === "tasks" && (() => {
-                const classAssignments = overviewAssignments.filter(item => item.classId === selectedClass.id);
-                return (
-                  <div className="flex flex-col gap-2">
-                    {classAssignments.map(item => {
-                      const due = item.dueAt ? new Date(item.dueAt) : null;
-                      const overdue = Boolean(due && due.getTime() < Date.now() && item.status !== "COMPLETED");
-                      const statusLabel = item.status === "PUBLISHED" ? "Đang mở" : item.status === "DRAFT" ? "Chưa giao" : "Đã đóng";
-                      return (
-                        <div key={item.id} className="flex items-center justify-between gap-3 p-3 border border-outline-variant rounded hover:bg-surface-container-low transition-colors">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <span className={`material-symbols-outlined mt-0.5 shrink-0 ${overdue ? "text-error" : "text-primary"}`}>{overdue ? "warning" : "assignment"}</span>
-                            <p className="text-sm text-on-surface truncate">
-                              <b>{item.title}</b><br />
-                              <span className="text-on-surface-variant">{due ? `Hạn ${due.toLocaleString("vi-VN")}` : "Không giới hạn"}</span>
-                            </p>
-                          </div>
-                          <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded ${item.status === "PUBLISHED" ? "bg-primary-container/20 text-primary" : "bg-surface-variant text-on-surface-variant"}`}>{statusLabel}</span>
-                        </div>
-                      );
-                    })}
-                    {!classAssignments.length && <p className="text-sm text-on-surface-variant text-center py-8 border border-dashed border-outline-variant rounded">Lớp chưa có nhiệm vụ nào.</p>}
-                  </div>
-                );
-              })()}
-
-              {classTab === "gradebook" && <GradebookMatrix classes={[selectedClass]} rows={gradebook} selectedStudent={gradeStudent} onSelectStudent={setGradeStudent} onSelectClass={async () => {}} />}
-
-              {classTab === "groups" && (
-                <div className="flex flex-col items-center justify-center gap-2 py-10 border border-dashed border-outline-variant rounded text-center">
-                  <span className="material-symbols-outlined text-on-surface-variant text-[28px]">groups</span>
-                  <p className="text-sm font-semibold text-on-surface">Nhóm học tập chưa khả dụng</p>
-                  <p className="text-xs text-on-surface-variant max-w-xs">Hệ thống hiện chưa có tính năng tạo nhóm học tập trong lớp. Mục này sẽ được bổ sung khi có API tương ứng.</p>
-                </div>
-              )}
-            </section>
-          )}
+          {selectedClass && <ClassDetail session={session} classroom={selectedClass} onClose={() => setGradebookClassId(null)} />}
         </div>
       </>}
 
-      {activeSection === "teacher-grading" && <TeacherGradingView session={session} classes={classes} />}
+      {activeSection === "teacher-grading" && <TeacherSubmissionView session={session} classes={classes} />}
       {activeSection === "teacher-reports" && <TeacherOperationsView session={session} classes={classes} mode="reports" />}
       {activeSection === "teacher-tasks" && <TeacherTaskView session={session} classes={classes} />}
       {activeSection === "teacher-notifications" && <TeacherOperationsView session={session} classes={classes} mode="notifications" />}
@@ -1174,921 +1126,6 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
   );
 }
 
-type TeacherOperationMode = "grading" | "reports" | "tasks" | "notifications";
-
-function TeacherGradingView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const [classId,setClassId]=useState(classes[0]?.id??0),[selected,setSelected]=useState<GradebookRow|null>(null),[search,setSearch]=useState(""),[status,setStatus]=useState("IN_PROGRESS");
- const gradebookQuery=useQuery({queryKey:["teacher-grading",session.accessToken,classId],queryFn:()=>getGradebook(session,classId),enabled:!!classId});
- const rows=gradebookQuery.data??[];
- const loading=gradebookQuery.isLoading;
- const error=gradebookQuery.isError?messageOf(gradebookQuery.error):"";
- useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
- useEffect(()=>{setSelected(null)},[classId]);
- const filtered=rows.filter(row=>(!status||row.status===status)&&(!search||`${row.full_name} ${row.username} ${row.title}`.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))));
- const inProgress=rows.filter(row=>row.status==="IN_PROGRESS").length,completed=rows.filter(row=>row.status==="COMPLETED").length,notOpened=rows.filter(row=>row.status!=="IN_PROGRESS"&&row.status!=="COMPLETED").length;
- const selectedClass=classes.find(item=>item.id===classId);
- const statusLabel=(value:string)=>value==="COMPLETED"?"Đã hoàn thành":value==="IN_PROGRESS"?"Đang làm":"Chưa mở";
- const statusTone=(value:string)=>value==="COMPLETED"?"bg-secondary-container/30 text-on-secondary-container":value==="IN_PROGRESS"?"bg-primary-container/20 text-primary":"bg-surface-variant text-on-surface-variant";
- return (
-  <section className="flex flex-col gap-4">
-   <header className="flex items-center justify-between gap-4 flex-wrap">
-    <div>
-     <h1 className="text-2xl font-bold text-on-surface">Hàng đợi chấm bài</h1>
-     <p className="text-sm text-on-surface-variant">{selectedClass?.name??"Chọn lớp để xem bài"}</p>
-    </div>
-    <select value={classId} onChange={e=>setClassId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-     {classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
-    </select>
-   </header>
-
-   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Đang thực hiện</p>
-     <p className="text-2xl font-bold text-primary data-tabular">{inProgress}</p>
-     <p className="text-xs text-on-surface-variant">lượt bài cần theo dõi</p>
-    </article>
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Chưa mở</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular">{notOpened}</p>
-     <p className="text-xs text-on-surface-variant">lượt bài chưa bắt đầu</p>
-    </article>
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Đã hoàn thành</p>
-     <p className="text-2xl font-bold text-secondary data-tabular">{completed}</p>
-     <p className="text-xs text-on-surface-variant">lượt bài</p>
-    </article>
-   </div>
-
-   <div className="flex items-center gap-2 flex-wrap">
-    <input placeholder="Tìm học sinh hoặc bài tập…" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[200px]"/>
-    <select value={status} onChange={e=>setStatus(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-     <option value="">Tất cả trạng thái</option>
-     <option value="IN_PROGRESS">Đang thực hiện</option>
-     <option value="COMPLETED">Đã hoàn thành</option>
-     <option value="NOT_OPENED">Chưa mở</option>
-    </select>
-    <span className="text-xs text-on-surface-variant">{filtered.length} lượt bài</span>
-   </div>
-
-   {error && <div className="api-error">{error}</div>}
-
-   <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
-    {loading ? <p className="text-sm text-on-surface-variant">Đang tải hàng đợi…</p> : (
-     <div className="border border-outline-variant rounded-lg overflow-hidden">
-      <div className="flex flex-col divide-y divide-outline-variant">
-       {filtered.map(row=>{
-        const initials=row.full_name.split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
-        const isSelected=selected?.student_id===row.student_id&&selected?.assignment_id===row.assignment_id;
-        return (
-         <button
-          key={`${row.student_id}-${row.assignment_id}`}
-          onClick={()=>setSelected(row)}
-          className={`flex items-center gap-3 p-3 text-left transition-colors ${isSelected?"bg-primary-container/15":"bg-surface-container-lowest hover:bg-surface-container-low"}`}
-         >
-          <span className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-bold shrink-0">{initials||"?"}</span>
-          <span className="min-w-0 flex-1">
-           <span className="block text-sm font-medium text-on-surface truncate">{row.full_name}</span>
-           <span className="block text-xs text-on-surface-variant truncate">@{row.username} · {row.title}</span>
-          </span>
-          <span className="w-20 shrink-0">
-           <span className="block h-1.5 rounded-full bg-surface-variant overflow-hidden">
-            <span className="block h-full bg-primary" style={{width:`${Math.max(0,Math.min(100,row.completion_percent))}%`}}/>
-           </span>
-           <span className="block text-[11px] text-on-surface-variant text-right mt-0.5 data-tabular">{row.completion_percent}%</span>
-          </span>
-          <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded ${statusTone(row.status)}`}>{statusLabel(row.status)}</span>
-         </button>
-        );
-       })}
-      </div>
-      {!filtered.length && <EmptyState text="Không có lượt bài phù hợp bộ lọc."/>}
-     </div>
-    )}
-
-    <aside className="border border-outline-variant rounded-lg bg-surface-container-lowest p-4 flex flex-col gap-4 lg:sticky lg:top-[72px]">
-     {selected ? <>
-      <div className="flex items-start justify-between gap-2">
-       <div className="min-w-0">
-        <p className="text-xs font-semibold text-primary tracking-wide">CHI TIẾT BÀI LÀM</p>
-        <h2 className="text-base font-bold text-on-surface truncate">{selected.full_name}</h2>
-        <p className="text-xs text-on-surface-variant truncate">{selected.title} · {selectedClass?.name}</p>
-       </div>
-       <button onClick={()=>setSelected(null)} className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
-        <span className="material-symbols-outlined text-[18px]">close</span>
-       </button>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-2 text-xs">
-       <div><dt className="text-on-surface-variant">Trạng thái</dt><dd className="text-sm font-semibold text-on-surface">{statusLabel(selected.status)}</dd></div>
-       <div><dt className="text-on-surface-variant">Tiến độ</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{selected.completion_percent}%</dd></div>
-      </dl>
-
-      <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant">
-       <p className="text-xs font-semibold text-on-surface-variant tracking-wide">CHẤM ĐIỂM CHI TIẾT</p>
-       {["Câu 1","Câu 2","Câu 3","Câu 4"].map(label=>(
-        <div key={label} className="flex items-center justify-between gap-2">
-         <span className="text-sm text-on-surface-variant">{label}</span>
-         <input disabled placeholder="–" className="w-16 h-8 px-2 rounded border border-outline-variant bg-surface-variant text-on-surface-variant text-sm text-center disabled:cursor-not-allowed"/>
-        </div>
-       ))}
-       <div className="flex items-center justify-between gap-2 pt-2 border-t border-outline-variant">
-        <span className="text-sm font-bold text-on-surface">Tổng điểm</span>
-        <span className="text-lg font-bold text-on-surface-variant">–<span className="text-xs font-normal">/10</span></span>
-       </div>
-      </div>
-
-      <div className="flex items-start gap-2 p-3 rounded-lg bg-surface-container-low border border-outline-variant">
-       <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">info</span>
-       <p className="text-[11px] text-on-surface-variant">Chưa thể nhập điểm: API hiện chưa cung cấp bài nộp đính kèm, rubric và endpoint lưu điểm. Màn hình không tạo dữ liệu chấm giả.</p>
-      </div>
-     </> : (
-      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-       <span className="material-symbols-outlined text-on-surface-variant text-[28px]">edit_note</span>
-       <p className="text-sm text-on-surface-variant">Chọn một lượt bài bên trái để xem chi tiết.</p>
-      </div>
-     )}
-    </aside>
-   </div>
-  </section>
- );
-}
-
-function TeacherWorksheetView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const queryClient=useQueryClient();
- const [search,setSearch]=useState(""),[qrFilter,setQrFilter]=useState(""),[preview,setPreview]=useState<Worksheet|null>(null),[assigning,setAssigning]=useState<Worksheet|null>(null),[selected,setSelected]=useState<Worksheet|null>(null);
- const [form,setForm]=useState({classId:classes[0]?.id??0,title:"",dueAt:""});
- const classIdsKey=classes.map(item=>item.id).join(",");
- const worksheetsQuery=useQuery({queryKey:["teacher-worksheets",session.accessToken,classIdsKey],queryFn:async()=>{const [sheets,...classAssignments]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>(await getAssignments(session,classroom.id)).map(item=>({...item,className:classroom.name})))]);return {rows:sheets as Worksheet[],assignments:(classAssignments as (Assignment&{className:string})[][]).flat()}}});
- const rows=worksheetsQuery.data?.rows??[],assignments=worksheetsQuery.data?.assignments??[],loading=worksheetsQuery.isLoading;
- const assignMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["teacher-worksheets"]})});
- const error=worksheetsQuery.isError?messageOf(worksheetsQuery.error):assignMutation.isError?messageOf(assignMutation.error):"";
- useEffect(()=>{if(!classes.some(item=>item.id===form.classId))setForm(value=>({...value,classId:classes[0]?.id??0}))},[classes,form.classId]);
- useEffect(()=>{if(selected&&!rows.some(item=>item.id===selected.id))setSelected(null)},[rows,selected]);
- const filtered=rows.filter(item=>(!search||item.name.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi")))&&(!qrFilter||(qrFilter==="QR"?item.showQr:!item.showQr)));
- const assignedClasses=(worksheetId:number)=>Array.from(new Set(assignments.filter(item=>item.worksheetId===worksheetId).map(item=>item.className)));
- const assign=async(e:React.FormEvent)=>{e.preventDefault();if(!assigning)return;try{await assignMutation.mutateAsync({classId:form.classId,lessonId:null,worksheetId:assigning.id,title:form.title||assigning.name,dueAt:form.dueAt||null,status:"PUBLISHED"});setAssigning(null)}catch{/* lỗi đã có trong mutation state */}};
- const goCreate=()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-content"}));
- const difficultyLabel=(value:string)=>value==="EASY"?"Dễ":value==="HARD"?"Khó":"TB";
- const difficultyTone=(value:string)=>value==="EASY"?"bg-secondary-container/30 text-on-secondary-container":value==="HARD"?"bg-error-container/30 text-on-error-container":"bg-tertiary-container/30 text-on-tertiary-container";
- return (
-  <section className="flex flex-col gap-4">
-   <header className="flex items-center justify-between gap-4 flex-wrap">
-    <div>
-     <h1 className="text-2xl font-bold text-on-surface">Quản lý Phiếu & Đề</h1>
-     <p className="text-sm text-on-surface-variant">Tạo, xem trước, in và giao phiếu bài tập cho lớp.</p>
-    </div>
-    <button onClick={goCreate} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
-     <span className="material-symbols-outlined text-[18px]">add</span> Tạo phiếu mới
-    </button>
-   </header>
-
-   <div className="flex items-center gap-2 flex-wrap">
-    <input placeholder="Tìm tên phiếu…" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[200px]"/>
-    <select value={qrFilter} onChange={e=>setQrFilter(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-     <option value="">Tất cả loại</option>
-     <option value="QR">Phiếu in có QR</option>
-     <option value="NO_QR">Phiếu không QR</option>
-    </select>
-    <span className="text-xs text-on-surface-variant">{filtered.length} phiếu</span>
-   </div>
-
-   {error && <div className="api-error">{error}</div>}
-
-   <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 items-start">
-    {loading ? <p className="text-sm text-on-surface-variant">Đang tải phiếu…</p> : (
-     <div className="border border-outline-variant rounded-lg overflow-hidden">
-      <div className="flex flex-col divide-y divide-outline-variant">
-       {filtered.map(item=>{
-        const assigned=assignedClasses(item.id);
-        const isSelected=selected?.id===item.id;
-        return (
-         <div key={item.id} className={`flex items-center gap-3 p-3 transition-colors ${isSelected?"bg-primary-container/15":"bg-surface-container-lowest hover:bg-surface-container-low"}`}>
-          <button onClick={()=>setSelected(item)} className="flex-1 min-w-0 text-left flex items-center gap-3">
-           <span className="material-symbols-outlined text-primary text-[22px] shrink-0">description</span>
-           <span className="min-w-0">
-            <span className="block text-sm font-medium text-on-surface truncate">{item.name}</span>
-            <span className="block text-[11px] text-on-surface-variant truncate">Phiếu #{item.id} · {item.showQr?"Có QR":"Không QR"} · {item.columnsCount} cột · {item.items.length} câu · {assigned.length?assigned.join(", "):"Chưa giao"}</span>
-           </span>
-          </button>
-          <div className="flex items-center gap-1 shrink-0">
-           <button onClick={()=>setPreview(item)} className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Xem / In</button>
-           <button disabled={!classes.length} onClick={()=>{setAssigning(item);setForm(value=>({...value,title:item.name}))}} className="px-2.5 py-1.5 text-xs font-semibold rounded bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">Giao bài</button>
-          </div>
-         </div>
-        );
-       })}
-      </div>
-      {!filtered.length && <EmptyState text="Không có phiếu phù hợp bộ lọc."/>}
-     </div>
-    )}
-
-    <aside className="border border-outline-variant rounded-lg bg-surface-container-lowest p-4 flex flex-col gap-4 lg:sticky lg:top-[72px]">
-     {selected ? <>
-      <div className="flex items-start justify-between gap-2">
-       <div className="min-w-0">
-        <p className="text-xs font-semibold text-primary tracking-wide">CHI TIẾT PHIẾU</p>
-        <h2 className="text-base font-bold text-on-surface truncate">{selected.name}</h2>
-       </div>
-       <button onClick={()=>setSelected(null)} className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
-        <span className="material-symbols-outlined text-[18px]">close</span>
-       </button>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-2 text-xs">
-       <div><dt className="text-on-surface-variant">Bố cục</dt><dd className="text-sm font-semibold text-on-surface">{selected.columnsCount} cột</dd></div>
-       <div><dt className="text-on-surface-variant">Số câu</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{selected.items.length}</dd></div>
-       <div><dt className="text-on-surface-variant">QR nộp bài</dt><dd className="text-sm font-semibold text-on-surface">{selected.showQr?"Có":"Không"}</dd></div>
-       <div><dt className="text-on-surface-variant">Ô thông tin học sinh</dt><dd className="text-sm font-semibold text-on-surface">{selected.showStudentFields?"Có":"Không"}</dd></div>
-      </dl>
-      <p className="text-xs text-on-surface-variant">Đã giao: {assignedClasses(selected.id).length?assignedClasses(selected.id).join(", "):"Chưa giao lớp nào"}</p>
-
-      <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant max-h-[420px] overflow-auto thin-scrollbar">
-       <p className="text-xs font-semibold text-on-surface-variant tracking-wide">DANH SÁCH CÂU HỎI ({selected.items.length} câu)</p>
-       {selected.items.map((item,index)=>(
-        <div key={item.id} className="p-2.5 rounded border border-outline-variant bg-surface-container-lowest">
-         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-bold text-on-surface">Câu {index+1}</span>
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${difficultyTone(item.difficulty)}`}>{difficultyLabel(item.difficulty)}</span>
-          <span className="text-[10px] text-on-surface-variant">{item.publicCode}</span>
-         </div>
-         <div className="text-xs text-on-surface [&_.katex]:text-xs" dangerouslySetInnerHTML={{__html:katex.renderToString(item.statementLatex.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:false})}}/>
-        </div>
-       ))}
-       {!selected.items.length && <p className="text-xs text-on-surface-variant text-center py-4">Phiếu chưa có câu hỏi.</p>}
-      </div>
-     </> : (
-      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-       <span className="material-symbols-outlined text-on-surface-variant text-[28px]">description</span>
-       <p className="text-sm text-on-surface-variant">Chọn một phiếu bên trái để xem danh sách câu hỏi.</p>
-      </div>
-     )}
-    </aside>
-   </div>
-
-   {preview && <WorksheetPreview sheet={preview} onClose={()=>setPreview(null)}/>}
-   {assigning && (
-    <div className="dialog-backdrop">
-     <section className="dialog-card">
-      <div className="panel-head"><div><p className="eyebrow">GIAO PHIẾU</p><h2>{assigning.name}</h2></div><button onClick={()=>setAssigning(null)}>Đóng</button></div>
-      <form className="live-form" onSubmit={assign}>
-       <label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-       <label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
-       <label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label>
-       <button className="primary">Giao phiếu</button>
-      </form>
-     </section>
-    </div>
-   )}
-  </section>
- );
-}
-
-function TeacherTaskView({session,classes}:{session:AuthSession;classes:Classroom[]}) {
- const queryClient=useQueryClient();
- const [classFilter,setClassFilter]=useState(0),[statusFilter,setStatusFilter]=useState(""),[search,setSearch]=useState(""),[open,setOpen]=useState(false);
- const [form,setForm]=useState({classId:classes[0]?.id??0,title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"});
- const classIdsKey=classes.map(item=>item.id).join(",");
- const tasksQuery=useQuery({queryKey:["teacher-tasks",session.accessToken,classIdsKey],queryFn:async()=>{const [sheets,...byClass]=await Promise.all([getWorksheets(session),...classes.map(async classroom=>{const [assignments,gradebook]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id)]);return assignments.map(item=>{const related=gradebook.filter(row=>row.assignment_id===item.id);return {...item,className:classroom.name,completed:related.filter(row=>row.status==="COMPLETED").length,total:related.length}})})]);return {worksheets:sheets as Worksheet[],rows:(byClass as (Assignment&{className:string;completed:number;total:number})[][]).flat()}}});
- const rows=tasksQuery.data?.rows??[],worksheets=tasksQuery.data?.worksheets??[],loading=tasksQuery.isLoading;
- const saveMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["teacher-tasks"]})});
- const error=tasksQuery.isError?messageOf(tasksQuery.error):saveMutation.isError?messageOf(saveMutation.error):"";
- useEffect(()=>{if(!classes.some(item=>item.id===form.classId))setForm(value=>({...value,classId:classes[0]?.id??0}))},[classes,form.classId]);
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveMutation.mutateAsync({classId:form.classId,lessonId:null,worksheetId:form.worksheetId||null,title:form.title,dueAt:form.dueAt||null,status:form.status});setOpen(false);setForm({classId:classes[0]?.id??0,title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"})}catch{/* lỗi đã có trong mutation state */}};
- const filtered=rows.filter(item=>(!classFilter||item.classId===classFilter)&&(!statusFilter||item.status===statusFilter)&&(!search||item.title.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))));
- const statusLabel=(value:string)=>value==="PUBLISHED"?"Đang mở":value==="DRAFT"?"Nháp":"Đã đóng";
- const statusTone=(value:string)=>value==="PUBLISHED"?"bg-primary-container/20 text-primary":value==="DRAFT"?"bg-surface-variant text-on-surface-variant":"bg-tertiary-container/30 text-on-tertiary-container";
- const statusTabs=[["","Tất cả"],["PUBLISHED","Đang mở"],["HIDDEN","Đã đóng"],["DRAFT","Nháp"]] as const;
- const now=Date.now();
- const ongoing=rows.filter(item=>item.status==="PUBLISHED").length;
- const dueSoon=rows.filter(item=>item.status==="PUBLISHED"&&item.dueAt&&new Date(item.dueAt).getTime()>=now&&new Date(item.dueAt).getTime()-now<=48*3600*1000).length;
- const needsReview=rows.reduce((sum,item)=>sum+item.completed,0);
- const totalSeats=rows.reduce((sum,item)=>sum+item.total,0),totalDone=rows.reduce((sum,item)=>sum+item.completed,0);
- const submissionRate=totalSeats?Math.round(totalDone*100/totalSeats):0;
- return (
-  <section className="flex flex-col gap-4">
-   <header className="flex items-center justify-between gap-4 flex-wrap">
-    <div>
-     <h1 className="text-2xl font-bold text-on-surface">Quản lý Nhiệm vụ</h1>
-     <p className="text-sm text-on-surface-variant">Giao bài tập, kiểm tra và theo dõi tiến độ học sinh.</p>
-    </div>
-    <button onClick={()=>setOpen(true)} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
-     <span className="material-symbols-outlined text-[18px]">add</span> Tạo nhiệm vụ
-    </button>
-   </header>
-
-   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">event_available</span> Đang diễn ra</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular">{ongoing}</p>
-    </article>
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">warning</span> Sắp đến hạn (48h)</p>
-     <p className="text-2xl font-bold text-error data-tabular">{dueSoon}</p>
-    </article>
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">fact_check</span> Bài đã nộp chờ xem</p>
-     <p className="text-2xl font-bold text-secondary data-tabular">{needsReview}</p>
-    </article>
-    <article className="p-4 rounded-lg border border-outline-variant bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">insights</span> Tỉ lệ nộp bài</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular">{submissionRate}%</p>
-    </article>
-   </div>
-
-   <div className="flex items-center gap-2 flex-wrap">
-    <input placeholder="Tìm nhiệm vụ…" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[200px]"/>
-    <select value={classFilter} onChange={e=>setClassFilter(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-     <option value={0}>Tất cả các lớp</option>
-     {classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
-    </select>
-    <span className="text-xs text-on-surface-variant">{filtered.length} nhiệm vụ</span>
-   </div>
-
-   <div className="flex items-center gap-2 border-b border-outline-variant overflow-x-auto thin-scrollbar">
-    {statusTabs.map(([value,label])=>{
-     const count=value?rows.filter(item=>item.status===value).length:rows.length;
-     return (
-      <button
-       key={value||"all"}
-       onClick={()=>setStatusFilter(value)}
-       className={`shrink-0 px-3 h-10 text-sm font-semibold border-b-2 -mb-px transition-colors ${statusFilter===value?"border-primary text-primary":"border-transparent text-on-surface-variant hover:text-on-surface"}`}
-      >
-       {label} <span className="text-xs font-normal">({count})</span>
-      </button>
-     );
-    })}
-   </div>
-
-   {error && <div className="api-error">{error}</div>}
-
-   {loading ? <p className="text-sm text-on-surface-variant">Đang tải nhiệm vụ…</p> : (
-    <div className="border border-outline-variant rounded-lg overflow-auto thin-scrollbar">
-     <table className="w-full text-sm border-collapse">
-      <thead>
-       <tr className="bg-surface-container-low">
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Tên nhiệm vụ</th>
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Loại</th>
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Lớp</th>
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Hạn nộp</th>
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Tiến độ nộp</th>
-        <th className="text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant">Trạng thái</th>
-       </tr>
-      </thead>
-      <tbody>
-       {filtered.map(item=>{
-        const percent=item.total?Math.round(item.completed*100/item.total):0;
-        const due=item.dueAt?new Date(item.dueAt):null;
-        const overdue=Boolean(due&&due.getTime()<now&&item.status==="PUBLISHED");
-        return (
-         <tr key={item.id} className="hover:bg-surface-container-low/60">
-          <td className="px-3 py-2 border-b border-outline-variant"><span className="block font-medium text-on-surface truncate max-w-[260px]">{item.title}</span><span className="block text-[11px] text-on-surface-variant">#{item.id}</span></td>
-          <td className="px-3 py-2 border-b border-outline-variant"><span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-surface-variant text-on-surface-variant">{item.worksheetId?"Phiếu bài tập":"Bài học"}</span></td>
-          <td className="px-3 py-2 border-b border-outline-variant text-on-surface-variant">{item.className}</td>
-          <td className={`px-3 py-2 border-b border-outline-variant ${overdue?"text-error font-semibold":"text-on-surface-variant"}`}>{due?due.toLocaleString("vi-VN"):"Không giới hạn"}</td>
-          <td className="px-3 py-2 border-b border-outline-variant">
-           <div className="flex items-center gap-2 w-32">
-            <span className="flex-1 h-1.5 rounded-full bg-surface-variant overflow-hidden"><span className="block h-full bg-primary" style={{width:`${percent}%`}}/></span>
-            <span className="text-[11px] text-on-surface-variant shrink-0 data-tabular">{item.completed}/{item.total}</span>
-           </div>
-          </td>
-          <td className="px-3 py-2 border-b border-outline-variant"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${statusTone(item.status)}`}>{statusLabel(item.status)}</span></td>
-         </tr>
-        );
-       })}
-      </tbody>
-     </table>
-     {!filtered.length && <EmptyState text="Không có nhiệm vụ phù hợp bộ lọc."/>}
-    </div>
-   )}
-
-   {open && (
-    <div className="dialog-backdrop">
-     <section className="dialog-card task-dialog">
-      <div className="panel-head"><div><p className="eyebrow">TẠO NHIỆM VỤ</p><h2>Giao phiếu bài tập</h2></div><button onClick={()=>setOpen(false)}>Đóng</button></div>
-      <form className="live-form" onSubmit={save}>
-       <label>Lớp học<select required value={form.classId} onChange={e=>setForm({...form,classId:Number(e.target.value)})}>{classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-       <label>Tên nhiệm vụ<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
-       <label>Phiếu bài tập<select required value={form.worksheetId} onChange={e=>setForm({...form,worksheetId:Number(e.target.value)})}><option value={0}>Chọn phiếu…</option>{worksheets.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-       <label>Hạn nộp<input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/></label>
-       <label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="PUBLISHED">Giao ngay</option><option value="DRAFT">Lưu nháp</option></select></label>
-       <div className="live-actions"><button type="button" onClick={()=>setOpen(false)}>Hủy</button><button className="primary">Tạo nhiệm vụ</button></div>
-      </form>
-     </section>
-    </div>
-   )}
-  </section>
- );
-}
-
-function TeacherOperationsView({session,classes,mode}:{session:AuthSession;classes:Classroom[];mode:TeacherOperationMode}) {
- const [classId,setClassId]=useState(classes[0]?.id??0);
- useEffect(()=>{if(!classes.some(item=>item.id===classId))setClassId(classes[0]?.id??0)},[classes,classId]);
- // Trạng thái đã đọc/chưa đọc không có persistence ở backend nên chỉ giữ ở state cục bộ, reset khi đổi lớp.
- const [readKeys,setReadKeys]=useState<Set<string>>(new Set());
- useEffect(()=>{setReadKeys(new Set())},[classId]);
- const operationsQuery=useQuery({queryKey:["teacher-operations",session.accessToken,classId],queryFn:async()=>{const [assignments,rows]=await Promise.all([getAssignments(session,classId),getGradebook(session,classId)]);return {assignments,rows}},enabled:!!classId});
- const assignments=operationsQuery.data?.assignments??[],rows=operationsQuery.data?.rows??[],loading=operationsQuery.isLoading;
- const error=operationsQuery.isError?messageOf(operationsQuery.error):"";
- const selectedClass=classes.find(item=>item.id===classId);
- const completed=rows.filter(row=>row.status==="COMPLETED").length;
- const inProgress=rows.filter(row=>row.status==="IN_PROGRESS").length;
- const average=rows.length?Math.round(rows.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/rows.length):0;
- const overdue=assignments.filter(item=>item.dueAt&&new Date(item.dueAt).getTime()<Date.now()&&item.status!=="COMPLETED");
- const upcoming=assignments.filter(item=>item.dueAt&&new Date(item.dueAt).getTime()>=Date.now()).sort((a,b)=>new Date(a.dueAt!).getTime()-new Date(b.dueAt!).getTime());
- const heading={grading:["CHẤM BÀI","Chấm bài","Theo dõi bài nộp và mức độ hoàn thành của học sinh theo lớp."],reports:["BÁO CÁO","Báo cáo học tập","Tổng hợp tiến độ thực tế từ sổ điểm của lớp."],tasks:["CÔNG VIỆC","Nhiệm vụ","Các đầu việc cần xử lý dựa trên hạn giao bài và tiến độ lớp."],notifications:["HỆ THỐNG","Thông báo","Những cập nhật cần chú ý từ lớp học và bài tập."]}[mode];
- return <section className="flex flex-col gap-4">
-  <div id={mode==="reports"?"teacher-reports":mode==="notifications"?"teacher-notifications":undefined} data-teacher-section data-search={heading[1]} className="section-anchor" />
-  <header>
-   <h1 className="text-2xl font-bold text-on-surface">{heading[1]}</h1>
-   <p className="text-sm text-on-surface-variant">{heading[2]}</p>
-  </header>
-  <div className="flex items-center gap-3 flex-wrap">
-   <select value={classId} onChange={e=>setClassId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-    {classes.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
-   </select>
-   <span className="text-xs text-on-surface-variant">{selectedClass?`${selectedClass.studentCount} học sinh · ${selectedClass.code}`:"Chưa có lớp học"}</span>
-  </div>
-  {error&&<div className="api-error">{error}</div>}
-  {loading&&<p className="text-sm text-on-surface-variant">Đang tải dữ liệu…</p>}
- {mode==="reports"&&(()=>{const studentStats=Array.from(new Map(rows.map(row=>[row.student_id,{id:row.student_id,name:row.full_name,username:row.username,items:rows.filter(item=>item.student_id===row.student_id)}])).values()).map(student=>({...student,average:Math.round(student.items.reduce((sum,item)=>sum+(Number(item.completion_percent)||0),0)/student.items.length)})).sort((a,b)=>a.average-b.average);const attention=studentStats.filter(student=>student.average<50);const assignmentStats=assignments.map(item=>{const related=rows.filter(row=>row.assignment_id===item.id),done=related.filter(row=>row.status==="COMPLETED").length,started=related.filter(row=>row.status==="IN_PROGRESS").length;return {...item,total:related.length,done,started,percent:related.length?Math.round(done*100/related.length):0}}).sort((a,b)=>a.percent-b.percent);return (
-  <div className="flex flex-col gap-4">
-   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Tỉ lệ hoàn thành</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{average}%</p>
-     <div className="h-1.5 rounded-full bg-surface-variant overflow-hidden mt-2"><span className="block h-full bg-primary rounded-full" style={{width:`${average}%`}}/></div>
-    </article>
-    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Lượt bài đã hoàn thành</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{completed}</p>
-     <p className="text-[11px] text-on-surface-variant mt-1">{rows.length?`${Math.round(completed*100/rows.length)}% tổng lượt bài`:"Chưa có dữ liệu"}</p>
-    </article>
-    <article className="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest">
-     <p className="text-xs text-on-surface-variant">Đang thực hiện</p>
-     <p className="text-2xl font-bold text-on-surface data-tabular mt-1">{inProgress}</p>
-     <p className="text-[11px] text-on-surface-variant mt-1">{assignments.length} nhiệm vụ trong lớp</p>
-    </article>
-    <article className="p-4 border border-error/30 rounded-lg bg-error-container/20">
-     <p className="text-xs text-on-surface-variant">Cần xem lại</p>
-     <p className="text-2xl font-bold text-error data-tabular mt-1">{attention.length}</p>
-     <p className="text-[11px] text-on-surface-variant mt-1">Học sinh có tiến độ dưới 50%</p>
-    </article>
-   </div>
-
-   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <section className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
-     <div className="flex items-center justify-between mb-3">
-      <h2 className="text-sm font-bold text-on-surface">Tiến độ theo nhiệm vụ</h2>
-      <span className="text-xs text-on-surface-variant">{assignmentStats.length} nhiệm vụ</span>
-     </div>
-     {assignmentStats.length?(
-      <div className="flex flex-col gap-3">
-       {assignmentStats.map(item=>(
-        <div key={item.id}>
-         <div className="flex items-center justify-between gap-2 text-xs mb-1">
-          <span className="text-on-surface truncate" title={item.title}>{item.title}</span>
-          <b className="text-on-surface shrink-0">{item.percent}%</b>
-         </div>
-         <div className="h-1.5 rounded-full bg-surface-variant overflow-hidden"><span className={`block h-full rounded-full ${item.percent<50?"bg-error":"bg-primary"}`} style={{width:`${item.percent}%`}}/></div>
-         <p className="text-[11px] text-on-surface-variant mt-1">{item.done}/{item.total} hoàn thành · {item.started} đang làm</p>
-        </div>
-       ))}
-      </div>
-     ):<EmptyState text="Lớp chưa có nhiệm vụ để lập báo cáo."/>}
-    </section>
-
-    <section className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
-     <div className="flex items-center justify-between mb-3">
-      <h2 className="text-sm font-bold text-on-surface">Phân bố tiến độ học sinh</h2>
-      <span className="text-xs text-on-surface-variant">{studentStats.length} học sinh có dữ liệu</span>
-     </div>
-     <div className="flex flex-col gap-2.5">
-      {[{label:"Tốt",min:80,color:"bg-secondary"},{label:"Đang tiến bộ",min:50,color:"bg-primary"},{label:"Cần chú ý",min:0,color:"bg-error"}].map((bucket,index)=>{
-       const upper=index===0?101:index===1?80:50;
-       const count=studentStats.filter(student=>student.average>=bucket.min&&student.average<upper).length;
-       const percent=studentStats.length?Math.round(count*100/studentStats.length):0;
-       return (
-        <div key={bucket.label} className="flex items-center gap-3 text-sm">
-         <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${bucket.color}`}/>
-         <div className="min-w-[110px]">
-          <b className="text-on-surface">{bucket.label}</b>
-          <span className="block text-[11px] text-on-surface-variant">{bucket.min}{index===0?"+":index===1?"–79":"–49"}%</span>
-         </div>
-         <strong className="text-on-surface data-tabular">{count}</strong>
-         <em className="text-xs text-on-surface-variant not-italic ml-auto">{percent}%</em>
-        </div>
-       );
-      })}
-     </div>
-    </section>
-   </div>
-
-   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <section className="border border-outline-variant rounded-lg overflow-hidden">
-     <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between">
-      <h2 className="text-sm font-bold text-on-surface">Nhiệm vụ cần xem lại</h2>
-      <span className="text-xs text-on-surface-variant">Xếp theo tỉ lệ hoàn thành</span>
-     </div>
-     {assignmentStats.length?(
-      <table className="w-full text-sm">
-       <thead><tr className="text-xs text-on-surface-variant bg-surface-container-low"><th className="text-left px-4 py-2 font-semibold">Nhiệm vụ</th><th className="text-left px-3 py-2 font-semibold">Đã xong</th><th className="text-left px-3 py-2 font-semibold">Tỉ lệ</th><th className="text-left px-3 py-2 font-semibold">Nhận định</th></tr></thead>
-       <tbody className="divide-y divide-outline-variant">
-        {assignmentStats.slice(0,5).map(item=>(
-         <tr key={item.id} className="bg-surface-container-lowest">
-          <td className="px-4 py-2"><b className="text-on-surface">{item.title}</b><br/><span className="text-[11px] text-on-surface-variant">#{item.id}</span></td>
-          <td className="px-3 py-2 text-on-surface">{item.done}/{item.total}</td>
-          <td className="px-3 py-2"><strong className={item.percent<50?"text-error":"text-on-surface"}>{item.percent}%</strong></td>
-          <td className="px-3 py-2 text-on-surface-variant text-xs">{item.percent<50?"Cần hỗ trợ thêm":item.percent<80?"Đang tiến triển":"Tiến độ tốt"}</td>
-         </tr>
-        ))}
-       </tbody>
-      </table>
-     ):<EmptyState text="Chưa có nhiệm vụ để phân tích."/>}
-    </section>
-
-    <section className="border border-outline-variant rounded-lg overflow-hidden">
-     <div className="px-4 py-3 border-b border-outline-variant bg-surface-container-lowest flex items-center justify-between">
-      <h2 className="text-sm font-bold text-on-surface flex items-center gap-1.5"><span className="material-symbols-outlined text-error text-[18px]">warning</span> Học sinh cần xem lại</h2>
-      <span className="text-xs text-on-surface-variant">Tiến độ dưới 50%</span>
-     </div>
-     <div className="divide-y divide-outline-variant">
-      {attention.slice(0,6).map(student=>(
-       <div key={student.id} className="flex items-center justify-between gap-3 p-3 bg-surface-container-lowest">
-        <div className="flex items-center gap-3 min-w-0">
-         <span className="w-8 h-8 rounded-full bg-error-container/40 text-on-error-container flex items-center justify-center text-xs font-bold shrink-0">{student.name.split(/\s+/).slice(-2).map(part=>part[0]).join("").toUpperCase()}</span>
-         <div className="min-w-0">
-          <p className="text-sm font-medium text-on-surface truncate">{student.name}</p>
-          <p className="text-[11px] text-on-surface-variant truncate">@{student.username} · {student.items.filter(item=>item.status==="COMPLETED").length}/{student.items.length} lượt bài hoàn thành</p>
-         </div>
-        </div>
-        <strong className="text-error text-sm shrink-0">{student.average}%</strong>
-       </div>
-      ))}
-     </div>
-     {!attention.length&&<EmptyState text="Không có học sinh nào dưới ngưỡng cần chú ý."/>}
-    </section>
-   </div>
-  </div>
- );})()}
- {mode==="grading"&&<section className="audit-panel"><div className="panel-head"><div><p className="eyebrow">BÀI NỘP THEO TIẾN ĐỘ</p><h2>{selectedClass?.name??"Chọn lớp"}</h2></div></div>{rows.length?<div className="operation-table"><table><thead><tr><th>Học sinh</th><th>Bài tập</th><th>Trạng thái</th><th>Hoàn thành</th></tr></thead><tbody>{rows.map(row=><tr key={`${row.student_id}-${row.assignment_id}`}><td><b>{row.full_name}</b><small>@{row.username}</small></td><td>{row.title}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{row.status==="COMPLETED"?"Đã hoàn thành":row.status==="IN_PROGRESS"?"Đang làm":"Chưa mở"}</span></td><td>{row.completion_percent}%</td></tr>)}</tbody></table></div>:<EmptyState text="Chưa có bài nộp trong lớp này."/>}</section>}
- {mode==="tasks"&&<section className="operation-feed"><h2>Việc cần làm</h2>{overdue.map(item=><article className="urgent" key={item.id}><span>Quá hạn</span><div><b>Kiểm tra tiến độ: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{upcoming.map(item=><article key={item.id}><span>Sắp tới</span><div><b>Theo dõi: {item.title}</b><small>Hạn {new Date(item.dueAt!).toLocaleString("vi-VN")} · {selectedClass?.name}</small></div></article>)}{!overdue.length&&!upcoming.length&&<EmptyState text="Không có nhiệm vụ theo hạn bài tập."/>}</section>}
- {mode==="notifications"&&(()=>{
-  const items=[
-   ...overdue.map(item=>({key:`due-${item.id}`,tone:"error" as const,icon:"schedule",title:`Bài "${item.title}" đã quá hạn`,sub:`${selectedClass?.name??""} · Hạn ${new Date(item.dueAt!).toLocaleString("vi-VN")}`})),
-   ...(average<50&&rows.length>0?[{key:"avg-low",tone:"warning" as const,icon:"trending_down",title:"Tiến độ trung bình của lớp đang dưới 50%",sub:`${selectedClass?.name??""} · Hiện tại ${average}%`}]:[]),
-   ...(completed>0?[{key:"completed",tone:"secondary" as const,icon:"task_alt",title:`${completed} lượt bài đã hoàn thành`,sub:"Dữ liệu cập nhật từ sổ điểm"}]:[]),
-  ];
-  const toggleRead=(key:string)=>setReadKeys(current=>{const next=new Set(current);if(next.has(key))next.delete(key);else next.add(key);return next});
-  const unreadCount=items.filter(item=>!readKeys.has(item.key)).length;
-  const toneClasses={error:"bg-error-container/60 text-error",warning:"bg-tertiary-container text-on-tertiary-container",secondary:"bg-secondary/15 text-secondary"} as const;
-  return (
-   <div className="flex flex-col gap-4">
-    <div className="flex items-center justify-between gap-3 flex-wrap">
-     <div className="flex items-center gap-2">
-      <h2 className="text-sm font-bold text-on-surface">Cập nhật mới nhất</h2>
-      {unreadCount>0&&<span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-on-primary text-[11px] font-bold">{unreadCount}</span>}
-     </div>
-     <div className="flex items-center gap-2 flex-wrap">
-      <button type="button" onClick={()=>setReadKeys(new Set(items.map(item=>item.key)))} disabled={!unreadCount} className="h-8 px-3 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant flex items-center gap-1.5 hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-       <span className="material-symbols-outlined text-[16px]">done_all</span> Đánh dấu tất cả đã đọc
-      </button>
-      <button type="button" disabled title="Hệ thống chưa có API nhắn tin lớp học." className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold opacity-50 cursor-not-allowed flex items-center gap-1.5">
-       <span className="material-symbols-outlined text-[16px]">forum</span> Nhắn cả lớp
-      </button>
-     </div>
-    </div>
-    {items.length?(
-     <div className="flex flex-col gap-2">
-      {items.map(item=>{
-       const isRead=readKeys.has(item.key);
-       return (
-        <article key={item.key} onClick={()=>toggleRead(item.key)} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleRead(item.key)}}} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isRead?"border-outline-variant bg-surface-container-lowest opacity-70":"border-primary/30 bg-primary-container/10"}`}>
-         <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${toneClasses[item.tone]}`}>
-          <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-         </span>
-         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-on-surface">{item.title}</p>
-          <p className="text-[11px] text-on-surface-variant mt-0.5">{item.sub}</p>
-         </div>
-         {!isRead&&<span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5"/>}
-        </article>
-       );
-      })}
-     </div>
-    ):<EmptyState text="Hiện chưa có thông báo mới."/>}
-   </div>
-  );
- })()}
- </section>
-}
-
-function GradebookMatrix({classes,rows,selectedStudent,onSelectStudent,onSelectClass}:{classes:Classroom[];rows:GradebookRow[];selectedStudent:number|null;onSelectStudent:(id:number|null)=>void;onSelectClass:(id:number)=>Promise<void>}){
- const students=Array.from(new Map(rows.map(row=>[row.student_id,{id:row.student_id,name:row.full_name,username:row.username}])).values());
- const assignments=Array.from(new Map(rows.map(row=>[row.assignment_id,{id:row.assignment_id,title:row.title}])).values());
- const icon=(status:string)=>status==="COMPLETED"?"✓":status==="IN_PROGRESS"?"●":"○";
- const label=(status:string)=>status==="COMPLETED"?"Đã xong":status==="IN_PROGRESS"?"Đang làm":"Chưa mở";
- const tone=(status:string)=>status==="COMPLETED"?"text-secondary":status==="IN_PROGRESS"?"text-primary":"text-on-surface-variant/40";
- return (
-  <section className="flex flex-col gap-4">
-   <div className="flex items-center justify-between gap-3 flex-wrap">
-    <div>
-     <p className="text-xs font-semibold text-primary tracking-wide">SỔ ĐIỂM TIẾN ĐỘ</p>
-     <h3 className="text-base font-bold text-on-surface">Học sinh × Bài tập</h3>
-    </div>
-    {classes.length>1 && (
-     <div className="flex items-center gap-1.5 flex-wrap">
-      {classes.map(item=><button key={item.id} onClick={()=>void onSelectClass(item.id)} className="h-8 px-3 rounded-lg border border-outline-variant text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">{item.name}</button>)}
-     </div>
-    )}
-   </div>
-   {rows.length ? (
-    <div className="border border-outline-variant rounded-lg overflow-auto max-h-[560px] thin-scrollbar">
-     <table className="w-full text-sm border-collapse">
-      <thead>
-       <tr>
-        <th className="sticky top-0 left-0 z-20 bg-surface-container-low text-left px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-r border-outline-variant min-w-[180px]">Học sinh</th>
-        {assignments.map(item=><th key={item.id} title={item.title} className="sticky top-0 z-10 bg-surface-container-low px-3 py-2 font-semibold text-on-surface-variant text-xs border-b border-outline-variant min-w-[120px] max-w-[160px] truncate">{item.title}</th>)}
-       </tr>
-      </thead>
-      <tbody>
-       {students.map(student=>{
-        const initials=(student.name||"?").trim().split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
-        return (
-         <tr key={student.id} className="hover:bg-surface-container-low/60">
-          <th className="sticky left-0 z-10 bg-surface-container-lowest text-left px-3 py-2 border-b border-r border-outline-variant font-normal">
-           <button onClick={()=>onSelectStudent(student.id)} className="flex items-center gap-2 text-left w-full">
-            <span className="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-[10px] font-bold shrink-0">{initials||"?"}</span>
-            <span className="min-w-0"><span className="block text-sm font-medium text-on-surface truncate">{student.name}</span><span className="block text-[11px] text-on-surface-variant truncate">@{student.username}</span></span>
-           </button>
-          </th>
-          {assignments.map(assignment=>{
-           const row=rows.find(item=>item.student_id===student.id&&item.assignment_id===assignment.id);
-           const status=row?.status||"NOT_OPENED";
-           return <td key={assignment.id} className="px-3 py-2 border-b border-outline-variant text-center"><span className={`text-base ${tone(status)}`} title={`${label(status)} · ${row?.completion_percent||0}%`}>{icon(status)}</span></td>;
-          })}
-         </tr>
-        );
-       })}
-      </tbody>
-     </table>
-    </div>
-   ) : <EmptyState text="Lớp này chưa có nhiệm vụ nào nên chưa có dữ liệu sổ điểm."/>}
-   {selectedStudent && (
-    <div className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
-     <div className="flex items-center justify-between mb-3">
-      <h4 className="text-sm font-bold text-on-surface">Chi tiết · {rows.find(x=>x.student_id===selectedStudent)?.full_name}</h4>
-      <button onClick={()=>onSelectStudent(null)} className="text-xs text-on-surface-variant hover:text-on-surface">Đóng</button>
-     </div>
-     <div className="flex flex-col gap-2">
-      {rows.filter(x=>x.student_id===selectedStudent).map(x=>(
-       <div key={x.assignment_id} className="flex items-center justify-between text-sm">
-        <b className="text-on-surface">{x.title}</b>
-        <span className="text-on-surface-variant">{label(x.status)} · {x.completion_percent}%</span>
-       </div>
-      ))}
-     </div>
-    </div>
-   )}
-  </section>
- );
-}
-
-function TeacherClassManager({session,classes,onChanged,selectedClassId,onSelectClass}:{session:AuthSession;classes:Classroom[];onChanged:()=>Promise<void>;selectedClassId?:number|null;onSelectClass?:(classroom:Classroom)=>void}){
- const metadata=useMetadata(session);
- const queryClient=useQueryClient();
- const [editing,setEditing]=useState<Classroom|null>(null),[form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[formOpen,setFormOpen]=useState(false);
- const gradesQuery=useQuery({queryKey:["teacher-class-manager-grades",session.accessToken],queryFn:()=>getGrades(session)});
- const grades=gradesQuery.data??[];
- const classIdsKey=classes.map(item=>item.id).join(",");
- const metricsQuery=useQuery({queryKey:["teacher-class-manager-metrics",session.accessToken,classIdsKey],queryFn:async()=>{const values=await Promise.all(classes.map(async classroom=>{const [assignments,book,enrolled]=await Promise.all([getAssignments(session,classroom.id),getGradebook(session,classroom.id),getEnrollments(session,"class-students",classroom.id)]);const byStudent=Array.from(new Set(book.map(row=>row.student_id))).map(id=>{const own=book.filter(row=>row.student_id===id);return own.length?own.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/own.length:0});return [classroom.id,{studentCount:enrolled.length,openTasks:assignments.filter(item=>item.status==="PUBLISHED").length,average:book.length?Math.round(book.reduce((sum,row)=>sum+(Number(row.completion_percent)||0),0)/book.length):0,attention:byStudent.filter(value=>value<50).length}] as const}));return Object.fromEntries(values) as Record<number,{studentCount:number;openTasks:number;average:number;attention:number}>},enabled:classes.length>0});
- const metrics=metricsQuery.data??{};
- const invalidateMetrics=()=>queryClient.invalidateQueries({queryKey:["teacher-class-manager-metrics"]});
- const createMutation=useMutation({mutationFn:(input:ClassroomInput)=>createClass(session,input),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
- const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:ClassroomInput})=>updateClass(session,id,input),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
- const deleteMutation=useMutation({mutationFn:(id:number)=>deleteClass(session,id),onSuccess:async()=>{invalidateMetrics();await onChanged()}});
- const error=gradesQuery.isError?messageOf(gradesQuery.error):metricsQuery.isError?messageOf(metricsQuery.error):createMutation.isError?messageOf(createMutation.error):updateMutation.isError?messageOf(updateMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
- useEffect(()=>{if(grades[0])setForm(value=>({...value,gradeId:value.gradeId||grades[0].id}))},[grades]);
- useEffect(()=>{if(!editing)setForm(current=>({...current,status:current.status||firstMetadataValue(metadata,"classStatuses")}))},[editing,metadata]);
- const reset=()=>{setEditing(null);setFormOpen(false);setForm({code:"",name:"",gradeId:grades[0]?.id||0,status:firstMetadataValue(metadata,"classStatuses")})};
-  const save=async(e:React.FormEvent)=>{e.preventDefault();try{if(editing)await updateMutation.mutateAsync({id:editing.id,input:form as ClassroomInput});else await createMutation.mutateAsync(form as ClassroomInput);reset()}catch{/* lỗi đã có trong mutation state */}};
- return (
-  <section className="flex flex-col gap-4">
-   <header className="flex items-center justify-between gap-4 flex-wrap">
-    <div>
-     <h1 className="text-2xl font-bold text-on-surface">Lớp học</h1>
-     <p className="text-sm text-on-surface-variant">Quản lý danh sách lớp và xem chi tiết học sinh, nhiệm vụ, sổ điểm theo từng lớp.</p>
-    </div>
-    <button onClick={()=>{reset();setFormOpen(true)}} className="h-9 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 hover:opacity-90 transition-opacity">
-     <span className="material-symbols-outlined text-[18px]">add</span> Thêm lớp học
-    </button>
-   </header>
-   {error && <div className="api-error">{error}</div>}
-   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-    {classes.map(item=>{
-     const stat=metrics[item.id]??{studentCount:0,openTasks:0,average:0,attention:0};
-     const isSelected=selectedClassId===item.id;
-     return (
-      <article key={item.id} className={`p-4 rounded-lg border bg-surface-container-lowest flex flex-col gap-3 transition-colors ${isSelected?"border-primary ring-1 ring-primary":"border-outline-variant"}`}>
-       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-         <h3 className="text-base font-bold text-on-surface truncate">{item.name}</h3>
-         <p className="text-xs text-on-surface-variant truncate">{item.code} · {grades.find(grade=>grade.id===item.gradeId)?.name??(item.gradeId!=null?`Khối #${item.gradeId}`:"—")}</p>
-        </div>
-        <button onClick={()=>{setEditing(item);setForm({code:item.code,name:item.name,gradeId:item.gradeId,status:item.status});setFormOpen(true)}} className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors">
-         <span className="material-symbols-outlined text-[18px]">more_vert</span>
-        </button>
-       </div>
-       <dl className="grid grid-cols-2 gap-2 text-xs">
-        <div><dt className="text-on-surface-variant">Sĩ số</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.studentCount}</dd></div>
-        <div><dt className="text-on-surface-variant">Nhiệm vụ mở</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.openTasks}</dd></div>
-        <div><dt className="text-on-surface-variant">Tiến độ TB</dt><dd className="text-sm font-semibold text-on-surface data-tabular">{stat.average}%</dd></div>
-        <div><dt className="text-on-surface-variant">Cần chú ý</dt><dd className={`text-sm font-semibold data-tabular ${stat.attention?"text-error":"text-on-surface"}`}>{stat.attention} hs</dd></div>
-       </dl>
-       <footer className="flex items-center justify-between gap-2 pt-2 border-t border-outline-variant">
-        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${item.status==="ACTIVE"?"bg-primary-container/20 text-primary":"bg-surface-variant text-on-surface-variant"}`}>{item.status}</span>
-        <div className="flex items-center gap-1">
-         <button className="text-error text-xs font-semibold hover:underline" onClick={()=>{if(confirm(`Xóa lớp “${item.name}”?`))deleteMutation.mutate(item.id)}}>Xóa</button>
-         <button onClick={()=>onSelectClass?.(item)} className={`px-3 py-1.5 text-xs font-semibold rounded transition-colors ${isSelected?"bg-primary-container text-on-primary-container":"bg-primary text-on-primary hover:opacity-90"}`}>{isSelected?"Đang xem":"Xem chi tiết"}</button>
-        </div>
-       </footer>
-      </article>
-     );
-    })}
-   </div>
-   {!classes.length && <EmptyState text="Chưa có lớp học."/>}
-   {formOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><div><p className="eyebrow">{editing?"CHỈNH SỬA LỚP":"THÊM LỚP HỌC"}</p><h2>{editing?editing.name:"Lớp học mới"}</h2></div><button onClick={reset}>Đóng</button></div><form className="live-form" onSubmit={save}><label>Mã lớp<input required placeholder="Ví dụ: 10A1" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select required value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(grade=><option key={grade.id} value={grade.id}>{grade.name}</option>)}</select></label><label>Trạng thái<select required value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="live-actions"><button type="button" onClick={reset}>Hủy</button><button className="primary">{editing?"Lưu thay đổi":"Tạo lớp"}</button></div></form></section></div>}
-  </section>
- );
-}
-
-function TeacherRoster({session,classes,fixedClassId}:{session:AuthSession;classes:Classroom[];fixedClassId?:number}){
- const queryClient=useQueryClient();
- const [classId,setClassId]=useState(fixedClassId??classes[0].id),[studentId,setStudentId]=useState(0),[search,setSearch]=useState("");
- const [progress,setProgress]=useState<{name:string;items:Progress[]}|null>(null);
- useEffect(()=>{if(fixedClassId!=null)setClassId(fixedClassId)},[fixedClassId]);
- const rosterQuery=useQuery({queryKey:["teacher-roster",session.accessToken,classId,search],queryFn:async()=>{const [enrolled,candidates]=await Promise.all([getEnrollments(session,"class-students",classId),getAvailableStudents(session,search)]);return {students:enrolled,available:candidates}}});
- const students=rosterQuery.data?.students??[],available=rosterQuery.data?.available??[];
- const invalidate=()=>queryClient.invalidateQueries({queryKey:["teacher-roster"]});
- const addMutation=useMutation({mutationFn:(id:number)=>addEnrollment(session,"class-students",{classId,userId:id}),onSuccess:invalidate});
- const removeMutation=useMutation({mutationFn:(id:number)=>removeEnrollment(session,"class-students",id),onSuccess:invalidate});
- return (
-  <section className="flex flex-col gap-4">
-   <div className="flex items-center justify-between gap-3 flex-wrap">
-    <h3 className="text-base font-bold text-on-surface">Học sinh trong lớp</h3>
-    {fixedClassId==null && (
-     <select value={classId} onChange={e=>setClassId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-      {classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
-     </select>
-    )}
-   </div>
-   <div className="flex items-center gap-2 flex-wrap">
-    <input placeholder="Tìm học sinh" value={search} onChange={e=>setSearch(e.target.value)} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface flex-1 min-w-[160px]"/>
-    <select value={studentId} onChange={e=>setStudentId(Number(e.target.value))} className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-     <option value={0}>Chọn học sinh…</option>
-     {available.map(x=><option key={x.id} value={x.id}>{x.fullName} (@{x.username})</option>)}
-    </select>
-    <button onClick={()=>{if(studentId)addMutation.mutate(studentId)}} className="h-9 px-3 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity">Thêm vào lớp</button>
-   </div>
-   <div className="flex flex-col divide-y divide-outline-variant border border-outline-variant rounded-lg overflow-hidden">
-    {students.map(x=>{
-     const initials=(x.label||"?").trim().split(/\s+/).filter(Boolean).slice(-2).map(part=>part[0]).join("").toUpperCase();
-     return (
-      <div key={x.id} className="flex items-center justify-between gap-3 p-3 bg-surface-container-lowest hover:bg-surface-container-low transition-colors">
-       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-xs font-bold shrink-0">{initials||"?"}</div>
-        <p className="text-sm text-on-surface truncate">{x.label}</p>
-       </div>
-       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={async()=>{if(x.userId)setProgress({name:x.label,items:await getStudentProgress(session,x.userId)})}} className="px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Tiến độ</button>
-        <button onClick={async()=>{if(!x.userId)return;const password=prompt(`Mật khẩu mới cho ${x.label}`);if(password)await resetUserPassword(session,x.userId,password)}} className="px-2.5 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-variant rounded transition-colors">Reset MK</button>
-        <button onClick={()=>removeMutation.mutate(x.id)} className="px-2.5 py-1.5 text-xs font-semibold text-error hover:bg-error-container/30 rounded transition-colors">Gỡ</button>
-       </div>
-      </div>
-     );
-    })}
-    {!students.length && <p className="text-sm text-on-surface-variant text-center py-8">Lớp chưa có học sinh.</p>}
-   </div>
-   {progress && (
-    <div className="border border-outline-variant rounded-lg p-4 bg-surface-container-lowest">
-     <div className="flex items-center justify-between mb-3">
-      <h4 className="text-sm font-bold text-on-surface">Tiến độ bài học · {progress.name}</h4>
-      <button onClick={()=>setProgress(null)} className="text-xs text-on-surface-variant hover:text-on-surface">Đóng</button>
-     </div>
-     <div className="flex flex-col gap-2">
-      {progress.items.map(x=>(
-       <div key={x.id} className="flex items-center justify-between text-sm">
-        <b className="text-on-surface">Bài học #{x.lessonId}</b>
-        <span className="text-on-surface-variant">{x.completedAt?"Đã hoàn thành":x.openedAt?"Đang học":"Chưa mở"} · {x.completionPercent}%</span>
-       </div>
-      ))}
-      {!progress.items.length && <p className="text-sm text-on-surface-variant">Học sinh chưa có tiến độ bài học.</p>}
-     </div>
-    </div>
-   )}
-  </section>
- );
-}
-
-function MathWorkspace({session}:{session:AuthSession}){
- const metadata=useMetadata(session);
- const queryClient=useQueryClient();
- const [selectedTopic,setSelectedTopic]=useState<Topic|null>(null),[selectedType,setSelectedType]=useState<ProblemType|null>(null),[selectedProblem,setSelectedProblem]=useState<Problem|null>(null);
- const [typeDraft,setTypeDraft]=useState({name:"",recognitionSigns:"",generalMethod:"",solutionOutline:"",commonMistakes:""}),[typeEdit,setTypeEdit]=useState<number|null>(null),[statement,setStatement]=useState("");
- const [difficulty,setDifficulty]=useState(""),[examPart,setExamPart]=useState("");
- const [problemKind,setProblemKind]=useState(""),[similarIds,setSimilarIds]=useState({easier:"",equivalent:"",harder:""});
- const [hintText,setHintText]=useState(""),[solution,setSolution]=useState({title:"",contentLatex:""}),[chosen,setChosen]=useState<number[]>([]);
- const [preview,setPreview]=useState<Worksheet|null>(null);
- const [difficultyFilter,setDifficultyFilter]=useState(""),[statusFilter,setStatusFilter]=useState(""),[problemSearch,setProblemSearch]=useState(""),[sheetOpen,setSheetOpen]=useState(false);
- const [bankTab,setBankTab]=useState<"topics"|"types"|"problems">("topics");
- const [sheetDraft,setSheetDraft]=useState({name:"Phiếu bài tập Toán 10",columnsCount:1,showQr:true,showStudentFields:true});
- const topicsQuery=useQuery({queryKey:["math-topics",session.accessToken],queryFn:()=>getTopics(session)});
- const worksheetsQuery=useQuery({queryKey:["math-worksheets",session.accessToken],queryFn:()=>getWorksheets(session)});
- const typesQuery=useQuery({queryKey:["math-types",session.accessToken,selectedTopic?.id],queryFn:()=>getProblemTypes(session,selectedTopic!.id),enabled:!!selectedTopic,placeholderData:previous=>previous});
- const problemsQuery=useQuery({queryKey:["math-problems",session.accessToken,selectedType?.id],queryFn:()=>getProblems(session,selectedType!.id),enabled:!!selectedType,placeholderData:previous=>previous});
- const hintsSolutionsQuery=useQuery({queryKey:["math-hints-solutions",session.accessToken,selectedProblem?.id],queryFn:async()=>{const [a,b]=await Promise.all([getHints(session,selectedProblem!.id),getSolutions(session,selectedProblem!.id)]);return {hints:a,solutions:b}},enabled:!!selectedProblem&&selectedProblem.problemKind!=="EXAM"});
- const topics=topicsQuery.data??[],worksheets=worksheetsQuery.data??[],types=typesQuery.data??[],problems=problemsQuery.data??[];
- const hints=hintsSolutionsQuery.data?.hints??[],solutions=hintsSolutionsQuery.data?.solutions??[];
- const invalidateTypes=()=>queryClient.invalidateQueries({queryKey:["math-types"]});
- const invalidateProblems=()=>queryClient.invalidateQueries({queryKey:["math-problems"]});
- const invalidateHintsSolutions=()=>queryClient.invalidateQueries({queryKey:["math-hints-solutions"]});
- const invalidateWorksheets=()=>queryClient.invalidateQueries({queryKey:["math-worksheets"]});
- const saveTypeMutation=useMutation({mutationFn:(input:{topicId:number;editId:number|null;draft:typeof typeDraft})=>saveProblemType(session,{topicId:input.topicId,...input.draft},input.editId||undefined),onSuccess:invalidateTypes});
- const deleteTypeMutation=useMutation({mutationFn:(id:number)=>deleteProblemType(session,id),onSuccess:invalidateTypes});
- const saveProblemMutation=useMutation({mutationFn:(input:{payload:Parameters<typeof saveProblem>[1];id?:number})=>saveProblem(session,input.payload,input.id),onSuccess:invalidateProblems});
- const addHintMutation=useMutation({mutationFn:(input:Parameters<typeof saveHint>[1])=>saveHint(session,input),onSuccess:invalidateHintsSolutions});
- const reorderHintsMutation=useMutation({mutationFn:(input:{problemId:number;ids:number[]})=>reorderHints(session,input.problemId,input.ids),onSuccess:invalidateHintsSolutions});
- const deleteHintMutation=useMutation({mutationFn:(id:number)=>deleteHint(session,id),onSuccess:invalidateHintsSolutions});
- const addSolutionMutation=useMutation({mutationFn:(input:Parameters<typeof saveSolution>[1])=>saveSolution(session,input),onSuccess:invalidateHintsSolutions});
- const reorderSolutionsMutation=useMutation({mutationFn:(input:{problemId:number;ids:number[]})=>reorderSolutions(session,input.problemId,input.ids),onSuccess:invalidateHintsSolutions});
- const deleteSolutionMutation=useMutation({mutationFn:(id:number)=>deleteSolution(session,id),onSuccess:invalidateHintsSolutions});
- const createSheetMutation=useMutation({mutationFn:(input:Parameters<typeof saveWorksheet>[1])=>saveWorksheet(session,input),onSuccess:invalidateWorksheets});
- const error=topicsQuery.isError?messageOf(topicsQuery.error):worksheetsQuery.isError?messageOf(worksheetsQuery.error):typesQuery.isError?messageOf(typesQuery.error):problemsQuery.isError?messageOf(problemsQuery.error):hintsSolutionsQuery.isError?messageOf(hintsSolutionsQuery.error):saveTypeMutation.isError?messageOf(saveTypeMutation.error):deleteTypeMutation.isError?messageOf(deleteTypeMutation.error):saveProblemMutation.isError?messageOf(saveProblemMutation.error):addHintMutation.isError?messageOf(addHintMutation.error):reorderHintsMutation.isError?messageOf(reorderHintsMutation.error):deleteHintMutation.isError?messageOf(deleteHintMutation.error):addSolutionMutation.isError?messageOf(addSolutionMutation.error):reorderSolutionsMutation.isError?messageOf(reorderSolutionsMutation.error):deleteSolutionMutation.isError?messageOf(deleteSolutionMutation.error):createSheetMutation.isError?messageOf(createSheetMutation.error):"";
- useEffect(()=>{setDifficulty(current=>current||firstMetadataValue(metadata,"problemDifficulties"));setProblemKind(current=>current||firstMetadataValue(metadata,"problemKinds"));setExamPart(current=>current||firstMetadataValue(metadata,"examParts"))},[metadata]);
- const chooseTopic=(x:Topic)=>{setSelectedTopic(x);setSelectedType(null);setSelectedProblem(null)};
- const chooseType=(x:ProblemType)=>{setSelectedType(x);setSelectedProblem(null)};
- const chooseProblem=(x:Problem)=>{setSelectedProblem(x)};
- const createNewType=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedTopic)return;try{await saveTypeMutation.mutateAsync({topicId:selectedTopic.id,editId:typeEdit,draft:typeDraft});setTypeDraft({name:"",recognitionSigns:"",generalMethod:"",solutionOutline:"",commonMistakes:""});setTypeEdit(null)}catch{/* lỗi đã có trong mutation state */}};
- const createNewProblem=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedType||!difficulty||!problemKind)return;try{await saveProblemMutation.mutateAsync({payload:{problemTypeId:selectedType.id,statementLatex:statement,contentHtml:statement,difficulty,status:firstMetadataValue(metadata,"publishStatuses"),problemKind:problemKind as "PRACTICE"|"EXAM",examPart:examPart||null,easierProblemId:similarIds.easier?Number(similarIds.easier):null,equivalentProblemId:similarIds.equivalent?Number(similarIds.equivalent):null,harderProblemId:similarIds.harder?Number(similarIds.harder):null}});setStatement("");setExamPart(firstMetadataValue(metadata,"examParts"));setSimilarIds({easier:"",equivalent:"",harder:""})}catch{/* lỗi đã có trong mutation state */}};
- const addHint=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedProblem)return;try{await addHintMutation.mutateAsync({problemId:selectedProblem.id,contentLatex:hintText,orderIndex:hints.length+1});setHintText("")}catch{/* lỗi đã có trong mutation state */}};
- const addSolution=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedProblem)return;try{await addSolutionMutation.mutateAsync({problemId:selectedProblem.id,title:solution.title,contentLatex:solution.contentLatex,orderIndex:solutions.length+1});setSolution({title:"",contentLatex:""})}catch{/* lỗi đã có trong mutation state */}};
- const moveHint=async(index:number,delta:number)=>{if(!selectedProblem)return;const a=[...hints],to=index+delta;if(to<0||to>=a.length)return;[a[index],a[to]]=[a[to],a[index]];try{await reorderHintsMutation.mutateAsync({problemId:selectedProblem.id,ids:a.map(x=>x.id)})}catch{/* lỗi đã có trong mutation state */}};
- const moveSolution=async(index:number,delta:number)=>{if(!selectedProblem)return;const a=[...solutions],to=index+delta;if(to<0||to>=a.length)return;[a[index],a[to]]=[a[to],a[index]];try{await reorderSolutionsMutation.mutateAsync({problemId:selectedProblem.id,ids:a.map(x=>x.id)})}catch{/* lỗi đã có trong mutation state */}};
- const createSheet=async(e:React.FormEvent)=>{e.preventDefault();if(!chosen.length)return;try{await createSheetMutation.mutateAsync({...sheetDraft,problemIds:chosen});setChosen([]);setSheetOpen(false)}catch{/* lỗi đã có trong mutation state */}};
- const editType=(x:ProblemType)=>{setTypeEdit(x.id);setTypeDraft({name:x.name,recognitionSigns:x.recognitionSigns||"",generalMethod:x.generalMethod||"",solutionOutline:x.solutionOutline||"",commonMistakes:x.commonMistakes||""})};
- const editProblem=async(x:Problem)=>{const text=window.prompt("Đề bài LaTeX",x.statementLatex);if(!text)return;const easier=window.prompt("ID bài dễ hơn (để trống nếu không có)",x.easierProblemId?.toString()||"");if(easier===null)return;const equivalent=window.prompt("ID bài tương đương (để trống nếu không có)",x.equivalentProblemId?.toString()||"");if(equivalent===null)return;const harder=window.prompt("ID bài khó hơn (để trống nếu không có)",x.harderProblemId?.toString()||"");if(harder===null)return;try{await saveProblemMutation.mutateAsync({payload:{problemTypeId:x.problemTypeId,statementLatex:text,contentHtml:x.contentHtml||text,difficulty:x.difficulty,status:x.status,problemKind:x.problemKind,examPart:x.examPart,easierProblemId:easier?Number(easier):null,equivalentProblemId:equivalent?Number(equivalent):null,harderProblemId:harder?Number(harder):null},id:x.id})}catch{/* lỗi đã có trong mutation state */}};
- const moveChosen=(index:number,delta:number)=>{const a=[...chosen],to=index+delta;if(to<0||to>=a.length)return;[a[index],a[to]]=[a[to],a[index]];setChosen(a)};
- const filteredProblems=problems.filter(x=>(!difficultyFilter||x.difficulty===difficultyFilter)&&(!statusFilter||x.status===statusFilter)&&(!problemSearch||`${x.publicCode} ${x.statementLatex}`.toLocaleLowerCase("vi").includes(problemSearch.toLocaleLowerCase("vi"))));
- return <section id="teacher-problems" data-teacher-section data-search="Ngân hàng bài toán Problems" className={`curriculum-panel math-workspace ${selectedProblem?"has-problem-detail":""}`}><div className="panel-head math-bank-head"><div><p className="eyebrow">NGÂN HÀNG CÂU HỎI</p><h2>Quản lý câu hỏi</h2><small>{filteredProblems.length} câu đang hiển thị · {problems.filter(x=>x.status==="PUBLISHED").length} đã xuất bản</small></div><button className="primary" disabled={!selectedType} onClick={()=>document.getElementById("problem-create")?.scrollIntoView({behavior:"smooth"})}>＋ Tạo câu hỏi</button></div>{error&&<div className="api-error">{error}</div>}
- <div className="math-columns">
-  <nav className="bank-tabs" role="tablist">
-    <button role="tab" aria-selected={bankTab==="topics"} className={bankTab==="topics"?"active":""} onClick={()=>setBankTab("topics")}>Chủ đề <small>{topics.length}</small></button>
-    <button role="tab" aria-selected={bankTab==="types"} className={bankTab==="types"?"active":""} disabled={!selectedTopic} onClick={()=>setBankTab("types")}>Dạng toán <small>{types.length}</small></button>
-    <button role="tab" aria-selected={bankTab==="problems"} className={bankTab==="problems"?"active":""} disabled={!selectedType} onClick={()=>setBankTab("problems")}>Bài toán <small>{filteredProblems.length}</small></button>
-  </nav>
-  {bankTab==="topics"&&<div className="bank-panel"><h3>Chủ đề</h3><p className="muted-copy">Chủ đề do Admin cấu hình.</p>{topics.map(x=><div className="bank-row topic-choice" key={x.id}><button className={`stack-choice ${selectedTopic?.id===x.id?"selected":""}`} onClick={()=>{chooseTopic(x);setBankTab("types")}}>{x.name}</button></div>)}</div>}
-  {bankTab==="types"&&<div className="bank-panel"><h3>Dạng toán</h3>{selectedTopic&&<form className="live-form type-form" onSubmit={createNewType}><label>Tên dạng<input required value={typeDraft.name} onChange={e=>setTypeDraft({...typeDraft,name:e.target.value})}/></label><label>Dấu hiệu nhận biết<textarea value={typeDraft.recognitionSigns} onChange={e=>setTypeDraft({...typeDraft,recognitionSigns:e.target.value})}/></label><label>Phương pháp chung<textarea value={typeDraft.generalMethod} onChange={e=>setTypeDraft({...typeDraft,generalMethod:e.target.value})}/></label><label>Các bước giải<textarea value={typeDraft.solutionOutline} onChange={e=>setTypeDraft({...typeDraft,solutionOutline:e.target.value})}/></label><label>Lỗi thường gặp<textarea value={typeDraft.commonMistakes} onChange={e=>setTypeDraft({...typeDraft,commonMistakes:e.target.value})}/></label><button className="primary">{typeEdit?"Cập nhật":"Thêm dạng"}</button></form>}{types.map(x=><div className="bank-row" key={x.id}><button className={`stack-choice ${selectedType?.id===x.id?"selected":""}`} onClick={()=>{chooseType(x);setBankTab("problems")}}>{x.name}</button><button onClick={()=>editType(x)}>Sửa</button><button onClick={()=>deleteTypeMutation.mutate(x.id)}>Xóa</button></div>)}</div>}
-  {bankTab==="problems"&&<div className="bank-panel problem-bank-pane">
-   <div className="problem-bank-title"><div><h3>Bài toán</h3><p>Chọn dạng toán để tạo và quản lý nội dung.</p></div>{selectedType&&<button className="primary" onClick={()=>document.getElementById("problem-create")?.scrollIntoView({behavior:"smooth"})}>＋ Tạo bài toán mới</button>}</div>
-   {selectedType&&<form id="problem-create" className="live-form problem-create-form" onSubmit={createNewProblem}>
-    <label>Đề bài LaTeX<textarea required value={statement} onChange={e=>setStatement(e.target.value)} placeholder={"Giải phương trình $x^2-4=0$"}/></label>
-    <label>Phân loại<select required value={problemKind} onChange={e=>setProblemKind(e.target.value)}>{metadataOptions(metadata,"problemKinds").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-    <label>Mức độ<select required value={difficulty} onChange={e=>setDifficulty(e.target.value)}>{metadataOptions(metadata,"problemDifficulties").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-    <label>Phần đề thi<select value={examPart} onChange={e=>setExamPart(e.target.value)}><option value="">Chưa gắn</option>{metadataOptions(metadata,"examParts").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-    {problemKind==="PRACTICE"&&<div className="similar-id-fields"><label>ID dễ hơn<input type="number" min="1" value={similarIds.easier} onChange={e=>setSimilarIds({...similarIds,easier:e.target.value})}/></label><label>ID tương đương<input type="number" min="1" value={similarIds.equivalent} onChange={e=>setSimilarIds({...similarIds,equivalent:e.target.value})}/></label><label>ID khó hơn<input type="number" min="1" value={similarIds.harder} onChange={e=>setSimilarIds({...similarIds,harder:e.target.value})}/></label></div>}
-    <button className="primary">Lưu bài toán</button>
-   </form>}
-   <div className="problem-filter-bar"><input placeholder="Tìm theo mã câu, nội dung..." value={problemSearch} onChange={e=>setProblemSearch(e.target.value)}/><select value={difficultyFilter} onChange={e=>setDifficultyFilter(e.target.value)}><option value="">Mọi độ khó</option>{metadataOptions(metadata,"problemDifficulties").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"publishStatuses").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><span>{filteredProblems.length} câu</span></div>
-   <div className="problem-table"><div className="problem-table-header"><span></span><span>Mã câu</span><span>Trích đề</span><span>Dạng bài</span><span>Độ khó</span><span>Tình trạng</span><span>Thao tác</span></div>{filteredProblems.map(x=><article id={`problem-${x.id}`} data-search={`${x.publicCode} ${x.statementLatex}`} className={`problem-table-row ${selectedProblem?.id===x.id?"selected":""}`} key={x.id}><label><input type="checkbox" checked={chosen.includes(x.id)} disabled={x.problemKind!=="PRACTICE"} onChange={()=>setChosen(chosen.includes(x.id)?chosen.filter(id=>id!==x.id):[...chosen,x.id])}/></label><code>{x.publicCode}</code><button className="problem-excerpt" onClick={()=>chooseProblem(x)}><b>{x.statementLatex}</b><small>{x.contentHtml?.replace(/<[^>]+>/g,"").slice(0,90)||"Chưa có mô tả bổ sung"}</small></button><span>{selectedType?.name||"—"}</span><span><i className="difficulty-badge">{x.difficulty}</i></span><span><i className={`status-badge ${x.status.toLowerCase()}`}>{x.status}</i></span><div><button onClick={()=>void editProblem(x)}>Sửa</button><button onClick={()=>saveProblemMutation.mutate({payload:{problemTypeId:x.problemTypeId,statementLatex:x.statementLatex,contentHtml:x.contentHtml,difficulty:x.difficulty,status:x.status==="PUBLISHED"?"DRAFT":"PUBLISHED",problemKind:x.problemKind,examPart:x.examPart,easierProblemId:x.easierProblemId,equivalentProblemId:x.equivalentProblemId,harderProblemId:x.harderProblemId},id:x.id})}>{x.status==="PUBLISHED"?"Ẩn":"Xuất bản"}</button></div></article>)}</div>
-   {selectedType&&!filteredProblems.length&&<EmptyState text="Không có bài toán phù hợp bộ lọc."/>}
-  </div>}
- </div>
- {selectedProblem?.problemKind==="PRACTICE"&&<aside className="problem-detail-drawer"><header><div><small>CHI TIẾT CÂU HỎI</small><h3>{selectedProblem.publicCode}</h3></div><button onClick={()=>setSelectedProblem(null)}>×</button></header><section><small>NỘI DUNG</small><div className="problem-detail-math" dangerouslySetInnerHTML={{__html:katex.renderToString(selectedProblem.statementLatex.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:true})}}/></section><section><small>LỜI GIẢI & GỢI Ý</small><article><h3>Gợi ý</h3><form className="compact-form" onSubmit={addHint}><input required value={hintText} onChange={e=>setHintText(e.target.value)} placeholder="Nội dung LaTeX"/><button>Thêm</button></form>{hints.map((x,i)=><div className="ordered-row" key={x.id}><p>{x.orderIndex}. {x.contentLatex}</p><button onClick={()=>void moveHint(i,-1)}>↑</button><button onClick={()=>void moveHint(i,1)}>↓</button><button onClick={()=>deleteHintMutation.mutate(x.id)}>Xóa</button></div>)}</article><article><h3>Các bước lời giải</h3><form className="compact-form" onSubmit={addSolution}><input required value={solution.title} onChange={e=>setSolution({...solution,title:e.target.value})} placeholder="Tiêu đề bước"/><input required value={solution.contentLatex} onChange={e=>setSolution({...solution,contentLatex:e.target.value})} placeholder="Nội dung LaTeX"/><button>Thêm</button></form>{solutions.map((x,i)=><div className="ordered-row" key={x.id}><p><b>{x.orderIndex}. {x.title}</b><br/>{x.contentLatex}</p><button onClick={()=>void moveSolution(i,-1)}>↑</button><button onClick={()=>void moveSolution(i,1)}>↓</button><button onClick={()=>deleteSolutionMutation.mutate(x.id)}>Xóa</button></div>)}</article>{!hints.length&&!solutions.length&&<div className="missing-solution"><AlertTriangle size={28}/><b>Câu hỏi này chưa có lời giải chi tiết.</b></div>}</section></aside>}
- {chosen.length>0&&<div className="problem-selection-bar"><span>Đã chọn <b>{chosen.length}</b> câu</span><button className="primary" onClick={()=>setSheetOpen(true)}>Thêm vào phiếu</button><button onClick={()=>setChosen([])}>Bỏ chọn</button></div>}
- <div className="worksheet-list"><h3>Phiếu vừa tạo</h3>{worksheets.map(x=><button key={x.id} onClick={()=>setPreview(x)}><b>{x.name}</b><span>{x.items.length} câu · {x.columnsCount} cột · Xem/In A4</span></button>)}</div>
- {preview&&<WorksheetPreview sheet={preview} onClose={()=>setPreview(null)}/>}
- {sheetOpen&&<div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><h2>Cấu hình phiếu</h2><button onClick={()=>setSheetOpen(false)}>Đóng</button></div><form className="live-form" onSubmit={createSheet}><label>Tên phiếu<input required value={sheetDraft.name} onChange={e=>setSheetDraft({...sheetDraft,name:e.target.value})}/></label><label>Số cột<select value={sheetDraft.columnsCount} onChange={e=>setSheetDraft({...sheetDraft,columnsCount:Number(e.target.value)})}><option value={1}>1 cột</option><option value={2}>2 cột</option></select></label><label className="check-label"><input type="checkbox" checked={sheetDraft.showQr} onChange={e=>setSheetDraft({...sheetDraft,showQr:e.target.checked})}/> Hiện QR từng câu</label><label className="check-label"><input type="checkbox" checked={sheetDraft.showStudentFields} onChange={e=>setSheetDraft({...sheetDraft,showStudentFields:e.target.checked})}/> Hiện ô Họ tên/Lớp</label><div className="chosen-order"><b>Thứ tự câu hỏi</b>{chosen.map((id,i)=>{const p=problems.find(x=>x.id===id);return <div key={id}><span>{i+1}. {p?.publicCode||`Bài #${id}`}</span><button type="button" onClick={()=>moveChosen(i,-1)}>↑</button><button type="button" onClick={()=>moveChosen(i,1)}>↓</button></div>})}</div><button className="primary">Tạo phiếu từ {chosen.length} câu</button></form></section></div>}
- </section>
-}
-
-function AssignmentManager({session,classes}:{session:AuthSession;classes:Classroom[]}){
- const queryClient=useQueryClient();
- const [classId,setClassId]=useState(classes[0].id);
- const [form,setForm]=useState({title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"});
- const dataQuery=useQuery({queryKey:["assignment-manager",session.accessToken,classId],queryFn:async()=>{const [w,a]=await Promise.all([getWorksheets(session),getAssignments(session,classId)]);return {worksheets:w,rows:a}}});
- const worksheets=dataQuery.data?.worksheets??[],rows=dataQuery.data?.rows??[];
- const saveMutation=useMutation({mutationFn:(input:Parameters<typeof saveAssignment>[1])=>saveAssignment(session,input),onSuccess:()=>queryClient.invalidateQueries({queryKey:["assignment-manager"]})});
- const error=dataQuery.isError?messageOf(dataQuery.error):saveMutation.isError?messageOf(saveMutation.error):"";
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveMutation.mutateAsync({classId,lessonId:null,worksheetId:form.worksheetId,title:form.title,dueAt:form.dueAt||null,status:form.status});setForm({title:"",worksheetId:0,dueAt:"",status:"PUBLISHED"})}catch{/* lỗi đã có trong mutation state */}};
- return <section className="audit-panel"><h2>Giao phiếu bài tập</h2>{error&&<div className="api-error">{error}</div>}<form className="compact-form assignment-form" onSubmit={save}><select value={classId} onChange={e=>setClassId(Number(e.target.value))}>{classes.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><input required placeholder="Tên bài giao" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select required value={form.worksheetId} onChange={e=>setForm({...form,worksheetId:Number(e.target.value)})}><option value={0}>Chọn phiếu…</option>{worksheets.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><input type="datetime-local" value={form.dueAt} onChange={e=>setForm({...form,dueAt:e.target.value})}/><button className="primary">Giao bài</button></form>{rows.map(x=><div className="live-row" key={x.id}><div><b>{x.title}</b><small>{x.status} · {x.dueAt?new Date(x.dueAt).toLocaleString("vi-VN"):"Không hạn"}</small></div><span>Phiếu #{x.worksheetId}</span></div>)}</section>
-}
-
-function WorksheetPreview({sheet,onClose}:{sheet:Worksheet;onClose:()=>void}){
- const ref=useRef<HTMLDivElement>(null),[codes,setCodes]=useState<Record<number,string>>({});
- useEffect(()=>{void Promise.all(sheet.items.map(async x=>[x.id,await QRCode.toDataURL(`${location.origin}/q/${x.qrSlug}`,{width:120,margin:1})] as const)).then(rows=>setCodes(Object.fromEntries(rows)))},[sheet]);
- const print=useReactToPrint({contentRef:ref,documentTitle:sheet.name});
- return <div className="dialog-backdrop"><section className="worksheet-dialog"><div className="panel-head no-print"><h2>Xem trước phiếu</h2><div><button onClick={onClose}>Đóng</button><button className="primary" onClick={()=>print()}>In / Xuất PDF</button></div></div><div ref={ref} className={`worksheet-page columns-${sheet.columnsCount}`}><header><h1>{sheet.name}</h1>{sheet.showStudentFields&&<p>Họ và tên: .................................................... &nbsp; Lớp: ....................</p>}</header><div className="worksheet-problems">{sheet.items.map((x,i)=><article key={x.id}><div><b>Câu {i+1}. <small>{x.publicCode}</small></b><span dangerouslySetInnerHTML={{__html:katex.renderToString(x.statementLatex.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:true})}}/></div>{sheet.showQr&&codes[x.id]&&<img src={codes[x.id]} alt={`QR câu ${i+1}`}/>}</article>)}</div></div></section></div>;
-}
-
 const chapterDraft = (courseId: number, orderIndex: number, status = ""): ChapterInput => ({ courseId, title: "", orderIndex, status });
 const lessonDraft = (chapterId: number, orderIndex: number, status = ""): LessonInput => ({ chapterId, title: "", publicCode: "", summary: "", contentHtml: "", orderIndex, status });
 
@@ -2104,6 +1141,7 @@ function CurriculumManager({ session, course, onClose }: { session: AuthSession;
   const [worksheetLesson,setWorksheetLesson]=useState<Lesson|null>(null);
   const [documentLesson,setDocumentLesson]=useState<Lesson|null>(null);
   const [autoSaveState,setAutoSaveState]=useState("");
+  const [bulkImport,setBulkImport]=useState(false);
 
   const chaptersQuery = useQuery({ queryKey: ["curriculum-chapters", session.accessToken, course.id], queryFn: () => getChapters(session, course.id) });
   const chapters = chaptersQuery.data ?? [];
@@ -2160,7 +1198,7 @@ function CurriculumManager({ session, course, onClose }: { session: AuthSession;
     {error && <div className="api-error">{error}</div>}
     <div className="curriculum-columns">
       <div>
-        <h3>Chương ({chapters.length})</h3>
+        <div className="panel-head" style={{marginBottom:8}}><h3 style={{margin:0}}>Chương ({chapters.length})</h3><button type="button" onClick={()=>setBulkImport(true)}>Nhập hàng loạt</button></div>
         <form className="compact-form" onSubmit={saveChapter}><input required placeholder="Tên chương" value={chapterForm.title} onChange={e => setChapterForm({...chapterForm,title:e.target.value})}/><input required min="1" type="number" value={chapterForm.orderIndex} onChange={e => setChapterForm({...chapterForm,orderIndex:Number(e.target.value)})}/><select required value={chapterForm.status} onChange={e=>setChapterForm({...chapterForm,status:e.target.value})}>{metadataOptions(metadata,"publishStatuses").filter(option=>option.value!=="ARCHIVED").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><button className="primary">{chapterEdit?"Cập nhật":"Thêm"}</button></form>
         {chapters.map((chapter,index)=><div className={`content-item content-actions ${selectedChapter?.id===chapter.id?"selected":""}`} key={chapter.id}><button className="content-main" onClick={()=>chooseChapter(chapter)}><span>{chapter.orderIndex}</span><div><b>{chapter.title}</b><small>{chapter.status}</small></div></button><button onClick={()=>void moveChapter(index,-1)}>↑</button><button onClick={()=>void moveChapter(index,1)}>↓</button><button onClick={()=>{setChapterEdit(chapter.id);setChapterForm({courseId:chapter.courseId,title:chapter.title,orderIndex:chapter.orderIndex,status:chapter.status})}}>Sửa</button><button className="danger-link" onClick={()=>void removeChapter(chapter)}>Xóa</button></div>)}
       </div>
@@ -2172,7 +1210,110 @@ function CurriculumManager({ session, course, onClose }: { session: AuthSession;
     {resourceLesson&&<ResourceManager session={session} lesson={resourceLesson} onClose={()=>setResourceLesson(null)}/>}
     {documentLesson&&<LessonDocumentManager session={session} lesson={documentLesson} onClose={()=>setDocumentLesson(null)}/>}
     {worksheetLesson&&<LessonWorksheetManager session={session} lesson={worksheetLesson} onClose={()=>setWorksheetLesson(null)}/>}
+    {bulkImport&&<BulkChapterImport session={session} course={course} chapters={chapters} metadata={metadata} onDone={invalidateChapters} onClose={()=>setBulkImport(false)}/>}
   </section>;
+}
+
+type BulkChapterBlock = { title: string; lessons: string[] };
+type BulkChapterResult = { title: string; status: "pending" | "creating" | "done" | "error"; error?: string; lessons: { title: string; status: "pending" | "creating" | "done" | "error"; error?: string }[] };
+
+/** Phân tích văn bản dán/nạp file thành cây Chương→Bài. Dòng không có "-" đầu dòng = Chương mới; dòng bắt đầu bằng "-" = Bài thuộc Chương gần nhất. */
+function parseBulkChapters(text: string): { blocks: BulkChapterBlock[]; error: string } {
+  const blocks: BulkChapterBlock[] = [];
+  const lines = text.split("\n");
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith("-")) {
+      const title = line.slice(1).trim().replace(/^bài\s*\d+[:.]?\s*/i, "");
+      if (!title) continue;
+      if (!blocks.length) return { blocks: [], error: `Dòng bài học "${line}" xuất hiện trước khi có chương nào.` };
+      blocks[blocks.length - 1].lessons.push(title);
+    } else {
+      const title = line.replace(/^chương\s*\d+[:.]?\s*/i, "");
+      blocks.push({ title, lessons: [] });
+    }
+  }
+  return { blocks, error: "" };
+}
+
+/** Modal nhập hàng loạt Chương/Bài từ văn bản dán hoặc file .txt/.csv — thay cho việc nhập tay từng dòng qua form. */
+function BulkChapterImport({ session, course, chapters, metadata, onDone, onClose }: { session: AuthSession; course: Course; chapters: Chapter[]; metadata: ReturnType<typeof useMetadata>; onDone: () => void; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const [blocks, setBlocks] = useState<BulkChapterBlock[] | null>(null);
+  const [parseError, setParseError] = useState("");
+  const [results, setResults] = useState<BulkChapterResult[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadFile = (file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ""));
+    reader.readAsText(file);
+  };
+
+  const preview = () => {
+    const parsed = parseBulkChapters(text);
+    setParseError(parsed.error);
+    setBlocks(parsed.error ? null : parsed.blocks);
+    setResults(null);
+  };
+
+  const runImport = async () => {
+    if (!blocks || !blocks.length) return;
+    setBusy(true);
+    const status = firstMetadataValue(metadata, "publishStatuses");
+    const progress: BulkChapterResult[] = blocks.map(block => ({ title: block.title, status: "pending", lessons: block.lessons.map(title => ({ title, status: "pending" })) }));
+    setResults([...progress]);
+    let chapterCount = chapters.length;
+    for (let i = 0; i < blocks.length; i++) {
+      progress[i].status = "creating"; setResults([...progress]);
+      try {
+        chapterCount += 1;
+        const created = await createChapter(session, { courseId: course.id, title: blocks[i].title, orderIndex: chapterCount, status });
+        progress[i].status = "done"; setResults([...progress]);
+        for (let j = 0; j < blocks[i].lessons.length; j++) {
+          progress[i].lessons[j].status = "creating"; setResults([...progress]);
+          try {
+            await createLesson(session, { chapterId: created.id, title: blocks[i].lessons[j], publicCode: "", summary: "", contentHtml: "", orderIndex: j + 1, status });
+            progress[i].lessons[j].status = "done";
+          } catch (reason) {
+            progress[i].lessons[j].status = "error"; progress[i].lessons[j].error = messageOf(reason);
+          }
+          setResults([...progress]);
+        }
+      } catch (reason) {
+        progress[i].status = "error"; progress[i].error = messageOf(reason); setResults([...progress]);
+      }
+    }
+    setBusy(false);
+    onDone();
+  };
+
+  const totalLessons = blocks ? blocks.reduce((sum, block) => sum + block.lessons.length, 0) : 0;
+
+  return <div className="dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <section className="dialog-card resource-dialog">
+      <div className="panel-head"><div><p className="eyebrow">CHƯƠNG TRÌNH HỌC</p><h2>Nhập hàng loạt Chương/Bài</h2></div><button onClick={onClose} disabled={busy}>Đóng</button></div>
+      <p>Mỗi dòng không có gạch đầu dòng là một <b>Chương</b> mới (có thể ghi "Chương 1: ..."). Dòng bắt đầu bằng "-" là <b>Bài học</b> thuộc chương phía trên gần nhất (có thể ghi "- Bài 1: ...").</p>
+      <label>Nạp từ file .txt/.csv (tùy chọn)<input type="file" accept=".txt,.csv,text/plain,text/csv" onChange={e => loadFile(e.target.files?.[0] || null)} disabled={busy} /></label>
+      <textarea rows={10} placeholder={"Chương 1: Số tự nhiên\n- Bài 1: Khái niệm số tự nhiên\n- Bài 2: Phép cộng\nChương 2: Phân số\n- Bài 1: Khái niệm phân số"} value={text} onChange={e => setText(e.target.value)} disabled={busy} style={{ width: "100%", fontFamily: "inherit" }} />
+      <div className="row-actions"><button type="button" onClick={preview} disabled={busy || !text.trim()}>Xem trước</button></div>
+      {parseError && <div className="api-error">{parseError}</div>}
+      {blocks && !results && <>
+        <p><b>{blocks.length}</b> chương, <b>{totalLessons}</b> bài sẽ được tạo:</p>
+        {blocks.map((block, index) => <div className="live-row" key={index}><div><b>{block.title || <i>(chưa có tên)</i>}</b><small>{block.lessons.length} bài</small></div></div>)}
+        <div className="row-actions"><button className="primary" onClick={() => void runImport()} disabled={busy || !blocks.length}>{busy ? "Đang tạo…" : `Tạo ${blocks.length} chương, ${totalLessons} bài`}</button></div>
+      </>}
+      {results && <>
+        {results.map((block, index) => <div key={index}>
+          <div className="live-row"><div><b>{block.status === "done" ? "✓ " : block.status === "error" ? "✗ " : block.status === "creating" ? "… " : ""}{block.title}</b>{block.error && <small className="api-error">{block.error}</small>}</div></div>
+          {block.lessons.map((lesson, lessonIndex) => <div className="live-row" key={lessonIndex} style={{ paddingLeft: 20 }}><div><span>{lesson.status === "done" ? "✓ " : lesson.status === "error" ? "✗ " : lesson.status === "creating" ? "… " : ""}{lesson.title}</span>{lesson.error && <small className="api-error">{lesson.error}</small>}</div></div>)}
+        </div>)}
+        {!busy && <div className="row-actions"><button className="primary" onClick={onClose}>Xong, đóng lại</button></div>}
+      </>}
+    </section>
+  </div>;
 }
 
 function LessonDocumentManager({session,lesson,onClose}:{session:AuthSession;lesson:Lesson;onClose:()=>void}) {
@@ -2180,9 +1321,10 @@ function LessonDocumentManager({session,lesson,onClose}:{session:AuthSession;les
  const queryClient=useQueryClient();
  const [documentId,setDocumentId]=useState(0),[teacherNote,setTeacherNote]=useState(""),[startPage,setStartPage]=useState(""),[required,setRequired]=useState(true),[editing,setEditing]=useState<LessonDocument|null>(null);
  const [quizDoc,setQuizDoc]=useState<LessonDocument|null>(null);
+ const [pdfRow,setPdfRow]=useState<LessonDocument|null>(null);
  const [questionDraft,setQuestionDraft]=useState({questionText:"",optionA:"",optionB:"",optionC:"",optionD:"",correctOption:"A",explanation:""});
  const dataQuery=useQuery({queryKey:["lesson-documents",session.accessToken,lesson.id],queryFn:async()=>{const [docs,attached]=await Promise.all([getDocuments(session),getLessonDocuments(session,lesson.id)]);return {library:docs,rows:attached}}});
- const library=dataQuery.data?.library??[],rows=dataQuery.data?.rows??[];
+ const library=(dataQuery.data?.library??[]).filter(item=>item.status!=="HIDDEN"),rows=dataQuery.data?.rows??[];
  const questionsQuery=useQuery({queryKey:["lesson-document-questions",session.accessToken,lesson.id,quizDoc?.id],queryFn:()=>getLessonDocumentQuestions(session,lesson.id,quizDoc!.id),enabled:!!quizDoc});
  const questions=questionsQuery.data??[];
  const invalidateDocs=()=>queryClient.invalidateQueries({queryKey:["lesson-documents"]});
@@ -2201,10 +1343,12 @@ function LessonDocumentManager({session,lesson,onClose}:{session:AuthSession;les
  const move=async(id:number,direction:"UP"|"DOWN")=>{try{await moveMutation.mutateAsync({id,direction})}catch{/* lỗi đã có trong mutation state */}};
  const remove=async(row:LessonDocument)=>{if(!confirm(`Gỡ tài liệu “${row.title}” khỏi bài học?`))return;try{await removeMutation.mutateAsync(row.id)}catch{/* lỗi đã có trong mutation state */}};
  const openQuiz=(row:LessonDocument)=>{setQuizDoc(row)};
+ /** PDF xem ngay trong app; định dạng khác (docx…) vẫn đẩy sang tab mới như trước. */
+ const viewDoc=(row:LessonDocument)=>{if(isPdfDocument(row))setPdfRow(row);else void openDocumentFile(session,row.fileUrl,row.title,row.startPage)};
  const saveQuestion=async(e:React.FormEvent)=>{e.preventDefault();if(!quizDoc)return;try{await saveQuestionMutation.mutateAsync({documentId:quizDoc.id,draft:questionDraft});setQuestionDraft({questionText:"",optionA:"",optionB:"",optionC:"",optionD:"",correctOption:"A",explanation:""})}catch{/* lỗi đã có trong mutation state */}};
  const removeQuestion=async(questionId:number)=>{if(!quizDoc)return;try{await removeQuestionMutation.mutateAsync({documentId:quizDoc.id,questionId})}catch{/* lỗi đã có trong mutation state */}};
  const label=(key:keyof Metadata,value:string)=>metadataOptions(metadata,key).find(option=>option.value===value)?.label||value;
- return <div className="dialog-backdrop"><section className="dialog-card resource-dialog lesson-document-manager"><div className="panel-head"><div><p className="eyebrow">TÀI LIỆU BÀI HỌC</p><h2>{lesson.title}</h2></div><button onClick={onClose}>Đóng</button></div>{error&&<div className="api-error">{error}</div>}<form className="live-form lesson-document-form" onSubmit={submit}>{!editing&&<label>Chọn từ thư viện<select required value={documentId} onChange={e=>setDocumentId(Number(e.target.value))}><option value={0}>Chọn tài liệu...</option>{library.map(item=><option key={item.id} value={item.id}>{item.title} · {label("documentTypes",item.docType)}</option>)}</select></label>}<label>Trang bắt đầu<input type="number" min="1" placeholder="Ví dụ: 6" value={startPage} onChange={e=>setStartPage(e.target.value)}/></label><label>Ghi chú của giáo viên<input placeholder="Ví dụ: Đọc trang 6-12" value={teacherNote} onChange={e=>setTeacherNote(e.target.value)}/></label><label className="check-label"><input type="checkbox" checked={required} onChange={e=>setRequired(e.target.checked)}/> Bắt buộc</label><button className="primary">{editing?"Cập nhật":"Thêm tài liệu vào bài"}</button>{editing&&<button type="button" onClick={reset}>Hủy</button>}</form><div className="lesson-document-list">{rows.map((row,index)=><article key={row.id}><div><span>{row.docType==="VIDEO"?<PlayCircle size={18}/>:<FileText size={18}/>}</span><div><b>{row.displayOrder}. {row.title}</b><small>{label("documentTypes",row.docType)} · {label("documentAudiences",row.audience)} · {row.required?"Bắt buộc":"Tham khảo"}{row.startPage?` · Trang ${row.startPage}`:""}</small>{row.teacherNote&&<p>{row.teacherNote}</p>}</div></div><div className="row-actions"><button disabled={index===0} onClick={()=>void move(row.id,"UP")}>Lên</button><button disabled={index===rows.length-1} onClick={()=>void move(row.id,"DOWN")}>Xuống</button><button onClick={()=>startEdit(row)}>Sửa</button><button onClick={()=>void openQuiz(row)}>Câu hỏi</button><button onClick={()=>void openDocumentFile(session,row.fileUrl,row.title,row.startPage)}>Xem</button><button className="danger-link" onClick={()=>void remove(row)}>Gỡ</button></div></article>)}</div>{quizDoc&&<section className="document-question-panel"><div className="panel-head"><div><p className="eyebrow">KIỂM TRA NHANH</p><h3>{quizDoc.title}</h3></div><button onClick={()=>setQuizDoc(null)}>Đóng</button></div><form className="compact-form document-question-form" onSubmit={saveQuestion}><input required placeholder="Câu hỏi" value={questionDraft.questionText} onChange={e=>setQuestionDraft({...questionDraft,questionText:e.target.value})}/><input required placeholder="A" value={questionDraft.optionA} onChange={e=>setQuestionDraft({...questionDraft,optionA:e.target.value})}/><input required placeholder="B" value={questionDraft.optionB} onChange={e=>setQuestionDraft({...questionDraft,optionB:e.target.value})}/><input required placeholder="C" value={questionDraft.optionC} onChange={e=>setQuestionDraft({...questionDraft,optionC:e.target.value})}/><input required placeholder="D" value={questionDraft.optionD} onChange={e=>setQuestionDraft({...questionDraft,optionD:e.target.value})}/><select value={questionDraft.correctOption} onChange={e=>setQuestionDraft({...questionDraft,correctOption:e.target.value})}><option value="A">Đáp án A</option><option value="B">Đáp án B</option><option value="C">Đáp án C</option><option value="D">Đáp án D</option></select><button className="primary">Thêm câu hỏi</button></form>{questions.map(question=><div className="live-row" key={question.id}><div><b>{question.displayOrder}. {question.questionText}</b><small>Đáp án đúng: {question.correctOption}</small></div><button className="danger-link" onClick={()=>void removeQuestion(question.id)}>Xóa</button></div>)}</section>}{!rows.length&&<EmptyState text="Bài học này chưa có tài liệu."/>}</section></div>
+ return <div className="dialog-backdrop"><section className="dialog-card resource-dialog lesson-document-manager"><div className="panel-head"><div><p className="eyebrow">TÀI LIỆU BÀI HỌC</p><h2>{lesson.title}</h2></div><button onClick={onClose}>Đóng</button></div>{error&&<div className="api-error">{error}</div>}<form className="live-form lesson-document-form" onSubmit={submit}>{!editing&&<label>Chọn từ thư viện<select required value={documentId} onChange={e=>setDocumentId(Number(e.target.value))}><option value={0}>Chọn tài liệu...</option>{library.map(item=><option key={item.id} value={item.id}>{item.title} · {label("documentTypes",item.docType)}</option>)}</select></label>}<label>Trang bắt đầu<input type="number" min="1" placeholder="Ví dụ: 6" value={startPage} onChange={e=>setStartPage(e.target.value)}/></label><label>Ghi chú của giáo viên<input placeholder="Ví dụ: Đọc trang 6-12" value={teacherNote} onChange={e=>setTeacherNote(e.target.value)}/></label><label className="check-label"><input type="checkbox" checked={required} onChange={e=>setRequired(e.target.checked)}/> Bắt buộc</label><button className="primary">{editing?"Cập nhật":"Thêm tài liệu vào bài"}</button>{editing&&<button type="button" onClick={reset}>Hủy</button>}</form><div className="lesson-document-list">{rows.map((row,index)=><article key={row.id}><div><span>{row.docType==="VIDEO"?<PlayCircle size={18}/>:<FileText size={18}/>}</span><div><b>{row.displayOrder}. {row.title}</b><small>{label("documentTypes",row.docType)} · {label("documentAudiences",row.audience)} · {row.required?"Bắt buộc":"Tham khảo"}{row.startPage?` · Trang ${row.startPage}`:""}</small>{row.teacherNote&&<p>{row.teacherNote}</p>}</div></div><div className="row-actions"><button disabled={index===0} onClick={()=>void move(row.id,"UP")}>Lên</button><button disabled={index===rows.length-1} onClick={()=>void move(row.id,"DOWN")}>Xuống</button><button onClick={()=>startEdit(row)}>Sửa</button><button onClick={()=>void openQuiz(row)}>Câu hỏi</button><button onClick={()=>viewDoc(row)}>Xem</button><button className="danger-link" onClick={()=>void remove(row)}>Gỡ</button></div></article>)}</div>{quizDoc&&<section className="document-question-panel"><div className="panel-head"><div><p className="eyebrow">KIỂM TRA NHANH</p><h3>{quizDoc.title}</h3></div><button onClick={()=>setQuizDoc(null)}>Đóng</button></div><form className="compact-form document-question-form" onSubmit={saveQuestion}><input required placeholder="Câu hỏi" value={questionDraft.questionText} onChange={e=>setQuestionDraft({...questionDraft,questionText:e.target.value})}/><input required placeholder="A" value={questionDraft.optionA} onChange={e=>setQuestionDraft({...questionDraft,optionA:e.target.value})}/><input required placeholder="B" value={questionDraft.optionB} onChange={e=>setQuestionDraft({...questionDraft,optionB:e.target.value})}/><input required placeholder="C" value={questionDraft.optionC} onChange={e=>setQuestionDraft({...questionDraft,optionC:e.target.value})}/><input required placeholder="D" value={questionDraft.optionD} onChange={e=>setQuestionDraft({...questionDraft,optionD:e.target.value})}/><select value={questionDraft.correctOption} onChange={e=>setQuestionDraft({...questionDraft,correctOption:e.target.value})}><option value="A">Đáp án A</option><option value="B">Đáp án B</option><option value="C">Đáp án C</option><option value="D">Đáp án D</option></select><button className="primary">Thêm câu hỏi</button></form>{questions.map(question=><div className="live-row" key={question.id}><div><b>{question.displayOrder}. {question.questionText}</b><small>Đáp án đúng: {question.correctOption}</small></div><button className="danger-link" onClick={()=>void removeQuestion(question.id)}>Xóa</button></div>)}</section>}{!rows.length&&<EmptyState text="Bài học này chưa có tài liệu."/>}</section>{pdfRow&&<PdfViewer session={session} lessonId={lesson.id} documentId={pdfRow.id} title={pdfRow.title} fileUrl={pdfRow.fileUrl} initialPage={pdfRow.startPage} onClose={()=>setPdfRow(null)}/>}</div>
 }
 function LessonWorksheetManager({session,lesson,onClose}:{session:AuthSession;lesson:Lesson;onClose:()=>void}){
  const queryClient=useQueryClient();

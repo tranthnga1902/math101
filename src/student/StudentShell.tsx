@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { AuthSession } from "../api";
 
-export type StudentTab = "today" | "lessons" | "textbooks" | "assignments" | "profile";
+export type StudentTab = "today" | "classes" | "lessons" | "videos" | "textbooks" | "materials" | "topics" | "assignments" | "profile";
 
 type StudentShellProps = {
   session: AuthSession;
@@ -16,8 +16,12 @@ type StudentShellProps = {
 
 const tabs: Array<{ key: StudentTab; label: string; icon: string }> = [
   { key: "today", label: "Hôm nay", icon: "today" },
+  { key: "classes", label: "Lớp của em", icon: "school" },
   { key: "lessons", label: "Bài học", icon: "menu_book" },
+  { key: "videos", label: "Video", icon: "smart_display" },
   { key: "textbooks", label: "Sách GK", icon: "auto_stories" },
+  { key: "materials", label: "Tài liệu", icon: "description" },
+  { key: "topics", label: "Chuyên đề", icon: "folder_special" },
   { key: "assignments", label: "Bài tập", icon: "assignment" },
   { key: "profile", label: "Cá nhân", icon: "person" },
 ];
@@ -126,7 +130,7 @@ export function StudentShell({
       </div>
 
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-container-lowest border-t border-outline-variant">
-        <div className="grid grid-cols-5">
+        <div className="flex overflow-x-auto thin-scrollbar">
           {tabs.map((item) => {
             const active = tab === item.key;
             return (
@@ -134,7 +138,7 @@ export function StudentShell({
                 key={item.key}
                 type="button"
                 onClick={() => onTabChange(item.key)}
-                className={`flex flex-col items-center gap-1 py-2 text-[11px] font-medium ${
+                className={`shrink-0 flex-1 min-w-[4.25rem] flex flex-col items-center gap-1 py-2 text-[11px] font-medium whitespace-nowrap ${
                   active ? "text-primary" : "text-on-surface-variant"
                 }`}
               >

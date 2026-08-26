@@ -66,5 +66,11 @@
 .attach-range label{display:grid;gap:4px;font-size:11px;font-weight:700;color:#52615a}
 .attach-range label input{height:32px;padding:0 8px;border:1px solid #cbd7d1;border-radius:6px;font-size:12px}
 .mapping-notice{padding:10px 12px;border-radius:8px;background:#dff3ea;color:#11543e;font-size:13px;font-weight:600;margin:0}
+.mapping-btn-ghost[aria-pressed="true"]{background:#dff3ea;border-color:#176b50;color:#11543e}
+/* Badge "Trang sách" xếp trên, phần còn lại của khung mới là chỗ vẽ trang —
+   nhờ vậy đo được đúng khoảng trống để tính chế độ "Vừa trang". */
+.pdf-viewport{flex-direction:column;align-items:center}
+.pdf-viewport>.mapped-badge{left:auto;transform:none;margin:0 0 12px}
+.pdf-fit-box{flex:1;min-height:0;width:100%;display:flex;justify-content:center;align-items:flex-start}
 @media(max-width:1100px){.mapping-tool .mapping-main{grid-template-columns:140px 1fr 320px!important}.pdf-thumb small{font-size:10px}}
 @media(max-width:900px){.mapping-tool .mapping-main{grid-template-columns:120px 1fr!important}.mapping-tool .mapping-panel{display:none}.pdf-thumbs-grid{grid-template-columns:1fr}}

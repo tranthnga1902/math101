@@ -143,7 +143,7 @@ function LatestScoreCard({ assignment }: { assignment: StudentAssignment }) {
           className="text-base font-semibold"
           style={{ color: assignment.progressStatus === "COMPLETED" ? "var(--color-secondary)" : "var(--color-on-surface-variant)" }}
         >
-          {assignment.completionPercent}%
+          {assignment.score!=null?`${assignment.score}/${assignment.maxScore??10}`:"Chờ trả điểm"}
         </span>
       </div>
       {firstProblem?.statementLatex && (
@@ -173,7 +173,7 @@ export function TodayPage({
   });
 
   const pending = (assignments.data ?? []).filter((item) => item.progressStatus !== "COMPLETED").slice(0, 3);
-  const recent = (assignments.data ?? []).filter((item) => item.progressStatus === "COMPLETED").slice(0, 2);
+  const recent = (assignments.data ?? []).filter((item) => item.gradingStatus === "RETURNED" && item.score!=null).slice(0, 2);
 
   return (
     <div className="space-y-6">

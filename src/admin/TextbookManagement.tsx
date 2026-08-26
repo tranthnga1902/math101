@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {useMutation,useQuery,useQueryClient} from "@tanstack/react-query";
 import {attachLessonDocument,deleteDocument,getAdminTextbooks,getChapters,getCourses,getLessons,getTextbook,openTextbook,openTextbookInBrowser,publishTextbook,setTextbookPageOffset,uploadTextbook,type AuthSession,type Chapter,type Course,type Lesson,type TextbookDetail,type TextbookItem} from "../api";
 import {useMappingAutoSave} from "../hooks/useMappingAutoSave";
@@ -105,7 +105,31 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
   const info=await openTextbook(session,row.book.id,pdfPage>offset?Math.max(1,pdfPage-offset):undefined);
   return info.fileUrl;
  },[session,row.book.id,pdfPage,offset]);
- const fitWidth=Math.round(zoom*7.6);
+
+ // "Vừa trang": đo khung trống rồi suy ra bề rộng sao cho cả trang lọt vào khung.
+ // Tỉ lệ trang do PdfPageViewer báo về sau lượt vẽ đầu; trước đó tạm dùng A4 dọc.
+ const fitBoxRef=useRef<HTMLDivElement|null>(null);
+ const [fitPage,setFitPage]=useState(false);
+ const [fitBox,setFitBox]=useState<{w:number;h:number}|null>(null);
+ const [pageAspect,setPageAspect]=useState(1/1.414);
+ useEffect(()=>{
+  const node=fitBoxRef.current;
+  if(!node||!fitPage)return;
+  const observer=new ResizeObserver(entries=>{
+   const rect=entries[0]?.contentRect;
+   if(rect)setFitBox({w:Math.floor(rect.width),h:Math.floor(rect.height)});
+  });
+  observer.observe(node);
+  return ()=>observer.disconnect();
+ },[fitPage]);
+ const fitWidth=useMemo(()=>{
+  if(!fitPage||!fitBox)return Math.round(zoom*7.6);
+  // Trừ 30px: 12px padding mỗi bên của .pdf-canvas-wrap + viền ảnh + bù sai số làm tròn.
+  // Thiếu khoản này là trang tràn ra vài pixel, thanh cuộn hiện rồi mất làm khung co giật.
+  const room=30;
+  return Math.max(120,Math.round(Math.min(fitBox.w-room,(fitBox.h-room)*pageAspect)));
+ },[fitPage,fitBox,zoom,pageAspect]);
+ const exitFitPage=(action:()=>void)=>{setFitPage(false);action()};
  const mappedCount=useMemo(()=>row.detail?.pageMappings.length??0,[row.detail]);
 
  return (
@@ -154,16 +178,18 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
     <section className="pdf-stage">
      <div className="pdf-toolbar">
       <div className="pdf-toolbar-zoom">
-       <button className="mapping-icon-btn" onClick={()=>setZoom(z=>Math.max(60,z-10))} aria-label="Thu nhỏ">
+       <button className="mapping-icon-btn" onClick={()=>exitFitPage(()=>setZoom(z=>Math.max(60,z-10)))} aria-label="Thu nhỏ">
         <span className="material-symbols-outlined">zoom_out</span>
        </button>
-       <b>{zoom}%</b>
-       <button className="mapping-icon-btn" onClick={()=>setZoom(z=>Math.min(150,z+10))} aria-label="Phóng to">
+       <b>{fitPage?"Vừa trang":`${zoom}%`}</b>
+       <button className="mapping-icon-btn" onClick={()=>exitFitPage(()=>setZoom(z=>Math.min(150,z+10)))} aria-label="Phóng to">
         <span className="material-symbols-outlined">zoom_in</span>
        </button>
-       <button className="mapping-icon-btn" onClick={()=>setZoom(100)} aria-label="Về 100%" title="Về 100%">
+       <button className="mapping-icon-btn" onClick={()=>exitFitPage(()=>setZoom(100))} aria-label="Về 100%" title="Về 100%">
         <span className="material-symbols-outlined">fit_screen</span>
        </button>
+       <button className="mapping-btn-ghost" aria-pressed={fitPage} title="Hiện đúng một trang lọt hết vào khung"
+        onClick={()=>setFitPage(v=>!v)}>Vừa trang</button>
       </div>
       <div className="pdf-toolbar-nav">
        <button className="mapping-icon-btn" disabled={pdfPage<=1} onClick={()=>setPdfPage(p=>Math.max(1,p-1))} aria-label="Trang trước">
@@ -182,8 +208,10 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
       </div>
      </div>
      <div className="pdf-viewport">
-      <PdfPageViewer key={`${row.book.id}-${pdfPage}-${fitWidth}`} fileUrl={row.book.fileUrl} accessToken={session.accessToken} pageNumber={pdfPage} fitWidth={fitWidth} onUseSignedUrl={fetchSignedPdfUrl} className="pdf-canvas-wrap"/>
       <span className="mapped-badge">Trang sách {bookPage}</span>
+      <div className="pdf-fit-box" ref={fitBoxRef}>
+       <PdfPageViewer key={`${row.book.id}-${pdfPage}-${fitWidth}`} fileUrl={row.book.fileUrl} accessToken={session.accessToken} pageNumber={pdfPage} fitWidth={fitWidth} onUseSignedUrl={fetchSignedPdfUrl} onPageAspect={setPageAspect} className="pdf-canvas-wrap"/>
+      </div>
      </div>
     </section>
 

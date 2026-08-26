@@ -8,7 +8,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Giới hạn 24 trang đã render trong bộ nhớ — trang PDF full-size khá nặng
 // (data URL PNG), không cap sẽ phình RAM khi lướt qua nhiều trang/tài liệu.
-const pageCache = new LruCache<string, string>(24);
+// Cache cả kích thước: thiếu nó thì lần quay lại một trang đã xem sẽ trắng khung,
+// vì component được remount nên state dims bắt đầu lại từ null.
+const pageCache = new LruCache<string, { url: string; w: number; h: number }>(24);
 
 type Props = {
   fileUrl: string;
@@ -17,6 +19,8 @@ type Props = {
   fitWidth?: number;
   className?: string;
   onUseSignedUrl?: () => Promise<string>;
+  /** Tỉ lệ rộng/cao của trang gốc — để nơi gọi tính được chế độ "vừa trang". */
+  onPageAspect?: (aspect: number) => void;
 };
 
 function resolveUrl(fileUrl: string): string {
@@ -26,20 +30,25 @@ function resolveUrl(fileUrl: string): string {
   return `${API_BASE_URL}/${fileUrl}`;
 }
 
-export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760, className, onUseSignedUrl }: Props) {
+export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760, className, onUseSignedUrl, onPageAspect }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  // Giữ trong ref: nơi gọi thường truyền hàm inline, đưa vào deps là tải lại PDF mỗi lần render.
+  const aspectRef = useRef(onPageAspect);
+  aspectRef.current = onPageAspect;
 
   useEffect(() => {
     if (!fileUrl && !onUseSignedUrl) return;
     const pageKey = `${fileUrl || ""}#p${pageNumber}@${fitWidth}#t${accessToken?.slice(-8) ?? "anon"}`;
     if (pageCache.has(pageKey)) {
-      const url = pageCache.get(pageKey)!;
-      setDataUrl(url);
+      const hit = pageCache.get(pageKey)!;
+      setDims({ w: hit.w, h: hit.h });
+      setDataUrl(hit.url);
       setLoading(false);
+      aspectRef.current?.(hit.w / hit.h);
       return;
     }
     let cancelled = false;
@@ -95,10 +104,11 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
         if (!ctx) throw new Error("Không tạo được canvas context");
         await page.render({ canvasContext: ctx, viewport }).promise;
         const url = canvas.toDataURL("image/png");
-        pageCache.set(pageKey, url);
+        pageCache.set(pageKey, { url, w: width, h: height });
         if (!cancelled) {
           setDims({ w: width, h: height });
           setDataUrl(url);
+          aspectRef.current?.(baseViewport.width / baseViewport.height);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Lỗi render PDF");

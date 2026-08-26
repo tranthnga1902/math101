@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import { useQuery } from "@tanstack/react-query";
@@ -6,6 +6,9 @@ import {
   getMyAssignments,
   getPublicProblem,
   markProblemProgress,
+  submitAssignment,
+  saveAssignmentAnswers,
+  getAssignmentResult,
   type AuthSession,
 } from "../api";
 
@@ -25,8 +28,15 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
     queryFn: () => getMyAssignments(session),
   });
   const assignment = (assignmentsQuery.data ?? []).find((item) => item.id === assignmentId) ?? null;
+  const savedQuery=useQuery({queryKey:["assignment-draft",assignmentId],queryFn:()=>getAssignmentResult(session,assignmentId),enabled:Boolean(assignment)});
   const firstProblem = assignment?.items[0] ?? null;
   const [index, setIndex] = useState(0);
+  const [answers,setAnswers]=useState<Record<number,string>>({});
+  const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState("");
+  const [submitted,setSubmitted]=useState(false);
+  const [saveState,setSaveState]=useState<"idle"|"saving"|"saved"|"error">("idle");
+  useEffect(()=>{if(savedQuery.data?.answers)setAnswers(savedQuery.data.answers)},[savedQuery.data]);
   const total = assignment?.items.length ?? 0;
 
   if (assignmentsQuery.error) {
@@ -66,7 +76,7 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <ProblemCard session={session} slug={problem.qrSlug} problemLatex={problem.statementLatex} />
+        <ProblemCard session={session} slug={problem.qrSlug} problemLatex={problem.statementLatex} options={[problem.optionA,problem.optionB,problem.optionC,problem.optionD]} selected={answers[problem.problemId]??null} saveState={saveState} onSelect={async option=>{setAnswers(current=>({...current,[problem.problemId]:option}));setSaveState("saving");try{await saveAssignmentAnswers(session,assignment.id,{[problem.problemId]:option});setSaveState("saved")}catch{setSaveState("error")}}}/>
         <QuestionNav
           total={total}
           index={index}
@@ -85,7 +95,7 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
           Câu trước
         </button>
-        <button
+        {index>=total-1?<button type="button" disabled={submitting||Object.keys(answers).length!==total||submitted} onClick={async()=>{setSubmitting(true);setSubmitError("");try{await submitAssignment(session,assignment.id,answers);setSubmitted(true);await assignmentsQuery.refetch()}catch(reason){setSubmitError(reason instanceof Error?reason.message:"Không thể nộp bài")}finally{setSubmitting(false)}}} className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50">{submitting?"Đang nộp…":submitted?"Đã nộp bài":"Nộp bài"}</button>:<button
           type="button"
           disabled={index >= total - 1}
           onClick={() => setIndex((value) => Math.min(total - 1, value + 1))}
@@ -93,8 +103,10 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
         >
           Câu sau
           <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-        </button>
+        </button>}
       </footer>
+      {submitError&&<div className="bg-error-container text-on-error-container px-4 py-3 rounded-lg text-sm">{submitError}</div>}
+      {submitted&&<div className="bg-secondary-container text-on-secondary-container px-4 py-3 rounded-lg text-sm font-medium">Bài đã được chấm tự động và gửi cho giáo viên. Điểm sẽ hiển thị sau khi giáo viên trả bài.</div>}
     </div>
   );
 }
@@ -103,12 +115,19 @@ function ProblemCard({
   session,
   slug,
   problemLatex,
+  options,
+  selected,
+  onSelect,
+  saveState,
 }: {
   session: AuthSession;
   slug: string | null;
   problemLatex: string;
+  options:(string|null)[];
+  selected:string|null;
+  onSelect:(option:string)=>Promise<void>;
+  saveState:"idle"|"saving"|"saved"|"error";
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -118,18 +137,17 @@ function ProblemCard({
     enabled: Boolean(slug),
   });
 
-  const onSelect = async (option: string) => {
-    if (!slug) return;
-    setSelected(option);
+  const handleSelect = async (option: string) => {
+    await onSelect(option);
     setBusy(true);
     try {
-      await markProblemProgress(session, problemQuery.data?.problem.id ?? 0, false);
+      if(slug)await markProblemProgress(session, problemQuery.data?.problem.id ?? 0, false);
     } finally {
       setBusy(false);
     }
   };
 
-  const options = slug ? ["A", "B", "C", "D"] : [];
+  const optionKeys = options.some(Boolean) ? ["A", "B", "C", "D"] : [];
   const hint = problemQuery.data?.hints[0]?.contentLatex;
 
   return (
@@ -138,20 +156,20 @@ function ProblemCard({
         <h2 className="text-lg font-semibold text-primary">Đề bài</h2>
         <span className="text-xs text-on-surface-variant inline-flex items-center gap-1">
           <span className="material-symbols-outlined text-[16px]">cloud_done</span>
-          Đã lưu
+          {saveState==="saving"?"Đang lưu…":saveState==="error"?"Lưu thất bại":"Đã lưu"}
         </span>
       </div>
       <p
         className="text-base leading-relaxed"
         dangerouslySetInnerHTML={{ __html: renderStatement(problemLatex) }}
       />
-      {slug ? (
+      {optionKeys.length ? (
         <div className="space-y-2">
-          {options.map((option) => (
+          {optionKeys.map((option,optionIndex) => (
             <button
               key={option}
               type="button"
-              onClick={() => void onSelect(option)}
+              onClick={() => void handleSelect(option)}
               className={`w-full text-left p-3 rounded-lg border flex items-center gap-3 transition-colors ${
                 selected === option
                   ? "border-primary bg-primary-container/20"
@@ -165,7 +183,7 @@ function ProblemCard({
               >
                 {option}
               </span>
-              <span className="text-sm">Lựa chọn {option}</span>
+              <span className="text-sm">{options[optionIndex]||`Lựa chọn ${option}`}</span>
             </button>
           ))}
         </div>

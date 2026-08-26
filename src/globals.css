@@ -61,6 +61,23 @@ body {
   color: var(--color-on-surface);
 }
 
+/* Primary actions must remain readable even when legacy module CSS has a
+   more specific button color selector. This also keeps Material icons white. */
+button.bg-primary,
+a.bg-primary,
+[role="button"].bg-primary {
+  color: #ffffff !important;
+}
+button.bg-primary .material-symbols-outlined,
+a.bg-primary .material-symbols-outlined,
+[role="button"].bg-primary .material-symbols-outlined {
+  color: #ffffff !important;
+}
+button.bg-primary:hover:not(:disabled),
+a.bg-primary:hover {
+  color: #ffffff !important;
+}
+
 /* Custom scrollbar used in lesson reader + sgk thumbnails. */
 .thin-scrollbar::-webkit-scrollbar {
   width: 6px;

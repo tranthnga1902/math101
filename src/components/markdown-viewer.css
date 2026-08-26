@@ -1,0 +1,24 @@
+/* Khung đọc Markdown dùng chung cho modal (Kho Tài Liệu) và khung nhúng trực tiếp (Nội dung học). */
+.md-content{font-size:clamp(14px,1.6vw,16px);line-height:1.7;color:#1e293b;max-width:72ch;overflow-wrap:anywhere}
+.md-content h3{font-size:clamp(15px,1.9vw,18px);font-weight:700;color:#0f172a;margin:20px 0 8px}
+.md-content h3:first-child{margin-top:0}
+.md-content p{margin:0 0 12px;white-space:pre-wrap}
+/* Nội dung rộng cuộn trong khung, không đẩy ngang cả trang */
+.md-content pre,.md-content table{display:block;max-width:100%;overflow-x:auto}
+
+.md-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.md-modal{background:#fff;border-radius:12px;width:min(720px,100%);max-height:85dvh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.md-modal>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #e5e7eb}
+.md-modal>header h2{margin:0;font-size:17px;font-weight:600;color:#0f172a}
+.md-close{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:#64748b;padding:4px 8px;min-height:32px}
+.md-body{padding:16px 20px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+.md-modal>footer{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:12px 20px;border-top:1px solid #e5e7eb}
+.md-primary{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.md-secondary{background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer}
+
+@media(max-width:520px){
+ .md-overlay{padding:0}
+ .md-modal{width:100%;max-height:100dvh;height:100dvh;border-radius:0}
+ .md-modal>footer{justify-content:stretch}
+ .md-modal>footer button{flex:1}
+}
