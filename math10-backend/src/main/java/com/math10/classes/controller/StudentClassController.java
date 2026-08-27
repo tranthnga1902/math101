@@ -3,6 +3,7 @@ package com.math10.classes.controller;
 import com.math10.common.dto.ApiResponse;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.classes.service.ClassAccessGuard;
+import com.math10.documents.support.DocumentUrls;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -65,7 +66,7 @@ public class StudentClassController {
     public ApiResponse<List<Map<String, Object>>> myTasks(@PathVariable Long classId) {
         guard.requireMember(classId);
         Long studentId = current.requireUserId();
-        return ApiResponse.ok("Nhiệm vụ của tôi trong lớp", jdbc.queryForList("""
+        List<Map<String, Object>> rows = jdbc.queryForList("""
                 select a.id,a.title,a.due_at,a.status,a.requirement,a.lesson_id,a.worksheet_id,a.document_id,
                        w.name worksheet_name,d.title document_title,d.file_url document_file_url,d.doc_type document_doc_type,
                        coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
@@ -80,7 +81,9 @@ public class StudentClassController {
                 left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=? and ap.deleted_at is null
                 where a.class_id=? and a.deleted_at is null and a.status<>'DRAFT'
                 order by a.requirement,a.due_at nulls last,a.created_at desc
-                """, studentId, classId));
+                """, studentId, classId);
+        rows.forEach(row -> DocumentUrls.maskContent(row, "document_id", "document_doc_type", "document_file_url"));
+        return ApiResponse.ok("Nhiệm vụ của tôi trong lớp", rows);
     }
 
     /** Nhật ký nộp bài của chính em trong lớp — cùng dữ liệu giáo viên thấy, nhưng lọc cứng theo em. */

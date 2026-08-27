@@ -14,7 +14,6 @@ import com.math10.documents.dto.MoveLessonDocumentRequest;
 import com.math10.documents.service.DocumentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -82,14 +81,19 @@ public class LessonDocumentController {
     }
 
     /**
-     * Byte PDF cho trình xem trong app. Dùng cùng guard với {@code /open} nhưng không ghi
+     * Byte file cho trình xem trong app. Dùng cùng guard với {@code /open} nhưng không ghi
      * tiến độ, để một lần mở tài liệu không bị đếm hai lượt.
+     *
+     * <p>Quyền ở đây đến từ việc đang học bài này, không từ audience của tài liệu — nên tài
+     * liệu trong bài học đi đường riêng chứ không dùng {@code /api/documents/{id}/content}.
      */
-    @GetMapping("/{id}/content")
+    @GetMapping({"/{id}/content", "/{id}/content.{ext}"})
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
-    public ResponseEntity<byte[]> content(@PathVariable Long lessonId, @PathVariable Long id) {
+    public ResponseEntity<byte[]> content(@PathVariable Long lessonId,
+                                          @PathVariable Long id,
+                                          @PathVariable(required = false) String ext) {
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(DocumentController.mediaTypeFor(ext))
                 .body(documentService.readLessonDocumentBytes(lessonId, id));
     }
 

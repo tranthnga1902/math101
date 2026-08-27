@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Locale;
 
 @RestController
 @RequiredArgsConstructor
@@ -47,15 +48,42 @@ public class DocumentController {
     }
 
     /**
-     * Byte PDF cho trình xem trong app. Phân quyền nằm trong service: học sinh chỉ đọc được
-     * tài liệu đã mở cho học sinh và chưa bị ẩn.
+     * Byte file cho trình xem trong app — cửa duy nhất tới file trên R2. Phân quyền nằm trong
+     * service: học sinh chỉ đọc được tài liệu đã mở cho mình hoặc gắn vào lớp mình học, giáo
+     * viên không đọc được tài liệu riêng của giáo viên khác.
+     *
+     * <p>Dạng có đuôi ({@code /content.pdf}) để trình duyệt và frontend biết đây là file gì;
+     * dạng không đuôi giữ lại cho link cũ.
      */
-    @GetMapping("/{id}/content")
+    @GetMapping({"/{id}/content", "/{id}/content.{ext}"})
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
-    public ResponseEntity<byte[]> content(@PathVariable Long id) {
+    public ResponseEntity<byte[]> content(@PathVariable Long id,
+                                          @PathVariable(required = false) String ext) {
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(mediaTypeFor(ext))
                 .body(documentService.readDocumentBytes(id));
+    }
+
+    /** Ảnh bìa đi qua backend để bucket R2 có thể để private mà bìa vẫn hiện. */
+    @GetMapping("/{id}/thumbnail")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ResponseEntity<byte[]> thumbnail(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .body(documentService.readDocumentThumbnailBytes(id));
+    }
+
+    /** Content-Type suy từ đuôi trong đường dẫn; đuôi do chính backend sinh ra nên tin được. */
+    static MediaType mediaTypeFor(String extension) {
+        if (extension == null || "pdf".equalsIgnoreCase(extension)) {
+            return MediaType.APPLICATION_PDF;
+        }
+        return switch (extension.toLowerCase(Locale.ROOT)) {
+            case "doc" -> MediaType.parseMediaType("application/msword");
+            case "docx" -> MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            default -> MediaType.APPLICATION_OCTET_STREAM;
+        };
     }
 
     // ==================== TEXTBOOK (SGK/SBT) — Public cho Student/Teacher ====================

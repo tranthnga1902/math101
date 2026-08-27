@@ -8,8 +8,6 @@ import com.math10.documents.dto.TextbookPageOffsetRequest;
 import com.math10.documents.entity.DocumentAudience;
 import com.math10.documents.entity.DocumentType;
 import com.math10.documents.service.DocumentService;
-import com.math10.common.storage.StorageService;
-import com.math10.common.storage.StorageUrlSupport;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,8 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -35,8 +31,6 @@ import java.util.List;
 public class AdminDocumentController {
 
     private final DocumentService documentService;
-    private final StorageService storageService;
-    private final StorageUrlSupport storageUrls;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
@@ -44,13 +38,9 @@ public class AdminDocumentController {
         return ApiResponse.ok("Lấy thư viện tài liệu thành công", documentService.listDocuments());
     }
 
-    @GetMapping("/content")
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
-    public ResponseEntity<byte[]> content(@RequestParam String url) {
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(storageService.readObject(storageUrls.objectKeyFor(url)));
-    }
+    // Đã bỏ GET /content?url= : endpoint đó nhận URL bất kỳ rồi đọc thẳng object trên R2, tức
+    // là một cửa đọc toàn bộ bucket cho mọi giáo viên. Byte file giờ đi qua
+    // GET /api/documents/{id}/content, nơi có kiểm quyền theo từng tài liệu.
 
     @PostMapping(consumes = "multipart/form-data")
     @PreAuthorize("hasRole('ADMIN')")

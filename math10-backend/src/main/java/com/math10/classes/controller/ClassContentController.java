@@ -13,6 +13,7 @@ import com.math10.configuration.security.CurrentUserService;
 import com.math10.documents.entity.Document;
 import com.math10.documents.entity.DocumentStatus;
 import com.math10.documents.repository.DocumentRepository;
+import com.math10.documents.support.DocumentUrls;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -96,7 +97,7 @@ public class ClassContentController {
     @GetMapping("/documents")
     public ApiResponse<List<Map<String, Object>>> listDocuments(@PathVariable Long classId) {
         requireMember(classId);
-        return ApiResponse.ok("Tài liệu của lớp", jdbc.queryForList("""
+        List<Map<String, Object>> rows = jdbc.queryForList("""
                 select cd.id,cd.document_id,cd.requirement,cd.note,cd.created_at attached_at,
                        d.title,d.doc_type,d.file_url,d.thumbnail_url,d.total_pages,d.owner_id,d.content_markdown is not null has_markdown,
                        case when d.owner_id is null then 'KHO_CHUNG' else 'RIENG' end source,
@@ -108,7 +109,12 @@ public class ClassContentController {
                 left join taxonomy_node tn on tn.id=d.taxonomy_node_id
                 where cd.class_id=? and cd.deleted_at is null
                 order by cd.requirement,cd.created_at desc
-                """, classId));
+                """, classId);
+        rows.forEach(row -> {
+            DocumentUrls.maskContent(row, "document_id", "doc_type", "file_url");
+            DocumentUrls.maskThumbnail(row, "document_id", "thumbnail_url");
+        });
+        return ApiResponse.ok("Tài liệu của lớp", rows);
     }
 
     /** Kho tài liệu giáo viên được phép gắn: kho chung cấp trường (owner_id is null) + tài liệu riêng của chính mình. */
@@ -140,7 +146,12 @@ public class ClassContentController {
             args.add(taxonomyNodeId);
         }
         sql.append(" order by d.created_at desc limit 300");
-        return ApiResponse.ok("Kho tài liệu có thể gắn vào lớp", jdbc.queryForList(sql.toString(), args.toArray()));
+        List<Map<String, Object>> rows = jdbc.queryForList(sql.toString(), args.toArray());
+        rows.forEach(row -> {
+            DocumentUrls.maskContent(row, "id", "doc_type", "file_url");
+            DocumentUrls.maskThumbnail(row, "id", "thumbnail_url");
+        });
+        return ApiResponse.ok("Kho tài liệu có thể gắn vào lớp", rows);
     }
 
     @PostMapping("/documents")

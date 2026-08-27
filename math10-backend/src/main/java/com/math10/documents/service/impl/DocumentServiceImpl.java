@@ -34,6 +34,7 @@ import com.math10.documents.repository.LessonDocumentProgressRepository;
 import com.math10.documents.repository.LessonDocumentQuestionRepository;
 import com.math10.documents.repository.LessonDocumentRepository;
 import com.math10.documents.service.DocumentService;
+import com.math10.documents.support.DocumentUrls;
 import com.math10.common.storage.StorageService;
 import com.math10.common.storage.StorageUrlSupport;
 import com.math10.documents.service.PdfMarkdownService;
@@ -334,24 +335,59 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     /**
-     * Byte PDF cho trình xem trong app. Đi qua backend (chứ không để trình duyệt gọi thẳng
-     * domain R2) để không phụ thuộc cấu hình CORS của domain đó — cùng lý do như ảnh bìa.
+     * Byte file cho trình xem trong app. Đây là <b>cửa duy nhất</b> tới file trên R2: API không
+     * trả URL R2 ra ngoài nữa, nên guard dưới đây là thứ thực sự chặn người không có quyền.
      */
     @Override
     @Transactional(readOnly = true)
     public byte[] readDocumentBytes(Long id) {
         Document document = document(id);
-        if ("STUDENT".equals(currentUserService.requireRoleCode())) {
-            // Hai đường đọc hợp lệ: tài liệu vốn đã mở cho học sinh (đúng điều kiện của
-            // findStudentVisibleDocuments), hoặc tài liệu giáo viên gắn vào lớp em đó học.
-            // Tài liệu bị ẩn thì chặn ở cả hai đường.
-            if (document.getStatus() == DocumentStatus.HIDDEN
-                    || (document.getAudience() != DocumentAudience.STUDENT_ALLOWED
-                        && !attachedToStudentClass(document.getId()))) {
+        checkCanRead(document);
+        return fileBytes(document);
+    }
+
+    /**
+     * Ảnh bìa cũng đi qua backend: để bucket R2 chuyển sang private được mà bìa không mất.
+     * Cùng guard với file gốc — bìa là trang đầu của chính tài liệu đó.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readDocumentThumbnailBytes(Long id) {
+        Document document = document(id);
+        checkCanRead(document);
+        if (document.getThumbnailUrl() == null || document.getThumbnailUrl().isBlank()) {
+            throw new ResourceNotFoundException("Tài liệu này chưa có ảnh bìa");
+        }
+        return storageService.readObject(storageUrls.objectKeyFor(document.getThumbnailUrl()));
+    }
+
+    /** Quyền đọc file phải khớp đúng quyền nhìn thấy tài liệu trong danh sách, không rộng hơn. */
+    private void checkCanRead(Document document) {
+        String role = currentUserService.requireRoleCode();
+        if ("ADMIN".equals(role)) {
+            return;
+        }
+        if ("TEACHER".equals(role)) {
+            // Đúng điều kiện của findLibraryForTeacher: tài liệu của chính mình, hoặc kho chung
+            // chưa bị ẩn. Thiếu vế này thì giáo viên A đoán id là đọc được tài liệu riêng của B.
+            Long ownerId = document.getOwnerId();
+            boolean mine = ownerId != null && ownerId.equals(currentUserService.requireUserId());
+            if (!mine && !(ownerId == null && document.getStatus() != DocumentStatus.HIDDEN)) {
                 throw new AccessDeniedException("Bạn không có quyền mở tài liệu này");
             }
+            return;
         }
-        return pdfBytes(document);
+        // Học sinh: hai đường đọc hợp lệ — tài liệu vốn đã mở cho học sinh (đúng điều kiện của
+        // findStudentVisibleDocuments), hoặc tài liệu giáo viên gắn vào lớp em đó học.
+        // Tài liệu bị ẩn thì chặn ở cả hai đường; SGK/SBT còn phải đã xuất bản.
+        boolean hidden = TEXTBOOK_TYPES.contains(document.getDocType())
+                ? document.getStatus() != DocumentStatus.PUBLISHED
+                : document.getStatus() == DocumentStatus.HIDDEN;
+        if (hidden
+                || (document.getAudience() != DocumentAudience.STUDENT_ALLOWED
+                    && !attachedToStudentClass(document.getId()))) {
+            throw new AccessDeniedException("Bạn không có quyền mở tài liệu này");
+        }
     }
 
     /**
@@ -380,10 +416,10 @@ public class DocumentServiceImpl implements DocumentService {
         } else {
             checkLessonOwnership(lesson(lessonId));
         }
-        return pdfBytes(document(row.getDocumentId()));
+        return fileBytes(document(row.getDocumentId()));
     }
 
-    private byte[] pdfBytes(Document document) {
+    private byte[] fileBytes(Document document) {
         if (document.getFileUrl() == null || document.getFileUrl().isBlank()) {
             throw new BusinessException("Tài liệu này không có file để xem");
         }
@@ -494,7 +530,7 @@ public class DocumentServiceImpl implements DocumentService {
         } else {
             checkLessonOwnership(lesson);
         }
-        return new DocumentOpenResponse(row.getId(), document.getTitle(), document.getFileUrl(), row.getStartPage());
+        return new DocumentOpenResponse(row.getId(), document.getTitle(), lessonContentUrl(row, document), row.getStartPage());
     }
 
     @Override
@@ -694,7 +730,7 @@ public class DocumentServiceImpl implements DocumentService {
                 doc.getStatus().name(),
                 doc.getTotalPages(),
                 doc.getBasePageOffset(),
-                doc.getFileUrl(),
+                contentUrl(doc),
                 entries
         );
     }
@@ -715,7 +751,7 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         int pdfPage = resolvePdfPage(id, bookPage != null ? bookPage : 1, doc.getBasePageOffset());
-        return new TextbookOpenResponse(doc.getId(), doc.getTitle(), doc.getFileUrl(), pdfPage, doc.getTotalPages());
+        return new TextbookOpenResponse(doc.getId(), doc.getTitle(), contentUrl(doc), pdfPage, doc.getTotalPages());
     }
 
     @Override
@@ -876,13 +912,24 @@ public class DocumentServiceImpl implements DocumentService {
         return startPage == null || startPage < 1 ? null : startPage;
     }
 
+    /** @see DocumentUrls — API không trả URL R2 thô, mọi byte đi qua endpoint có xác thực. */
+    private String contentUrl(Document document) {
+        return DocumentUrls.contentUrl(document.getId(),
+                document.getDocType() != null ? document.getDocType().name() : null,
+                document.getFileUrl());
+    }
+
+    private String thumbnailUrl(Document document) {
+        return DocumentUrls.thumbnailUrl(document.getId(), document.getThumbnailUrl());
+    }
+
     private DocumentResponse map(Document document) {
         return new DocumentResponse(
                 document.getId(),
                 document.getTitle(),
                 document.getDocType(),
                 document.getAudience(),
-                document.getFileUrl(),
+                contentUrl(document),
                 document.getGradeId(),
                 document.getChapterId(),
                 document.getStatus(),
@@ -890,7 +937,7 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getTotalPages(),
                 document.getBasePageOffset(),
                 document.getCreatedAt(),
-                document.getThumbnailUrl(),
+                thumbnailUrl(document),
                 document.getFolderId(),
                 document.getContentMarkdown(),
                 document.getTaxonomyNodeId()
@@ -908,14 +955,24 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getStatus(),
                 document.getTotalPages(),
                 document.getBasePageOffset(),
-                document.getFileUrl(),
-                document.getThumbnailUrl(),
+                contentUrl(document),
+                thumbnailUrl(document),
                 document.getCreatedAt()
         );
     }
 
     private LessonDocumentResponse mapLessonDocument(LessonDocument row) {
         return mapLessonDocument(row, true);
+    }
+
+    /**
+     * Tài liệu trong bài học đọc qua endpoint của bài học, vì quyền đến từ việc đang học bài đó
+     * chứ không từ audience của tài liệu — dùng {@code /api/documents} sẽ chặn nhầm học sinh.
+     */
+    private String lessonContentUrl(LessonDocument row, Document document) {
+        return DocumentUrls.lessonContentUrl(row.getLessonId(), row.getId(),
+                document.getDocType() != null ? document.getDocType().name() : null,
+                document.getFileUrl());
     }
 
     private LessonDocumentResponse mapLessonDocument(LessonDocument row, boolean exposeFileUrl) {
@@ -927,7 +984,7 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getTitle(),
                 document.getDocType(),
                 document.getAudience(),
-                exposeFileUrl ? document.getFileUrl() : "",
+                exposeFileUrl ? lessonContentUrl(row, document) : "",
                 row.isRequired(),
                 row.getTeacherNote(),
                 row.getStartPage(),

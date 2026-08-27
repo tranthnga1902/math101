@@ -36,10 +36,9 @@ const TARGET_WIDTH = 1800;
 const MAX_PAGES = 40;
 
 function resolvePdfUrl(fileUrl: string): string {
-  // Đọc PDF ở R2 qua backend đã xác thực, để không phụ thuộc cấu hình CORS của domain R2.
-  if (/^https?:\/\//i.test(fileUrl)) {
-    return `${API_BASE_URL}/api/admin/documents/content?url=${encodeURIComponent(fileUrl)}`;
-  }
+  // fileUrl từ API là đường dẫn tương đối tới endpoint có xác thực của backend
+  // (/api/documents/{id}/content.pdf), nên không phụ thuộc cấu hình CORS của domain R2.
+  if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
   if (!fileUrl) return fileUrl;
   return fileUrl.startsWith("/") ? `${API_BASE_URL}${fileUrl}` : `${API_BASE_URL}/${fileUrl}`;
 }

@@ -461,6 +461,12 @@ export const saveDocumentMarkdown=(s:AuthSession,id:number,contentMarkdown:strin
 export const getDocumentsByNode=(s:AuthSession,nodeId:number)=>request<DocumentItem[]>(`/admin/documents/by-node/${nodeId}`,{},s.accessToken);
 export const setDocumentTaxonomyNode=(s:AuthSession,id:number,taxonomyNodeId:number|null)=>request<DocumentItem>(`/admin/documents/${id}/taxonomy-node`,{method:"PATCH",body:JSON.stringify({taxonomyNodeId})},s.accessToken);
 export const getTeacherDocuments=(s:AuthSession)=>request<DocumentItem[]>("/teacher/documents",{},s.accessToken);
+/**
+ * Mở file tài liệu. fileUrl từ API luôn là đường dẫn tương đối tới endpoint có xác thực
+ * (/api/documents/{id}/content.pdf) nên phải fetch kèm token rồi mới mở blob — mở thẳng
+ * URL là mất header Authorization, và đó chính là chỗ trước đây bỏ qua kiểm quyền.
+ * Chỉ VIDEO mới còn là URL tuyệt đối (link ngoài), mở thẳng được.
+ */
 export async function openDocumentFile(s:AuthSession,fileUrl:string,title:string,startPage?:number|null){
  const pageHash=startPage&&startPage>0?`#page=${startPage}`:"";
  if(/^https?:\/\//i.test(fileUrl)){window.open(`${fileUrl}${pageHash}`,"_blank","noreferrer");return}

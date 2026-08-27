@@ -30,6 +30,16 @@ function resolveUrl(fileUrl: string): string {
   return `${API_BASE_URL}/${fileUrl}`;
 }
 
+/** Ảnh bìa phải qua fetch có token nên không gán thẳng vào <img src> được; đổi sang data URL. */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Không đọc được ảnh bìa"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, renderScale = 0.4, thumbnailUrl, docType }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
@@ -37,23 +47,43 @@ export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, 
   // ĐỀ THI dùng kích thước nhỏ hơn (renderScale thấp hơn → ảnh bìa nhỏ hơn)
   const effectiveScale = docType === "DE_THI" ? Math.min(renderScale, 0.2) : renderScale;
 
-  // Ưu tiên dùng thumbnailUrl đã render sẵn (CDN)
+  // Ưu tiên ảnh bìa backend đã render sẵn. Bìa nay đi qua endpoint có xác thực
+  // (/api/documents/{id}/thumbnail) nên phải fetch kèm token rồi mới đưa vào <img>.
   useEffect(() => {
-    if (thumbnailUrl) {
-      setDataUrl(thumbnailUrl);
+    if (!thumbnailUrl) return;
+    const resolved = resolveUrl(thumbnailUrl);
+    if (cache.has(resolved)) {
+      setDataUrl(cache.get(resolved)!);
       setError("");
       return;
     }
-  }, [thumbnailUrl]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        const res = await fetch(resolved, { headers, credentials: "include" });
+        if (!res.ok) throw new Error(`Tải ảnh bìa thất bại (${res.status})`);
+        const url = await blobToDataUrl(await res.blob());
+        cache.set(resolved, url);
+        if (cancelled) return;
+        setDataUrl(url);
+        setError("");
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Lỗi tải ảnh bìa");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [thumbnailUrl, accessToken]);
 
   // Chỉ fetch + render live khi không có thumbnailUrl
   useEffect(() => {
     if (!fileUrl || thumbnailUrl) return;
-    // Read remote PDFs through our authenticated backend so rendering does
-    // not depend on the R2 public domain's browser CORS configuration.
-    const resolved = /^https?:\/\//i.test(fileUrl)
-      ? `${API_BASE_URL}/api/admin/documents/content?url=${encodeURIComponent(fileUrl)}`
-      : resolveUrl(fileUrl);
+    // fileUrl từ API luôn là đường dẫn tương đối tới endpoint có xác thực của backend —
+    // đọc file qua đó thì không phụ thuộc cấu hình CORS của domain R2, và bucket để private được.
+    const resolved = resolveUrl(fileUrl);
     const key = `${resolved}#p${pageNumber}#s${effectiveScale}`;
     if (cache.has(key)) {
       setDataUrl(cache.get(key)!);

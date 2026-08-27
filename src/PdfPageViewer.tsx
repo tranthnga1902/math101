@@ -18,7 +18,7 @@ type Props = {
   pageNumber: number;
   fitWidth?: number;
   className?: string;
-  onUseSignedUrl?: () => Promise<string>;
+  onResolveUrl?: () => Promise<string>;
   /** Tỉ lệ rộng/cao của trang gốc — để nơi gọi tính được chế độ "vừa trang". */
   onPageAspect?: (aspect: number) => void;
 };
@@ -30,7 +30,7 @@ function resolveUrl(fileUrl: string): string {
   return `${API_BASE_URL}/${fileUrl}`;
 }
 
-export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760, className, onUseSignedUrl, onPageAspect }: Props) {
+export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760, className, onResolveUrl, onPageAspect }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [error, setError] = useState<string>("");
@@ -41,7 +41,7 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
   aspectRef.current = onPageAspect;
 
   useEffect(() => {
-    if (!fileUrl && !onUseSignedUrl) return;
+    if (!fileUrl && !onResolveUrl) return;
     const pageKey = `${fileUrl || ""}#p${pageNumber}@${fitWidth}#t${accessToken?.slice(-8) ?? "anon"}`;
     if (pageCache.has(pageKey)) {
       const hit = pageCache.get(pageKey)!;
@@ -60,22 +60,26 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
     (async () => {
       try {
         let targetUrl = resolveUrl(fileUrl || "");
-        if (onUseSignedUrl) {
+        if (onResolveUrl) {
           try {
-            targetUrl = await onUseSignedUrl();
+            // Cũng qua resolveUrl: nơi gọi trả về đường dẫn tương đối của backend, thiếu
+            // bước này là fetch trượt sang origin của frontend.
+            targetUrl = resolveUrl(await onResolveUrl());
           } catch {
             // fallback to original url
           }
         }
         const headers: Record<string, string> = {};
+        // Token chỉ gửi cho backend của mình. URL tuyệt đối ở đây là link ngoài (YouTube…),
+        // không phải file trên R2 — file luôn đi qua /api/documents/{id}/content.
         if (accessToken && !/^https?:\/\//i.test(targetUrl)) {
           headers.Authorization = `Bearer ${accessToken}`;
         }
         const res = await fetch(targetUrl, { headers, credentials: "include" });
         if (!res.ok) {
           throw new Error(
-            res.status === 0 || res.status === 403
-              ? `Không truy cập được PDF (CORS hoặc không có quyền). Hãy dùng nút "Mở tab mới" hoặc cấu hình CORS cho storage.`
+            res.status === 403
+              ? "Bạn không có quyền mở tài liệu này."
               : `Tải PDF thất bại (${res.status} ${res.statusText}).`
           );
         }
@@ -120,7 +124,7 @@ export function PdfPageViewer({ fileUrl, accessToken, pageNumber, fitWidth = 760
     return () => {
       cancelled = true;
     };
-  }, [fileUrl, accessToken, pageNumber, fitWidth, onUseSignedUrl]);
+  }, [fileUrl, accessToken, pageNumber, fitWidth, onResolveUrl]);
 
   if (error) {
     return (

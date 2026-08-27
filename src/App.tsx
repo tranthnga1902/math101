@@ -416,8 +416,8 @@ function TextbookCard({
  if(!fileUrl&&!thumbnailUrl){
   return <div className="flex h-[132px] w-[96px] shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-center text-[10px] font-medium text-slate-400">Chưa có<br/>file</div>;
  }
- const absoluteUrl=fileUrl&&(/^https?:\/\//i.test(fileUrl)?fileUrl:`${(import.meta.env.VITE_API_BASE_URL as string|undefined)??""}${fileUrl}`);
- return <PdfThumbnail fileUrl={absoluteUrl||""} thumbnailUrl={thumbnailUrl} accessToken={accessToken}/>;
+ // Truyền nguyên đường dẫn API trả về; PdfThumbnail tự ghép API base và gửi token.
+ return <PdfThumbnail fileUrl={fileUrl||""} thumbnailUrl={thumbnailUrl} accessToken={accessToken}/>;
 }
 
 return (

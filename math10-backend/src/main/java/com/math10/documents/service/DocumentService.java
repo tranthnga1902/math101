@@ -39,6 +39,7 @@ public interface DocumentService {
     DocumentResponse convertToMarkdown(Long id);
     DocumentResponse saveMarkdown(Long id, String markdown);
     byte[] readDocumentBytes(Long id);
+    byte[] readDocumentThumbnailBytes(Long id);
     byte[] readLessonDocumentBytes(Long lessonId, Long id);
     List<LessonDocumentResponse> listLessonDocuments(Long lessonId);
     LessonDocumentResponse attachToLesson(Long lessonId, LessonDocumentRequest request);

@@ -101,7 +101,7 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
   await attachLessonDocument(session,lessonId,{documentId:row.book.id,required:true,teacherNote:rangeEnd?`Trang sách ${bookPage}-${Math.max(bookPage,rangeEnd-offset)}`:`Trang sách ${bookPage}`,startPage:bookPage});
   setNotice(rangeEnd?`Đã gắn khoảng trang sách ${bookPage}–${Math.max(bookPage,rangeEnd-offset)}.`:`Đã gắn sách vào bài học.`);
  };
- const fetchSignedPdfUrl=useCallback(async()=>{
+ const fetchPdfUrl=useCallback(async()=>{
   const info=await openTextbook(session,row.book.id,pdfPage>offset?Math.max(1,pdfPage-offset):undefined);
   return info.fileUrl;
  },[session,row.book.id,pdfPage,offset]);
@@ -210,7 +210,7 @@ function TextbookMapping({session,row,onBack}:{session:AuthSession;row:BookRow;o
      <div className="pdf-viewport">
       <span className="mapped-badge">Trang sách {bookPage}</span>
       <div className="pdf-fit-box" ref={fitBoxRef}>
-       <PdfPageViewer key={`${row.book.id}-${pdfPage}-${fitWidth}`} fileUrl={row.book.fileUrl} accessToken={session.accessToken} pageNumber={pdfPage} fitWidth={fitWidth} onUseSignedUrl={fetchSignedPdfUrl} onPageAspect={setPageAspect} className="pdf-canvas-wrap"/>
+       <PdfPageViewer key={`${row.book.id}-${pdfPage}-${fitWidth}`} fileUrl={row.book.fileUrl} accessToken={session.accessToken} pageNumber={pdfPage} fitWidth={fitWidth} onResolveUrl={fetchPdfUrl} onPageAspect={setPageAspect} className="pdf-canvas-wrap"/>
       </div>
      </div>
     </section>
