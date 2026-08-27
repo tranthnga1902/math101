@@ -25,6 +25,7 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 |----|------|-----|------------|-----------|
 | HT-05 | Tài liệu — chỉ người có quyền mới tải được file | **A** | `DocumentServiceImpl.checkCanRead`; `DocumentUrls`; `DocumentController.content/thumbnail`; `PdfThumbnail.tsx`, `PdfPageViewer.tsx`, `pdfOcr.ts`. Test: `DocumentAccessTest` (12 ca), `DocumentUrlsTest` (9 ca) — đã kiểm bằng mutation: gỡ guard giáo viên thì đúng 2 ca đỏ | Bucket R2 phải chuyển sang **private** (việc vận hành, xem cuối file). `readObject` nạp cả file vào RAM — sách lớn cần hỗ trợ range request |
 | HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **B** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn | Migration `V202608271000__assignment_lifecycle.sql` **chưa từng chạy trên bất kỳ DB nào** — máy không có Postgres cục bộ, DB duy nhất là Neon staging dùng chung. Đây là lý do dòng này ở B chứ không phải A. `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
+| HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (21 ca) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Đề tự luận vẫn chỉ có điểm tổng + nhận xét chung, chưa chấm theo từng câu (#54) |
 
 ## Chi tiết HT-05
 
@@ -110,6 +111,45 @@ file SQL đó chưa từng được thi hành. Tôi đã đối chiếu tay từ
 `submitted_late`, `raw_score`) nên `ddl-auto: validate` sẽ không kêu, nhưng đối chiếu tay không
 phải bằng chứng tự động. Chạy được lần đầu là khi có embedded PostgreSQL (Lát 1) hoặc khi bạn
 đồng ý cho chạy lên Neon staging.
+
+## Chi tiết HT-51
+
+Luật chấm trắc nghiệm trước đây được viết **ba lần** — lúc học sinh nộp, lúc giáo viên bấm "Chấm
+lại", lúc dựng bảng tỉ lệ đúng — và ba bản đã lệch nhau thật:
+
+| Tình huống | nộp bài | chấm lại | thống kê |
+|---|---|---|---|
+| đề có câu chưa nhập đáp án | báo lỗi | **tính cả lớp là sai** | **báo câu đó 0% đúng** |
+| đáp án ngoài A–D | báo lỗi | bỏ qua | bỏ qua |
+| thiếu câu trả lời | báo lỗi | tính là sai | tính là sai |
+
+Cột giữa là hỏng dữ liệu im lặng: giáo viên thêm một câu, quên nhập đáp án đúng, bấm "Chấm lại"
+— câu đó bị tính là cả lớp làm sai **nhưng vẫn chia cho đủ số câu**, nên điểm cả lớp tụt mà không
+một lời báo. Rồi bảng thống kê tô đỏ chính câu đó là "0% đúng", đẩy giáo viên đi sửa một câu vốn
+không sai. Nay `requireGradable` chặn hẳn phép chấm lại, và `missingAnswerKey` tách "đề hỏng" khỏi
+"cả lớp làm sai".
+
+Nhân đó siết luôn phép soát bài nộp. Cách cũ so `request.answers().size() != items.size()` — gửi
+đủ 20 đáp án nhưng mang id câu hỏi của phiếu khác thì vẫn lọt, rồi bị chấm 0 điểm không hiểu vì
+sao. `requireCompleteAnswers` nay soát theo từng câu của chính đề đó.
+
+Và bỏ hai chỗ N+1: `regrade` gọi `problems.findById` trong vòng lặp học sinh × câu hỏi — chấm lại
+một lớp 40 em đề 20 câu là 800 lượt hỏi cơ sở dữ liệu. Nay `WorksheetAnswerKeys` nạp cả phiếu một
+lần.
+
+Đã kiểm bằng chứng: tạm sửa `McqGrading` bảy kiểu (bỏ soát đề thiếu đáp án; không chuẩn hoá bài
+làm; bỏ câu trống khỏi mẫu số; quay lại chỉ đếm số lượng đáp án; không cắt khoảng trắng; làm tròn
+xuống thay vì làm tròn gần nhất; đề rỗng không bị chặn) — cả bảy lần suite đều đỏ, rồi khôi phục
+file về nguyên trạng (`diff` xác nhận giống hệt byte).
+
+Dòng này đạt **A** vì không cần migration nào: `raw_score`, `correct_count`, `total_questions`
+đều là cột đã có. Bốn chân đủ — API, UI, test, và không có schema mới nào chưa chạy.
+
+Một chỗ đáng nói về UI: `getItemAnalysis` và `regradeAssignment` đã nằm trong `api.ts` từ trước
+nhưng **không màn nào gọi**. Backend làm đúng mà giáo viên không có đường bấm tới thì tính năng
+coi như không có — nên lát này mới dựng `AssignmentAnalysisDialog`. Nút "Chấm lại cả lớp" bị khoá
+ngay tại chỗ khi đề còn câu trống đáp án, kèm danh sách số thứ tự câu thiếu; đó là bản chiếu của
+luật server chứ không phải nơi kiểm.
 
 ## Việc vận hành còn nợ
 

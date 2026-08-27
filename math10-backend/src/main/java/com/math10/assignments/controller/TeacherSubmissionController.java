@@ -1,6 +1,8 @@
 package com.math10.assignments.controller;
 
 import com.math10.assignments.domain.AssignmentWindow;
+import com.math10.assignments.domain.McqGrading;
+import com.math10.assignments.service.WorksheetAnswerKeys;
 import com.math10.assignments.entity.Assignment;
 import com.math10.assignments.entity.AssignmentProgress;
 import com.math10.assignments.repository.AssignmentProgressRepository;
@@ -28,11 +30,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.math.RoundingMode;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.math10.mathcontent.repository.ProblemRepository;
-import com.math10.worksheets.repository.WorksheetItemRepository;
 
 @RestController
 @RequiredArgsConstructor
@@ -45,19 +45,78 @@ public class TeacherSubmissionController {
     private final SubmissionLogService submissionLog;
     private final ClassTeacherRepository classTeachers;
     private final CurrentUserService current;
-    private final WorksheetItemRepository worksheetItems;
+    private final WorksheetAnswerKeys answerKeys;
     private final ProblemRepository problems;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Tỉ lệ đúng từng câu. Dùng đúng phép so sánh của {@link McqGrading} chứ không tự so lại,
+     * và câu chưa nhập đáp án thì không đội lốt "cả lớp làm sai" — đề hỏng phải hiện ra là đề hỏng.
+     */
     @GetMapping("/assignments/{assignmentId}/analysis")
-    public ApiResponse<List<Map<String,Object>>> analysis(@PathVariable Long assignmentId){Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));checkClass(assignment.getClassId());if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");List<AssignmentProgress> submitted=progress.findByAssignmentId(assignmentId).stream().filter(x->x.getSubmittedAt()!=null).toList();List<Map<String,Object>> result=new ArrayList<>();for(var item:worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId())){var problem=problems.findById(item.getProblemId()).orElseThrow();int correct=0;for(var row:submitted){String answer=readAnswers(row.getAnswerJson()).get(item.getProblemId());if(problem.getCorrectOption()!=null&&problem.getCorrectOption().equalsIgnoreCase(answer))correct++;}double rate=submitted.isEmpty()?0:Math.round(1000.0*correct/submitted.size())/10.0;Map<String,Object> value=new LinkedHashMap<>();value.put("problemId",problem.getId());value.put("orderNo",item.getOrderIndex());value.put("publicCode",problem.getPublicCode());value.put("correct",correct);value.put("total",submitted.size());value.put("rate",rate);value.put("warning",!submitted.isEmpty()&&rate<30);result.add(value);}return ApiResponse.ok("Phân tích câu hỏi",result);}
+    public ApiResponse<List<Map<String,Object>>> analysis(@PathVariable Long assignmentId){
+        Assignment assignment=worksheetAssignment(assignmentId);
+        List<Map<Long,String>> baiLam=progress.findByAssignmentId(assignmentId).stream()
+                .filter(row->row.getSubmittedAt()!=null).map(row->readAnswers(row.getAnswerJson())).toList();
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        Map<Long,String> codeByProblem=new LinkedHashMap<>();
+        problems.findAllById(keys.stream().map(McqGrading.Key::problemId).toList())
+                .forEach(problem->codeByProblem.put(problem.getId(),problem.getPublicCode()));
+        List<Map<String,Object>> result=new ArrayList<>();
+        int orderNo=0;
+        for(McqGrading.Key key:keys){
+            orderNo++;
+            boolean coDapAn=McqGrading.isOption(key.correctOption());
+            int correct=0;
+            for(Map<Long,String> answers:baiLam)if(McqGrading.isCorrect(key,answers.get(key.problemId())))correct++;
+            double rate=baiLam.isEmpty()?0:Math.round(1000.0*correct/baiLam.size())/10.0;
+            Map<String,Object> value=new LinkedHashMap<>();
+            value.put("problemId",key.problemId());
+            value.put("orderNo",orderNo);
+            value.put("publicCode",codeByProblem.get(key.problemId()));
+            value.put("correct",coDapAn?correct:null);
+            value.put("total",baiLam.size());
+            value.put("rate",coDapAn?rate:null);
+            // Câu chưa nhập đáp án không phải câu cả lớp làm sai. Tô đỏ nhầm ở đây là giáo viên
+            // đi sửa đề đúng thành đề khác.
+            value.put("missingAnswerKey",!coDapAn);
+            value.put("warning",coDapAn&&!baiLam.isEmpty()&&rate<30);
+            result.add(value);
+        }
+        return ApiResponse.ok("Phân tích câu hỏi",result);
+    }
 
+    /**
+     * Chấm lại cả lớp sau khi sửa đáp án đề. Nếu đề còn câu chưa nhập đáp án thì dừng hẳn:
+     * trước đây câu đó bị tính là cả lớp làm sai nhưng vẫn chia cho đủ số câu, nên chỉ cần thêm
+     * một câu quên đáp án rồi bấm nút này là tụt điểm cả lớp mà không ai được báo.
+     */
     @PostMapping("/assignments/{assignmentId}/regrade") @Transactional
-    public ApiResponse<Map<String,Integer>> regrade(@PathVariable Long assignmentId){Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));checkClass(assignment.getClassId());if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");var items=worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId());int updated=0;for(var row:progress.findByAssignmentId(assignmentId)){if(row.getSubmittedAt()==null)continue;Map<Long,String> answers=readAnswers(row.getAnswerJson());int correct=0;for(var item:items){var problem=problems.findById(item.getProblemId()).orElseThrow();if(problem.getCorrectOption()!=null&&problem.getCorrectOption().equalsIgnoreCase(answers.get(item.getProblemId())))correct++;}row.setCorrectCount(correct);row.setTotalQuestions(items.size());
-        // Tính lại từ điểm gốc rồi mới trừ muộn: chấm lại nhiều lần không được trừ chồng lên nhau.
-        BigDecimal rawScore=BigDecimal.valueOf(correct).multiply(BigDecimal.TEN).divide(BigDecimal.valueOf(Math.max(items.size(),1)),2,RoundingMode.HALF_UP);
-        row.setRawScore(rawScore);row.setScore(AssignmentWindow.applyLatePenalty(assignment,rawScore,row.isSubmittedLate()));
-        row.setGradedAt(LocalDateTime.now());if(row.getReturnedAt()==null)row.setGradingStatus("GRADED");progress.save(row);updated++;}return ApiResponse.ok("Đã chấm lại toàn bộ bài nộp",Map.of("updated",updated));}
+    public ApiResponse<Map<String,Integer>> regrade(@PathVariable Long assignmentId){
+        Assignment assignment=worksheetAssignment(assignmentId);
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        McqGrading.requireGradable(keys);
+        int updated=0;
+        for(var row:progress.findByAssignmentId(assignmentId)){
+            if(row.getSubmittedAt()==null)continue;
+            McqGrading.Result graded=McqGrading.grade(keys,readAnswers(row.getAnswerJson()));
+            row.setCorrectCount(graded.correct());row.setTotalQuestions(graded.total());
+            // Tính lại từ điểm gốc rồi mới trừ muộn: chấm lại nhiều lần không được trừ chồng lên nhau.
+            row.setRawScore(graded.rawScore());
+            row.setScore(AssignmentWindow.applyLatePenalty(assignment,graded.rawScore(),row.isSubmittedLate()));
+            row.setMaxScore(McqGrading.MAX_SCORE);
+            row.setGradedAt(LocalDateTime.now());if(row.getReturnedAt()==null)row.setGradingStatus("GRADED");
+            progress.save(row);updated++;
+        }
+        return ApiResponse.ok("Đã chấm lại toàn bộ bài nộp",Map.of("updated",updated));
+    }
+
+    private Assignment worksheetAssignment(Long assignmentId){
+        Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));
+        checkClass(assignment.getClassId());
+        if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");
+        return assignment;
+    }
 
     /**
      * Hàng chờ chấm của một lớp. Chỉ bài BẮT BUỘC lọt vào đây: bài TỰ CHỌN cũng ghi submitted_at

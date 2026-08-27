@@ -3,6 +3,7 @@ package com.math10.assignments.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.math10.assignments.domain.AssignmentWindow;
+import com.math10.assignments.domain.McqGrading;
 import com.math10.assignments.dto.AssignmentProgressResponse;
 import com.math10.assignments.dto.AssignmentResultResponse;
 import com.math10.assignments.dto.AssignmentSubmitRequest;
@@ -17,7 +18,7 @@ import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.enrollments.repository.ClassStudentRepository;
-import com.math10.mathcontent.repository.ProblemRepository;
+import com.math10.assignments.service.WorksheetAnswerKeys;
 import com.math10.progress.entity.LearningProgress;
 import com.math10.progress.repository.LearningProgressRepository;
 import com.math10.worksheets.repository.WorksheetItemRepository;
@@ -29,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -45,7 +45,7 @@ public class AssignmentProgressController {
     private final CurrentUserService current;
     private final LearningProgressRepository learningProgress;
     private final WorksheetItemRepository worksheetItems;
-    private final ProblemRepository problems;
+    private final WorksheetAnswerKeys answerKeys;
     private final ObjectMapper objectMapper;
 
     @PatchMapping("/{assignmentId}/opened")
@@ -92,18 +92,11 @@ public class AssignmentProgressController {
         AssignmentProgress row = get(assignmentId);
         LocalDateTime now = LocalDateTime.now();
         AssignmentWindow.requireSubmittable(assignment, row, now);
-        var items = worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId());
-        if (items.isEmpty()) throw new BusinessException("Đề chưa có câu hỏi");
-        if (request.answers().size() != items.size()) throw new BusinessException("Bạn phải trả lời đầy đủ tất cả câu hỏi");
-        int correct = 0;
-        for (var item : items) {
-            var problem = problems.findById(item.getProblemId()).orElseThrow();
-            if (problem.getCorrectOption() == null) throw new BusinessException("Đề có câu chưa được cấu hình đáp án đúng");
-            String answer = request.answers().get(item.getProblemId());
-            if (answer == null || !Set.of("A", "B", "C", "D").contains(answer.toUpperCase())) throw new BusinessException("Đáp án không hợp lệ");
-            if (problem.getCorrectOption().equalsIgnoreCase(answer)) correct++;
-        }
-        int total = items.size();
+        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId());
+        McqGrading.requireCompleteAnswers(keys, request.answers());
+        McqGrading.Result graded = McqGrading.grade(keys, request.answers());
+        int correct = graded.correct();
+        int total = graded.total();
         boolean late = AssignmentWindow.isLate(assignment, now);
         if (row.getOpenedAt() == null) row.setOpenedAt(now);
         row.setAnswerJson(write(request.answers()));
@@ -115,10 +108,10 @@ public class AssignmentProgressController {
         // Cho nộp nhiều lượt thì lượt sau đè lượt trước: điểm ghi vào sổ là lần nộp cuối cùng.
         row.setAttemptNo(attempt(row));
         row.setSubmittedLate(late);
-        BigDecimal rawScore = BigDecimal.valueOf(correct).multiply(BigDecimal.TEN).divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
+        BigDecimal rawScore = graded.rawScore();
         row.setRawScore(rawScore);
         row.setScore(AssignmentWindow.applyLatePenalty(assignment, rawScore, late));
-        row.setMaxScore(BigDecimal.TEN);
+        row.setMaxScore(McqGrading.MAX_SCORE);
         row.setGradedAt(now);
         row.setGradingStatus("GRADED");
         syncWorksheet(assignmentId, row, true);
@@ -142,7 +135,7 @@ public class AssignmentProgressController {
         Set<Long> allowed=new HashSet<>();
         worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId()).forEach(item->allowed.add(item.getProblemId()));
         Map<Long,String> merged=new LinkedHashMap<>(read(row.getAnswerJson()));
-        request.answers().forEach((problemId,answer)->{String normalized=answer==null?"":answer.toUpperCase(Locale.ROOT);if(!allowed.contains(problemId)||!Set.of("A","B","C","D").contains(normalized))throw new BusinessException("Đáp án không hợp lệ");merged.put(problemId,normalized);});
+        request.answers().forEach((problemId,answer)->{if(!allowed.contains(problemId)||!McqGrading.isOption(answer))throw new BusinessException("Đáp án không hợp lệ");merged.put(problemId,McqGrading.normalize(answer));});
         if(row.getOpenedAt()==null)row.setOpenedAt(LocalDateTime.now());
         row.setAnswerJson(write(merged));
         row.setCompletionPercent(Math.max(10,(int)Math.round(90.0*merged.size()/Math.max(allowed.size(),1))));
@@ -160,6 +153,7 @@ public class AssignmentProgressController {
     private Assignment assignment(Long id) {
         return assignments.findById(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài giao"));
     }
+
 
     private AssignmentProgress get(Long id) {
         Assignment assignment = assignment(id);

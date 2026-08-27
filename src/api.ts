@@ -104,7 +104,8 @@ export type StudentAssignment={id:number;title:string;openAt:string|null;dueAt:s
 /** `rawScore` là điểm bài làm trước khi trừ muộn; `score` là điểm cuối cùng. */
 export type AssignmentResult={assignmentId:number;studentId:number;gradingStatus:string;completionPercent:number;submittedAt:string|null;gradedAt:string|null;returnedAt:string|null;score:number|null;maxScore:number|null;correctCount:number|null;totalQuestions:number|null;teacherFeedback:string|null;answers:Record<number,string>;state:AssignmentState;openAt:string|null;dueAt:string|null;attemptsLeft:number|null;submittedLate:boolean;rawScore:number|null};
 export type TeacherSubmission={id:number;assignment_id:number;title:string;student_id:number;full_name:string;username:string;submitted_at:string;graded_at:string|null;returned_at:string|null;score:number|null;max_score:number;correct_count:number|null;total_questions:number|null;teacher_feedback:string|null;grading_status:string;answer_json:string;attempt_no:number;submitted_late:boolean;raw_score:number|null;due_at:string|null;late_policy:LatePolicy;late_penalty_percent:number};
-export type ItemAnalysis={problemId:number;orderNo:number;publicCode:string;correct:number;total:number;rate:number;warning:boolean};
+/** `missingAnswerKey` là đề chưa nhập đáp án đúng — khi đó `correct` và `rate` là null, không phải 0. */
+export type ItemAnalysis={problemId:number;orderNo:number;publicCode:string|null;correct:number|null;total:number;rate:number|null;warning:boolean;missingAnswerKey:boolean};
 export type MetadataOption={value:string;label:string};
 export type Metadata={
   roles:MetadataOption[];

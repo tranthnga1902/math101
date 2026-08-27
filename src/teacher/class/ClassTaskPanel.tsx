@@ -5,6 +5,7 @@ import {
   type AuthSession, type Assignment, type AssignmentState, type ClassRequirement, type LatePolicy,
 } from "../../api";
 import { messageOf } from "../../lib/errors";
+import { AssignmentAnalysisDialog } from "./AssignmentAnalysisDialog";
 
 type Draft = {
   title: string; source: "worksheet" | "document"; worksheetId: number; documentId: number;
@@ -63,6 +64,7 @@ export function ClassTaskPanel({ session, classId }: { session: AuthSession; cla
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [composing, setComposing] = useState(false);
+  const [analysing, setAnalysing] = useState<Assignment | null>(null);
 
   const listQuery = useQuery({ queryKey: ["class-assignments", session.accessToken, classId], queryFn: () => getAssignments(session, classId) });
   const rows = listQuery.data ?? [];
@@ -254,6 +256,10 @@ export function ClassTaskPanel({ session, classId }: { session: AuthSession; cla
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              {/* Chỉ phiếu đề mới chấm được từng câu; bài giao theo tài liệu không có đáp án để so. */}
+              {row.worksheetId && (
+                <button onClick={() => setAnalysing(row)} className="px-2.5 py-1 text-xs font-semibold text-on-surface-variant hover:bg-surface-container rounded transition-colors">Tỉ lệ đúng</button>
+              )}
               <button onClick={() => edit(row)} className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded transition-colors">Sửa</button>
               <button onClick={() => { if (confirm(`Xóa nhiệm vụ "${row.title}"?`)) deleteMutation.mutate(row.id); }}
                 className="px-2.5 py-1 text-xs font-semibold text-error hover:bg-error-container/30 rounded transition-colors">Xóa</button>
@@ -263,5 +269,9 @@ export function ClassTaskPanel({ session, classId }: { session: AuthSession; cla
       })}
       {!rows.length && <p className="text-sm text-on-surface-variant text-center py-8">Lớp chưa có nhiệm vụ nào.</p>}
     </div>
+
+    {analysing && (
+      <AssignmentAnalysisDialog session={session} assignmentId={analysing.id} title={analysing.title} onClose={() => setAnalysing(null)} />
+    )}
   </section>;
 }
