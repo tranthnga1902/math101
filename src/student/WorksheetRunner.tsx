@@ -11,6 +11,7 @@ import {
   getAssignmentResult,
   type AuthSession,
 } from "../api";
+import { assignmentGate } from "./format";
 
 type WorksheetRunnerProps = {
   session: AuthSession;
@@ -60,9 +61,18 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
   }
 
   const problem = assignment.items[index] ?? firstProblem;
+  // Hết hạn / hết lượt / đã trả điểm thì màn hình chuyển sang chỉ đọc. Server chặn thật ở
+  // saveAnswers lẫn submit; ở đây chỉ để học sinh không gõ một lúc rồi mới biết là không lưu được.
+  const gate = assignmentGate(assignment);
+  const readOnly = !gate.canSubmit;
 
   return (
     <div className="space-y-4">
+      {readOnly && (
+        <div className="bg-surface-container-high text-on-surface-variant px-4 py-3 rounded-lg text-sm font-medium">
+          Bài này đã khoá ({gate.note.toLowerCase()}) — em vẫn xem lại được đề và bài làm, nhưng không sửa hay nộp lại được.
+        </div>
+      )}
       <header className="flex items-center justify-between text-xs text-on-surface-variant">
         <button type="button" onClick={onBack} className="inline-flex items-center gap-1 font-medium hover:text-primary">
           <span className="material-symbols-outlined text-[18px]">arrow_back</span> Quay lại
@@ -76,7 +86,7 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <ProblemCard session={session} slug={problem.qrSlug} problemLatex={problem.statementLatex} options={[problem.optionA,problem.optionB,problem.optionC,problem.optionD]} selected={answers[problem.problemId]??null} saveState={saveState} onSelect={async option=>{setAnswers(current=>({...current,[problem.problemId]:option}));setSaveState("saving");try{await saveAssignmentAnswers(session,assignment.id,{[problem.problemId]:option});setSaveState("saved")}catch{setSaveState("error")}}}/>
+        <ProblemCard session={session} slug={problem.qrSlug} problemLatex={problem.statementLatex} options={[problem.optionA,problem.optionB,problem.optionC,problem.optionD]} selected={answers[problem.problemId]??null} saveState={saveState} onSelect={async option=>{if(readOnly)return;setAnswers(current=>({...current,[problem.problemId]:option}));setSaveState("saving");try{await saveAssignmentAnswers(session,assignment.id,{[problem.problemId]:option});setSaveState("saved")}catch{setSaveState("error")}}}/>
         <QuestionNav
           total={total}
           index={index}
@@ -95,7 +105,7 @@ export function WorksheetRunner({ session, assignmentId, onBack }: WorksheetRunn
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
           Câu trước
         </button>
-        {index>=total-1?<button type="button" disabled={submitting||Object.keys(answers).length!==total||submitted} onClick={async()=>{setSubmitting(true);setSubmitError("");try{await submitAssignment(session,assignment.id,answers);setSubmitted(true);await assignmentsQuery.refetch()}catch(reason){setSubmitError(reason instanceof Error?reason.message:"Không thể nộp bài")}finally{setSubmitting(false)}}} className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50">{submitting?"Đang nộp…":submitted?"Đã nộp bài":"Nộp bài"}</button>:<button
+        {index>=total-1?<button type="button" disabled={readOnly||submitting||Object.keys(answers).length!==total||submitted} onClick={async()=>{setSubmitting(true);setSubmitError("");try{await submitAssignment(session,assignment.id,answers);setSubmitted(true);await assignmentsQuery.refetch()}catch(reason){setSubmitError(reason instanceof Error?reason.message:"Không thể nộp bài")}finally{setSubmitting(false)}}} className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50">{submitting?"Đang nộp…":submitted?"Đã nộp bài":readOnly?"Đã khoá":"Nộp bài"}</button>:<button
           type="button"
           disabled={index >= total - 1}
           onClick={() => setIndex((value) => Math.min(total - 1, value + 1))}

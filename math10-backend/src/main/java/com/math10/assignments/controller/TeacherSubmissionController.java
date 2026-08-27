@@ -1,5 +1,6 @@
 package com.math10.assignments.controller;
 
+import com.math10.assignments.domain.AssignmentWindow;
 import com.math10.assignments.entity.Assignment;
 import com.math10.assignments.entity.AssignmentProgress;
 import com.math10.assignments.repository.AssignmentProgressRepository;
@@ -52,7 +53,11 @@ public class TeacherSubmissionController {
     public ApiResponse<List<Map<String,Object>>> analysis(@PathVariable Long assignmentId){Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));checkClass(assignment.getClassId());if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");List<AssignmentProgress> submitted=progress.findByAssignmentId(assignmentId).stream().filter(x->x.getSubmittedAt()!=null).toList();List<Map<String,Object>> result=new ArrayList<>();for(var item:worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId())){var problem=problems.findById(item.getProblemId()).orElseThrow();int correct=0;for(var row:submitted){String answer=readAnswers(row.getAnswerJson()).get(item.getProblemId());if(problem.getCorrectOption()!=null&&problem.getCorrectOption().equalsIgnoreCase(answer))correct++;}double rate=submitted.isEmpty()?0:Math.round(1000.0*correct/submitted.size())/10.0;Map<String,Object> value=new LinkedHashMap<>();value.put("problemId",problem.getId());value.put("orderNo",item.getOrderIndex());value.put("publicCode",problem.getPublicCode());value.put("correct",correct);value.put("total",submitted.size());value.put("rate",rate);value.put("warning",!submitted.isEmpty()&&rate<30);result.add(value);}return ApiResponse.ok("Phân tích câu hỏi",result);}
 
     @PostMapping("/assignments/{assignmentId}/regrade") @Transactional
-    public ApiResponse<Map<String,Integer>> regrade(@PathVariable Long assignmentId){Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));checkClass(assignment.getClassId());if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");var items=worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId());int updated=0;for(var row:progress.findByAssignmentId(assignmentId)){if(row.getSubmittedAt()==null)continue;Map<Long,String> answers=readAnswers(row.getAnswerJson());int correct=0;for(var item:items){var problem=problems.findById(item.getProblemId()).orElseThrow();if(problem.getCorrectOption()!=null&&problem.getCorrectOption().equalsIgnoreCase(answers.get(item.getProblemId())))correct++;}row.setCorrectCount(correct);row.setTotalQuestions(items.size());row.setScore(BigDecimal.valueOf(correct).multiply(BigDecimal.TEN).divide(BigDecimal.valueOf(Math.max(items.size(),1)),2,RoundingMode.HALF_UP));row.setGradedAt(LocalDateTime.now());if(row.getReturnedAt()==null)row.setGradingStatus("GRADED");progress.save(row);updated++;}return ApiResponse.ok("Đã chấm lại toàn bộ bài nộp",Map.of("updated",updated));}
+    public ApiResponse<Map<String,Integer>> regrade(@PathVariable Long assignmentId){Assignment assignment=assignments.findById(assignmentId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));checkClass(assignment.getClassId());if(assignment.getWorksheetId()==null)throw new BusinessException("Bài giao không phải phiếu đề");var items=worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId());int updated=0;for(var row:progress.findByAssignmentId(assignmentId)){if(row.getSubmittedAt()==null)continue;Map<Long,String> answers=readAnswers(row.getAnswerJson());int correct=0;for(var item:items){var problem=problems.findById(item.getProblemId()).orElseThrow();if(problem.getCorrectOption()!=null&&problem.getCorrectOption().equalsIgnoreCase(answers.get(item.getProblemId())))correct++;}row.setCorrectCount(correct);row.setTotalQuestions(items.size());
+        // Tính lại từ điểm gốc rồi mới trừ muộn: chấm lại nhiều lần không được trừ chồng lên nhau.
+        BigDecimal rawScore=BigDecimal.valueOf(correct).multiply(BigDecimal.TEN).divide(BigDecimal.valueOf(Math.max(items.size(),1)),2,RoundingMode.HALF_UP);
+        row.setRawScore(rawScore);row.setScore(AssignmentWindow.applyLatePenalty(assignment,rawScore,row.isSubmittedLate()));
+        row.setGradedAt(LocalDateTime.now());if(row.getReturnedAt()==null)row.setGradingStatus("GRADED");progress.save(row);updated++;}return ApiResponse.ok("Đã chấm lại toàn bộ bài nộp",Map.of("updated",updated));}
 
     /**
      * Hàng chờ chấm của một lớp. Chỉ bài BẮT BUỘC lọt vào đây: bài TỰ CHỌN cũng ghi submitted_at
@@ -65,7 +70,8 @@ public class TeacherSubmissionController {
         return ApiResponse.ok("Danh sách bài nộp", jdbc.queryForList("""
             select ap.id,ap.assignment_id,a.title,ap.student_id,u.full_name,u.username,
                    ap.submitted_at,ap.graded_at,ap.returned_at,ap.score,ap.max_score,
-                   ap.correct_count,ap.total_questions,ap.teacher_feedback,ap.grading_status,ap.answer_json
+                   ap.correct_count,ap.total_questions,ap.teacher_feedback,ap.grading_status,ap.answer_json,
+                   ap.attempt_no,ap.submitted_late,ap.raw_score,a.due_at,a.late_policy,a.late_penalty_percent
             from assignment_progress ap
             join assignments a on a.id=ap.assignment_id and a.deleted_at is null
             join users u on u.id=ap.student_id and u.deleted_at is null
@@ -78,11 +84,15 @@ public class TeacherSubmissionController {
     @Transactional
     public ApiResponse<Void> grade(@PathVariable Long id,@Valid @RequestBody GradeRequest request) {
         AssignmentProgress row=owned(id);
+        Assignment assignment=assignment(row);
         if(row.getSubmittedAt()==null)throw new BusinessException("Học sinh chưa nộp bài");
-        if(!"BAT_BUOC".equals(assignment(row).getRequirement()))throw new BusinessException("Bài tự chọn chỉ ghi nhận đã làm, không chấm điểm");
-        row.setScore(request.score());row.setMaxScore(BigDecimal.TEN);row.setTeacherFeedback(request.feedback());
+        if(!"BAT_BUOC".equals(assignment.getRequirement()))throw new BusinessException("Bài tự chọn chỉ ghi nhận đã làm, không chấm điểm");
+        // Giáo viên nhập điểm bài làm; phần trừ nộp muộn là chính sách của bài, máy áp dụng,
+        // để cả lớp bị trừ như nhau chứ không phụ thuộc người chấm có nhớ hay không.
+        row.setRawScore(request.score());row.setScore(AssignmentWindow.applyLatePenalty(assignment,request.score(),row.isSubmittedLate()));
+        row.setMaxScore(BigDecimal.TEN);row.setTeacherFeedback(request.feedback());
         row.setGradedAt(LocalDateTime.now());row.setGradingStatus("GRADED");row.setReturnedAt(null);progress.save(row);
-        submissionLog.record(assignment(row),row.getStudentId(),"GRADED",row.getScore(),request.feedback());
+        submissionLog.record(assignment,row.getStudentId(),"GRADED",row.getScore(),request.feedback());
         return ApiResponse.noContent("Đã lưu điểm");
     }
 

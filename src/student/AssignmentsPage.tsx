@@ -9,7 +9,7 @@ import {
   type StudentAssignment,
 } from "../api";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
-import { assignmentKind, dueDateLabel, formatPercent } from "./format";
+import { assignmentGate, assignmentKind, formatPercent } from "./format";
 
 type AssignmentsPageProps = {
   session: AuthSession;
@@ -69,12 +69,15 @@ export function AssignmentsPage({
     openDocumentFile(session, doc.fileUrl, doc.title).catch((reason: unknown) => setExamError((reason as Error).message));
   };
 
+  // Chia theo cái học sinh thấy, không theo cột trạng thái nội bộ: bài đã chấm nhưng chưa tới giờ
+  // công bố thì server trả score rỗng, nên nó vẫn thuộc nhóm "đã nộp, chờ điểm".
   const groups = useMemo(() => {
     const all = data ?? [];
+    const submitted = all.filter((item) => item.gradingStatus !== "NOT_SUBMITTED");
     return {
       todo: all.filter((item) => item.gradingStatus === "NOT_SUBMITTED"),
-      submitted: all.filter((item) => item.gradingStatus === "SUBMITTED" || item.gradingStatus === "GRADED"),
-      graded: all.filter((item) => item.gradingStatus === "RETURNED"),
+      submitted: submitted.filter((item) => item.score === null),
+      graded: submitted.filter((item) => item.score !== null),
     } as const;
   }, [data]);
 
@@ -82,8 +85,8 @@ export function AssignmentsPage({
 
   const tabs: Array<{ key: Tab; label: string; count: number }> = [
     { key: "todo", label: "Cần làm", count: groups.todo.length },
-    { key: "submitted", label: "Đã mở", count: groups.submitted.length },
-    { key: "graded", label: "Đã hoàn thành", count: groups.graded.length },
+    { key: "submitted", label: "Chờ điểm", count: groups.submitted.length },
+    { key: "graded", label: "Đã có điểm", count: groups.graded.length },
   ];
 
   if (error) {
@@ -160,7 +163,7 @@ export function AssignmentsPage({
       ) : (
         <div className="space-y-3">
           {visible.map((assignment) => {
-            const due = dueDateLabel(assignment.dueAt);
+            const gate = assignmentGate(assignment);
             const kind = assignmentKind(assignment);
             return (
               <article
@@ -173,11 +176,16 @@ export function AssignmentsPage({
                     <span className="px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">
                       {kind === "worksheet" ? "Phiếu giấy" : "Làm bài online"}
                     </span>
-                    {due.urgent && badge(due.text, true)}
+                    {badge(gate.label, gate.urgent)}
+                    {assignment.submittedLate && (
+                      <span className="px-2 py-0.5 rounded bg-error-container text-on-error-container font-medium">Đã nộp muộn</span>
+                    )}
                   </div>
                   <h3 className="text-base font-semibold">{assignment.title}</h3>
                   <p className="text-sm text-on-surface-variant">
-                    {kind === "worksheet" ? assignment.worksheetName : `Bài học #${assignment.lessonId}`} · {assignment.items.length} câu
+                    {kind === "worksheet" ? assignment.worksheetName : `Bài học #${assignment.lessonId}`}
+                    {/* Chưa tới giờ mở thì server không trả câu nào — đừng hiện "0 câu" như thể đề rỗng. */}
+                    {gate.canView ? ` · ${assignment.items.length} câu` : " · chưa mở đề"} · {gate.note}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
@@ -187,12 +195,20 @@ export function AssignmentsPage({
                       <>
                         <button
                           type="button"
+                          disabled={!gate.canView}
+                          title={gate.canView ? undefined : gate.note}
                           onClick={() => onOpenWorksheet(assignment.id)}
-                          className="inline-flex h-9 px-3 items-center rounded-md border border-outline-variant text-xs font-medium hover:border-primary hover:text-primary transition-colors"
+                          className="inline-flex h-9 px-3 items-center rounded-md border border-outline-variant text-xs font-medium hover:border-primary hover:text-primary transition-colors disabled:opacity-40 disabled:hover:border-outline-variant disabled:hover:text-inherit disabled:cursor-not-allowed"
                         >
-                          Làm bài
+                          {gate.canSubmit ? "Làm bài" : gate.canView ? "Xem lại" : "Chưa mở"}
                         </button>
-                        {assignment.gradingStatus!=="NOT_SUBMITTED"&&<span className="inline-flex h-9 px-3 items-center rounded-md bg-primary-container text-on-primary-container text-xs font-medium">{assignment.gradingStatus==="RETURNED"?`Điểm ${assignment.score}/${assignment.maxScore??10}`:"Đã nộp · Chờ trả điểm"}</span>}
+                        {assignment.score !== null ? (
+                          <span className="inline-flex h-9 px-3 items-center rounded-md bg-primary-container text-on-primary-container text-xs font-medium">
+                            Điểm {assignment.score}/{assignment.maxScore ?? 10}
+                          </span>
+                        ) : assignment.gradingStatus !== "NOT_SUBMITTED" ? (
+                          <span className="inline-flex h-9 px-3 items-center rounded-md bg-surface-container-high text-on-surface-variant text-xs font-medium">Đã nộp · Chờ trả điểm</span>
+                        ) : null}
                       </>
                     ) : assignment.lessonId ? (
                       <button

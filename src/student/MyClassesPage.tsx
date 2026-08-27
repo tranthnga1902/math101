@@ -215,18 +215,25 @@ function TaskRow({
   onMarkDone: () => void;
   marking: boolean;
 }) {
-  const due = dueDateLabel(row.due_at);
+  const scheduled = row.state === "SCHEDULED";
+  const closed = row.state === "CLOSED";
+  const due = scheduled
+    ? { text: row.open_at ? `Mở lúc ${new Date(row.open_at).toLocaleString("vi-VN")}` : "Chưa tới giờ mở", urgent: false }
+    : row.state === "LATE_OPEN"
+      ? { text: "Quá hạn — còn nhận muộn", urgent: true }
+      : dueDateLabel(row.due_at);
   const openable = !!(row.worksheet_id || row.lesson_id || row.document_id);
   // Phiếu bài tập có luồng nộp riêng (làm xong rồi bấm "Nộp bài"), nên chỉ bài học và tài liệu
   // mới cần nút đánh dấu — đây cũng là đường duy nhất để bài tự chọn được ghi nhận.
-  const markable = !row.worksheet_id && !row.submitted_at;
+  // Ngoài cửa nộp thì server từ chối, đừng mời học sinh bấm.
+  const markable = !row.worksheet_id && !row.submitted_at && (row.state === "OPEN" || row.state === "LATE_OPEN");
   return (
     <div className="border border-outline-variant rounded-lg p-3 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold text-on-surface">{row.title}</p>
           <p className="text-xs text-on-surface-variant mt-0.5">
-            {row.worksheet_name ?? row.document_title ?? "Bài học trên lớp"}
+            {scheduled ? "Chưa mở đề" : row.worksheet_name ?? row.document_title ?? "Bài học trên lớp"}
           </p>
         </div>
         <StateChip status={row.grading_status} />
@@ -235,6 +242,10 @@ function TaskRow({
       <div className="flex items-center gap-2 flex-wrap">
         <RequirementChip requirement={row.requirement} />
         <span className={`text-xs font-medium ${due.urgent ? "text-error" : "text-on-surface-variant"}`}>{due.text}</span>
+        {row.submitted_late && <span className="text-xs font-medium text-error">Đã nộp muộn</span>}
+        {!row.submitted_at && !scheduled && !closed && row.attempts_left !== null && (
+          <span className="text-xs font-medium text-on-surface-variant">Còn {row.attempts_left} lượt nộp</span>
+        )}
         {row.requirement === "BAT_BUOC" && row.score !== null && (
           <span className="text-xs font-bold text-primary data-tabular">
             Điểm {row.score}/{row.max_score ?? 10}

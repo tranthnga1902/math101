@@ -1,5 +1,10 @@
 package com.math10.student.controller;
 
+import com.math10.assignments.domain.AssignmentRows;
+import com.math10.assignments.domain.AssignmentWindow;
+import com.math10.assignments.entity.Assignment;
+import com.math10.assignments.entity.AssignmentProgress;
+import com.math10.assignments.entity.AssignmentState;
 import com.math10.common.dto.ApiResponse;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.student.dto.StudentAssignmentResponse;
@@ -112,43 +117,69 @@ public class StudentLearningController {
         return ApiResponse.ok("My courses", result);
     }
 
+    /**
+     * Danh sách bài của học sinh. Trạng thái vòng đời và quyền thấy điểm đều tính bằng
+     * {@link AssignmentWindow} trên đối tượng dựng lại từ dòng truy vấn — cùng một luật với
+     * lúc nộp bài, không viết lại bằng SQL. Viết lại bằng SQL là chỗ hai bên lệch nhau.
+     */
     @GetMapping("/assignments")
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<List<StudentAssignmentResponse>> assignments() {
         Long studentId = current.requireUserId();
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                select distinct a.id,a.title,a.due_at,a.status,a.lesson_id,a.worksheet_id,w.name worksheet_name,a.created_at,
+                select distinct a.id,a.title,a.open_at,a.due_at,a.status,a.lesson_id,a.worksheet_id,w.name worksheet_name,a.created_at,
+                a.max_attempts,a.late_policy,a.late_penalty_percent,a.publish_score_at,
                 case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end progress_status,
                 coalesce(ap.completion_percent,0) completion_percent,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
-                case when ap.returned_at is not null then ap.score else null end score,
-                case when ap.returned_at is not null then ap.max_score else null end max_score
+                ap.score,ap.max_score,ap.graded_at,ap.returned_at,coalesce(ap.attempt_no,0) attempt_no,
+                coalesce(ap.submitted_late,false) submitted_late
                 from assignments a join class_students cs on cs.class_id=a.class_id and cs.deleted_at is null
                 left join worksheets w on w.id=a.worksheet_id and w.deleted_at is null
                 left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=cs.student_id and ap.deleted_at is null
                 where cs.student_id=? and a.deleted_at is null order by a.created_at desc
                 """, studentId);
-        return ApiResponse.ok("Assignments", rows.stream().map(assignment -> {
-            Long worksheetId = assignment.get("worksheet_id") == null ? null : num(assignment.get("worksheet_id"));
-            List<StudentAssignmentResponse.Item> content = worksheetId == null ? List.of() : jdbc.query("""
-                    select p.id,wi.order_index,p.public_code,p.qr_slug,p.statement_latex,p.difficulty,p.option_a,p.option_b,p.option_c,p.option_d
-                    from worksheet_items wi join problems p on p.id=wi.problem_id and p.deleted_at is null
-                    where wi.worksheet_id=? and wi.deleted_at is null order by wi.order_index
-                    """, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"),rs.getString("option_a"),rs.getString("option_b"),rs.getString("option_c"),rs.getString("option_d")), worksheetId);
-            return new StudentAssignmentResponse(
-                    num(assignment.get("id")),
-                    str(assignment.get("title")),
-                    dateTime(assignment.get("due_at")),
-                    str(assignment.get("status")),
-                    assignment.get("lesson_id") == null ? null : num(assignment.get("lesson_id")),
+        LocalDateTime now = LocalDateTime.now();
+        List<StudentAssignmentResponse> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Assignment assignment = AssignmentRows.assignment(row);
+            AssignmentState state = AssignmentWindow.stateOf(assignment, now);
+            // Bài giáo viên đang soạn thì học sinh không được biết là nó tồn tại.
+            if (!state.visibleToStudent()) continue;
+            AssignmentProgress progress = AssignmentRows.progress(row);
+            Long worksheetId = assignment.getWorksheetId();
+            // Chưa tới giờ mở: hiện tên bài, không hiện một câu hỏi nào.
+            List<StudentAssignmentResponse.Item> content = worksheetId == null || !state.contentVisibleToStudent()
+                    ? List.of()
+                    : items(worksheetId);
+            boolean released = AssignmentWindow.scoreVisible(assignment, progress, now);
+            result.add(new StudentAssignmentResponse(
+                    assignment.getId(),
+                    str(row.get("title")),
+                    assignment.getOpenAt(),
+                    assignment.getDueAt(),
+                    assignment.getStatus(),
+                    state.name(),
+                    assignment.getLessonId(),
                     worksheetId,
-                    str(assignment.get("worksheet_name")),
-                    str(assignment.get("progress_status")),
-                    integer(assignment.get("completion_percent")),str(assignment.get("grading_status")),
-                    assignment.get("score")==null?null:new java.math.BigDecimal(assignment.get("score").toString()),
-                    assignment.get("max_score")==null?null:new java.math.BigDecimal(assignment.get("max_score").toString()),
+                    str(row.get("worksheet_name")),
+                    str(row.get("progress_status")),
+                    integer(row.get("completion_percent")), str(row.get("grading_status")),
+                    released ? progress.getScore() : null,
+                    released ? progress.getMaxScore() : null,
+                    AssignmentWindow.attemptsLeft(assignment, progress),
+                    progress.isSubmittedLate(),
                     content
-            );
-        }).toList());
+            ));
+        }
+        return ApiResponse.ok("Assignments", result);
+    }
+
+    private List<StudentAssignmentResponse.Item> items(Long worksheetId) {
+        return jdbc.query("""
+                select p.id,wi.order_index,p.public_code,p.qr_slug,p.statement_latex,p.difficulty,p.option_a,p.option_b,p.option_c,p.option_d
+                from worksheet_items wi join problems p on p.id=wi.problem_id and p.deleted_at is null
+                where wi.worksheet_id=? and wi.deleted_at is null order by wi.order_index
+                """, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"), rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d")), worksheetId);
     }
 
     private List<StudentCourseResponse.Resource> resources(Long lessonId) {

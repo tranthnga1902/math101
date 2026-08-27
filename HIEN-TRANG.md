@@ -24,6 +24,7 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | Mã | Phần | Mức | Bằng chứng | Còn thiếu |
 |----|------|-----|------------|-----------|
 | HT-05 | Tài liệu — chỉ người có quyền mới tải được file | **A** | `DocumentServiceImpl.checkCanRead`; `DocumentUrls`; `DocumentController.content/thumbnail`; `PdfThumbnail.tsx`, `PdfPageViewer.tsx`, `pdfOcr.ts`. Test: `DocumentAccessTest` (12 ca), `DocumentUrlsTest` (9 ca) — đã kiểm bằng mutation: gỡ guard giáo viên thì đúng 2 ca đỏ | Bucket R2 phải chuyển sang **private** (việc vận hành, xem cuối file). `readObject` nạp cả file vào RAM — sách lớn cần hỗ trợ range request |
+| HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **B** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn | Migration `V202608271000__assignment_lifecycle.sql` **chưa từng chạy trên bất kỳ DB nào** — máy không có Postgres cục bộ, DB duy nhất là Neon staging dùng chung. Đây là lý do dòng này ở B chứ không phải A. `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
 
 ## Chi tiết HT-05
 
@@ -58,6 +59,57 @@ ngay khi bucket chuyển sang private — mà đó chính là bước làm lỗ 
 Tài liệu trong bài học đi đường riêng (`/api/lessons/{lessonId}/documents/{id}/content.{ext}`):
 quyền đến từ việc đang học bài đó, không từ audience của tài liệu, nên dùng chung endpoint
 `/api/documents` sẽ chặn nhầm học sinh.
+
+## Chi tiết HT-44
+
+Trước lát này, `assignments` có `due_at` nhưng **không chỗ nào trên server đọc nó**. Bốn hệ quả:
+
+1. **Lộ đề.** `/api/student/assignments` không lọc `status`, nên bài `DRAFT` giáo viên đang soạn
+   hiện thẳng trong danh sách học sinh **kèm toàn bộ câu hỏi** — `statement_latex` và cả bốn
+   phương án.
+2. **Hạn nộp chỉ là chữ.** Nộp muộn bao lâu cũng được.
+3. **Nộp lại vô hạn** cho tới khi giáo viên bấm trả bài.
+4. **Không có giờ mở, không có giờ công bố điểm** — giáo viên phải trả điểm từng bài một.
+
+Luật vòng đời nay nằm gọn trong `AssignmentWindow`, năm hàm thuần không phụ thuộc Spring:
+`stateOf`, `attemptsLeft`, `requireSubmittable`, `applyLatePenalty`, `scoreVisible`. Mọi màn hình
+đều hỏi cùng đối tượng đó thay vì tự suy luận lại.
+
+**Lỗ thứ hai, không có trong kế hoạch, tìm thấy khi làm.** `GET /api/student/classes/{classId}/tasks`
+lọc `DRAFT` bằng SQL nhưng lại **viết lại luật hiện điểm** thành `case when ap.returned_at is not null`,
+và không biết `open_at` là gì. Hậu quả: đề của bài hẹn giờ lộ ở màn hình lớp dù đã kín ở màn hình
+bài tập, còn `publish_score_at` thì bị bỏ qua ở đây trong khi được tôn trọng ở kia. Hai chỗ cùng
+một luật, viết hai lần, lệch nhau — đúng kiểu lỗi mà việc tách `AssignmentRows` sinh ra để chặn:
+nay cả hai màn hình chạy SQL viết tay đều dựng lại entity bằng một hàm và hỏi cùng một `AssignmentWindow`.
+
+Vài quyết định đáng ghi lại:
+
+- **`raw_score` tách khỏi `score`.** Giữ điểm gốc trước khi trừ phần trăm để (a) giải thích được
+  cho học sinh vì sao 8.00 thành 6.40, và (b) chấm lại **không nhân trừ chồng lên nhau** — có một
+  ca test riêng cho việc này.
+- **`max_attempts = 0` nghĩa là không giới hạn**, chứ không phải cấm nộp. Ràng buộc DB chỉ chặn số âm.
+- **Migration vá dữ liệu cũ**: bài đã nộp trước khi có cột `attempt_no` được đặt thành 1, nếu không
+  thì ngày triển khai ai cũng được nộp thêm một lần nữa dù `max_attempts = 1`.
+- **`lesson_id` cố ý không bị che** khi bài chưa tới giờ mở — bài học được xuất bản theo đường
+  riêng, che đi là hỏng nút "Vào bài học".
+- **`assignmentGate()` ở frontend là hình chiếu, không phải nguồn luật.** Mọi đường nó khoá đều
+  được `requireSubmittable` chặn độc lập trên server; sửa file đó không mở được cửa nào.
+
+`src/teacher/AssignmentManager.tsx` bị xoá trong lát này: không file nào import, và nó là bản sao
+cũ của `ClassTaskPanel` vẫn gọi `saveAssignment` theo hình dạng cũ. Vì các trường mới đều tuỳ chọn
+nên nó sẽ **biên dịch sạch mà vẫn sai** — đúng loại bẫy như `src/admin/AdminShell.tsx`.
+
+Đã kiểm bằng chứng: tạm sửa `AssignmentWindow` sáu kiểu (`isLate` luôn false; `attemptsLeft` luôn
+null; bỏ trừ điểm; `scoreVisible` luôn true; bỏ nhánh DRAFT; bỏ nhánh `returnedAt`) — cả sáu lần
+suite đều đỏ (4, 2, 3, 3, 1, 1 ca), rồi khôi phục file về nguyên trạng.
+
+**Ranh giới xác minh, nói rõ để khỏi hiểu nhầm:** 83 test backend xanh và `npm run build` sạch
+chứng minh *luật* đúng và mã biên dịch được. Chúng **không** chứng minh migration chạy được —
+file SQL đó chưa từng được thi hành. Tôi đã đối chiếu tay từng cột với entity (`open_at`,
+`max_attempts`, `late_policy`, `late_penalty_percent`, `publish_score_at`, `attempt_no`,
+`submitted_late`, `raw_score`) nên `ddl-auto: validate` sẽ không kêu, nhưng đối chiếu tay không
+phải bằng chứng tự động. Chạy được lần đầu là khi có embedded PostgreSQL (Lát 1) hoặc khi bạn
+đồng ý cho chạy lên Neon staging.
 
 ## Việc vận hành còn nợ
 
