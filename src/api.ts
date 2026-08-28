@@ -99,10 +99,24 @@ export type MyClass={id:number;code:string;name:string;status:string;description
 /** Chưa tới giờ mở thì server xoá trắng worksheet/document — chỉ còn cái tên bài. */
 export type MyClassTask={id:number;title:string;open_at:string|null;due_at:string|null;status:string;state:AssignmentState;requirement:ClassRequirement;lesson_id:number|null;worksheet_id:number|null;document_id:number|null;worksheet_name:string|null;document_title:string|null;document_file_url:string|null;document_doc_type:string|null;grading_status:string;completion_percent:number;opened_at:string|null;submitted_at:string|null;graded_at:string|null;returned_at:string|null;score:number|null;max_score:number|null;teacher_feedback:string|null;attempts_left:number|null;attempt_no:number;submitted_late:boolean;max_attempts:number;late_policy:LatePolicy;late_penalty_percent:number;publish_score_at:string|null};
 export type AdminClassOverviewRow={id:number;code:string;name:string;grade_id:number;status:string;description:string|null;created_at:string;grade_name:string|null;created_by_name:string|null;created_by_role:string|null;teacher_names:string|null;teacher_count:number;student_count:number;course_count:number;curriculum_count:number;document_count:number;required_total:number;optional_total:number;submission_count:number;last_submitted_at:string|null};
-/** `attemptsLeft` null nghĩa là không giới hạn lượt nộp. Chưa tới giờ mở thì `items` rỗng. */
-export type StudentAssignment={id:number;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;gradingStatus:string;score:number|null;maxScore:number|null;attemptsLeft:number|null;submittedLate:boolean;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null}[]};
-/** `rawScore` là điểm bài làm trước khi trừ muộn; `score` là điểm cuối cùng. */
-export type AssignmentResult={assignmentId:number;studentId:number;gradingStatus:string;completionPercent:number;submittedAt:string|null;gradedAt:string|null;returnedAt:string|null;score:number|null;maxScore:number|null;correctCount:number|null;totalQuestions:number|null;teacherFeedback:string|null;answers:Record<number,string>;state:AssignmentState;openAt:string|null;dueAt:string|null;attemptsLeft:number|null;submittedLate:boolean;rawScore:number|null};
+/**
+ * `attemptsLeft` null nghĩa là không giới hạn lượt nộp. Chưa tới giờ mở thì `items` rỗng.
+ *
+ * `essay` do server quyết, đừng suy lại từ `optionA..D`: đề nhập từ PDF in bốn phương án ngay
+ * trong `statementLatex` nên bốn cột đó trống mà câu vẫn là trắc nghiệm.
+ */
+export type StudentAssignment={id:number;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;gradingStatus:string;score:number|null;maxScore:number|null;attemptsLeft:number|null;submittedLate:boolean;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null;essay:boolean}[]};
+/**
+ * Điểm và nhận xét của một câu. Dùng chung cho bảng chấm của giáo viên và bảng kết quả của học
+ * sinh — khác nhau ở chỗ đường trả về cho học sinh **luôn để trống `correctOption`**.
+ */
+export type SubmissionItemView={problemId:number;orderNo:number;publicCode:string|null;statement:string|null;essay:boolean;correctOption:string|null;studentAnswer:string|null;score:number|null;maxScore:number|null;feedback:string|null};
+/** `rawScore` là điểm bài làm trước khi trừ muộn; `score` là điểm cuối cùng. `items` rỗng khi điểm chưa công bố. */
+export type AssignmentResult={assignmentId:number;studentId:number;gradingStatus:string;completionPercent:number;submittedAt:string|null;gradedAt:string|null;returnedAt:string|null;score:number|null;maxScore:number|null;correctCount:number|null;totalQuestions:number|null;teacherFeedback:string|null;answers:Record<number,string>;state:AssignmentState;openAt:string|null;dueAt:string|null;attemptsLeft:number|null;submittedLate:boolean;rawScore:number|null;items:SubmissionItemView[]};
+/** Bảng chấm chi tiết một bài nộp. `conThieu` > 0 nghĩa là còn câu tự luận chưa cho điểm. */
+export type SubmissionGradingSheet={submissionId:number;assignmentId:number;studentId:number;studentName:string|null;gradingStatus:string;teacherFeedback:string|null;maxScoreMoiCau:number|null;items:SubmissionItemView[];daCham:number;tongSoCau:number;conThieu:number;rawScore:number|null;score:number|null;submittedLate:boolean};
+/** `score` null nghĩa là bỏ chấm câu đó, đưa về chưa chấm — không phải cho 0 điểm. */
+export type ItemScoreInput={problemId:number;score:number|null;feedback:string|null};
 export type TeacherSubmission={id:number;assignment_id:number;title:string;student_id:number;full_name:string;username:string;submitted_at:string;graded_at:string|null;returned_at:string|null;score:number|null;max_score:number;correct_count:number|null;total_questions:number|null;teacher_feedback:string|null;grading_status:string;answer_json:string;attempt_no:number;submitted_late:boolean;raw_score:number|null;due_at:string|null;late_policy:LatePolicy;late_penalty_percent:number};
 /** `missingAnswerKey` là đề chưa nhập đáp án đúng — khi đó `correct` và `rate` là null, không phải 0. */
 export type ItemAnalysis={problemId:number;orderNo:number;publicCode:string|null;correct:number|null;total:number;rate:number|null;warning:boolean;missingAnswerKey:boolean};
@@ -448,7 +462,10 @@ export const getTeacherSubmissions=(s:AuthSession,classId:number)=>request<Teach
 export const gradeSubmission=(s:AuthSession,id:number,score:number,feedback:string)=>request<void>(`/teacher/submissions/${id}/grade`,{method:"PUT",body:JSON.stringify({score,feedback})},s.accessToken);
 export const returnSubmission=(s:AuthSession,id:number)=>request<void>(`/teacher/submissions/${id}/return`,{method:"PATCH"},s.accessToken);
 export const getItemAnalysis=(s:AuthSession,assignmentId:number)=>request<ItemAnalysis[]>(`/teacher/submissions/assignments/${assignmentId}/analysis`,{},s.accessToken);
-export const regradeAssignment=(s:AuthSession,assignmentId:number)=>request<{updated:number}>(`/teacher/submissions/assignments/${assignmentId}/regrade`,{method:"POST"},s.accessToken);
+export const regradeAssignment=(s:AuthSession,assignmentId:number)=>request<{updated:number;skipped:number}>(`/teacher/submissions/assignments/${assignmentId}/regrade`,{method:"POST"},s.accessToken);
+export const getSubmissionItems=(s:AuthSession,id:number)=>request<SubmissionGradingSheet>(`/teacher/submissions/${id}/items`,{},s.accessToken);
+/** Gửi được từng phần: chỉ mang những câu vừa chấm, server tự biết còn thiếu bao nhiêu câu. */
+export const gradeSubmissionItems=(s:AuthSession,id:number,items:ItemScoreInput[],feedback:string|null)=>request<SubmissionGradingSheet>(`/teacher/submissions/${id}/grade-items`,{method:"PUT",body:JSON.stringify({items,feedback})},s.accessToken);
 export const getResources=(s:AuthSession,lessonId:number)=>request<LessonResource[]>(`/resources?lessonId=${lessonId}`,{},s.accessToken);
 export const saveResource=(s:AuthSession,x:Omit<LessonResource,"id">,id?:number)=>request<LessonResource>(`/resources${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteResource=(s:AuthSession,id:number)=>request<void>(`/resources/${id}`,{method:"DELETE"},s.accessToken);

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTeacherSubmissions, gradeSubmission, returnSubmission, type AuthSession, type TeacherSubmission } from "../../api";
+import { getTeacherSubmissions, returnSubmission, type AuthSession, type TeacherSubmission } from "../../api";
 import { messageOf } from "../../lib/errors";
+import { useGradingSheet } from "../useGradingSheet";
+import { GradingSheetItems } from "../GradingSheetItems";
 
 const statusLabel: Record<string, { text: string; tone: string }> = {
   SUBMITTED: { text: "Chờ chấm", tone: "bg-primary-container/30 text-primary" },
@@ -17,8 +19,6 @@ const statusLabel: Record<string, { text: string; tone: string }> = {
 export function ClassGradingPanel({ session, classId }: { session: AuthSession; classId: number }) {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<TeacherSubmission | null>(null);
-  const [score, setScore] = useState("");
-  const [feedback, setFeedback] = useState("");
   const [filter, setFilter] = useState("");
 
   const query = useQuery({
@@ -34,10 +34,6 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
       queryClient.invalidateQueries({ queryKey: ["class-gradebook", session.accessToken, classId] }),
     ]);
   };
-  const grade = useMutation({
-    mutationFn: () => gradeSubmission(session, selected!.id, Number(score), feedback.trim()),
-    onSuccess: async () => { await invalidate(); setSelected(null); },
-  });
   const release = useMutation({
     mutationFn: (id: number) => returnSubmission(session, id),
     onSuccess: invalidate,
@@ -47,7 +43,7 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
   const rows = all.filter(row => !filter || row.grading_status === filter);
   const pending = all.filter(row => row.grading_status === "SUBMITTED").length;
   const graded = all.filter(row => row.grading_status === "GRADED").length;
-  const error = query.isError ? messageOf(query.error) : grade.isError ? messageOf(grade.error) : release.isError ? messageOf(release.error) : "";
+  const error = query.isError ? messageOf(query.error) : release.isError ? messageOf(release.error) : "";
 
   return <section className="flex flex-col gap-4">
     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -86,8 +82,7 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
                 {row.score == null ? "—" : `${Number(row.score).toFixed(2)}/${row.max_score ?? 10}`}
               </span>
               <div className="shrink-0 flex items-center gap-2">
-                <button type="button"
-                  onClick={() => { setSelected(row); setScore(row.score == null ? "" : String(row.score)); setFeedback(row.teacher_feedback ?? ""); }}
+                <button type="button" onClick={() => setSelected(row)}
                   className="h-9 px-3 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface hover:bg-surface-container transition-colors">
                   Chấm
                 </button>
@@ -105,41 +100,61 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
       </div>
     )}
 
-    {selected && (
-      <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) setSelected(null); }}>
-        <form onSubmit={e => { e.preventDefault(); grade.mutate(); }}
-          className="w-full max-w-md bg-surface-container-lowest border border-outline-variant rounded-xl p-5 flex flex-col gap-3">
-          <div>
-            <p className="text-xs font-semibold text-primary tracking-wide">CHẤM BÀI</p>
-            <h4 className="text-base font-bold text-on-surface">{selected.full_name}</h4>
-            <p className="text-xs text-on-surface-variant">
-              {selected.title}
-              {selected.total_questions ? ` · tự động đúng ${selected.correct_count ?? 0}/${selected.total_questions}` : ""}
-            </p>
-          </div>
+    {selected && <GradingDialog session={session} submission={selected}
+      onClose={() => setSelected(null)}
+      onSaved={async dong => { await invalidate(); if (dong) setSelected(null); }} />}
+  </section>;
+}
+
+/**
+ * Hộp chấm của bảng chấm trong lớp. Luật chọn đường chấm — từng câu hay cả bài — nằm ở
+ * {@link useGradingSheet}, dùng chung với hộp chấm ở mục "Chấm và trả điểm": hai màn hình chấm
+ * cùng một bài nộp, mà chỉ cần một bên còn gõ điểm cả bài cho đề tự luận là `PUT /grade` xoá
+ * sạch bảng điểm từng câu bên kia vừa chấm.
+ */
+function GradingDialog({ session, submission, onClose, onSaved }: { session: AuthSession; submission: TeacherSubmission; onClose: () => void; onSaved: (dong: boolean) => void | Promise<void> }) {
+  const state = useGradingSheet(session, submission, onSaved);
+  const { sheet, chamTungCau, conThieu, feedback, wholeScore, setFeedback, setWholeScore, luu, dangLuu, loi } = state;
+  const field = "px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface";
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <form onSubmit={e => { e.preventDefault(); luu(); }}
+        className={`w-full ${chamTungCau ? "max-w-3xl" : "max-w-md"} max-h-[90vh] overflow-auto bg-surface-container-lowest border border-outline-variant rounded-xl p-5 flex flex-col gap-3`}>
+        <div>
+          <p className="text-xs font-semibold text-primary tracking-wide">CHẤM BÀI</p>
+          <h4 className="text-base font-bold text-on-surface">{submission.full_name}</h4>
+          <p className="text-xs text-on-surface-variant">
+            {submission.title}
+            {submission.total_questions ? ` · tự động đúng ${submission.correct_count ?? 0}/${submission.total_questions}` : ""}
+            {submission.submitted_late ? " · nộp muộn" : ""}
+          </p>
+        </div>
+        {sheet.isLoading && <p className="text-sm text-on-surface-variant">Đang tải bảng chấm…</p>}
+        {chamTungCau ? <GradingSheetItems state={state} /> : (
           <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
             Điểm thang 10
-            <input required type="number" min="0" max="10" step="0.01" value={score} onChange={e => setScore(e.target.value)}
-              className="h-10 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface" />
+            <input required type="number" min="0" max="10" step="0.01" value={wholeScore} onChange={e => setWholeScore(e.target.value)}
+              className={`h-10 ${field}`} />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
-            Nhận xét
-            <textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Nhận xét gửi học sinh…" rows={3}
-              className="px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface" />
-          </label>
-          {grade.isError && <p className="text-sm text-error">{messageOf(grade.error)}</p>}
-          <div className="flex items-center justify-end gap-2">
-            <button type="button" onClick={() => setSelected(null)}
-              className="h-10 px-4 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-colors">
-              Hủy
-            </button>
-            <button type="submit" disabled={grade.isPending}
-              className="h-10 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
-              {grade.isPending ? "Đang lưu…" : "Lưu điểm"}
-            </button>
-          </div>
-        </form>
-      </div>
-    )}
-  </section>;
+        )}
+        <label className="flex flex-col gap-1 text-sm font-medium text-on-surface">
+          Nhận xét cả bài
+          <textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Nhận xét gửi học sinh…" rows={3} className={field} />
+        </label>
+        {sheet.isError && <p className="text-xs text-on-surface-variant">Không dựng được bảng chấm từng câu ({messageOf(sheet.error)}) — vẫn cho điểm cả bài được.</p>}
+        {loi && <p className="text-sm text-error">{loi}</p>}
+        {chamTungCau && conThieu > 0 && <p className="text-xs text-on-surface-variant">Còn {conThieu} câu chưa cho điểm. Lưu được, nhưng bài vẫn nằm trong hàng chờ tới khi chấm đủ.</p>}
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose}
+            className="h-10 px-4 rounded-lg border border-outline-variant text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-colors">
+            Hủy
+          </button>
+          <button type="submit" disabled={dangLuu}
+            className="h-10 px-4 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
+            {dangLuu ? "Đang lưu…" : chamTungCau ? "Lưu điểm từng câu" : "Lưu điểm"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
