@@ -1,6 +1,7 @@
 package com.math10.assignments.service;
 
 import com.math10.assignments.domain.McqGrading;
+import com.math10.mathcontent.entity.Problem;
 import com.math10.mathcontent.repository.ProblemRepository;
 import com.math10.worksheets.repository.WorksheetItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,11 +28,19 @@ public class WorksheetAnswerKeys {
     /** Đáp án đúng của phiếu, giữ nguyên thứ tự câu trong đề. */
     public List<McqGrading.Key> of(Long worksheetId) {
         var items = worksheetItems.findByWorksheetIdOrderByOrderIndex(worksheetId);
-        Map<Long, String> correctByProblem = new HashMap<>();
+        Map<Long, McqGrading.Key> keyByProblem = new HashMap<>();
         problems.findAllById(items.stream().map(item -> item.getProblemId()).toList())
-                .forEach(problem -> correctByProblem.put(problem.getId(), problem.getCorrectOption()));
+                .forEach(problem -> keyByProblem.put(problem.getId(),
+                        new McqGrading.Key(problem.getId(), problem.getCorrectOption(), laTracNghiem(problem))));
         return items.stream()
-                .map(item -> new McqGrading.Key(item.getProblemId(), correctByProblem.get(item.getProblemId())))
+                .map(item -> keyByProblem.getOrDefault(item.getProblemId(),
+                        new McqGrading.Key(item.getProblemId(), null)))
                 .toList();
+    }
+
+    /** Luật trắc nghiệm/tự luận nằm ở {@link McqGrading#laTracNghiem}; đây chỉ là chỗ rút field ra. */
+    private static boolean laTracNghiem(Problem problem) {
+        return McqGrading.laTracNghiem(problem.getOptionA(), problem.getOptionB(),
+                problem.getOptionC(), problem.getOptionD(), problem.getCorrectOption());
     }
 }

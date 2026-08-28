@@ -221,4 +221,64 @@ class McqGradingTest {
             assertThat(McqGrading.isCorrect(new McqGrading.Key(1L, "A"), "  ")).isFalse();
         }
     }
+
+    /**
+     * Trắc nghiệm hay tự luận. Luật này có hai người đọc phải trả lời giống hệt nhau: màn hình làm
+     * bài của học sinh (đọc đề bằng JDBC thô) và đường chấm (đọc bằng JPA). Lệch một câu là học
+     * sinh gõ tự luận vào câu mà máy chủ đợi A/B/C/D, rồi nhận về "Đáp án không hợp lệ" mà không
+     * ai hiểu vì sao — nên luật nằm ở đúng hàm này và test khoá nó lại ở đây.
+     */
+    @Nested
+    @DisplayName("Phân loại trắc nghiệm / tự luận")
+    class PhanLoaiCauHoi {
+
+        @Test
+        @DisplayName("Có in phương án ra thì là trắc nghiệm")
+        void coPhuongAnLaTracNghiem() {
+            assertThat(McqGrading.laTracNghiem("x = 1", "x = 2", "x = 3", "x = 4", null)).isTrue();
+        }
+
+        /**
+         * Đề nhập từ PDF/DOCX in bốn phương án ngay trong thân đề bài, nên bốn cột phương án để
+         * trống mà câu vẫn là trắc nghiệm. Bỏ vế này thì toàn bộ những phiếu ấy lặng lẽ thành đề
+         * tự luận, và điểm cũ không tính lại được.
+         */
+        @Test
+        @DisplayName("Bốn cột phương án trống nhưng đã nhập đáp án đúng — vẫn là trắc nghiệm")
+        void chiCoDapAnVanLaTracNghiem() {
+            assertThat(McqGrading.laTracNghiem(null, null, null, null, "B")).isTrue();
+            assertThat(McqGrading.laTracNghiem("", "  ", null, "", "b")).isTrue();
+        }
+
+        @Test
+        @DisplayName("Chỉ một phương án có chữ cũng đủ là trắc nghiệm")
+        void motPhuongAnCungDu() {
+            assertThat(McqGrading.laTracNghiem(null, null, "x = 3", null, null)).isTrue();
+        }
+
+        @Test
+        @DisplayName("Không phương án, không đáp án thì là tự luận")
+        void khongCaHaiLaTuLuan() {
+            assertThat(McqGrading.laTracNghiem(null, null, null, null, null)).isFalse();
+        }
+
+        @Test
+        @DisplayName("Phương án toàn khoảng trắng không tính là có phương án")
+        void khoangTrangKhongPhaiPhuongAn() {
+            assertThat(McqGrading.laTracNghiem("  ", "", "\t", " ", null)).isFalse();
+        }
+
+        /**
+         * Đáp án ghi 'E' là đề hỏng, không phải đề tự luận. Coi nó là tự luận thì câu hỏng sẽ lọt
+         * qua lưới {@link McqGrading#requireGradable} và chuyển thành một câu chờ chấm tay —
+         * giáo viên không hiểu vì sao bài không tự lên điểm, trong khi cái sai nằm ở đề.
+         */
+        @Test
+        @DisplayName("Đáp án ngoài A/B/C/D và không có phương án — vẫn phải rơi về tự luận để lưới khác bắt")
+        void dapAnLaKhongCuuDuoc() {
+            assertThat(McqGrading.laTracNghiem(null, null, null, null, "E")).isFalse();
+            assertThat(McqGrading.laTracNghiem("x = 1", null, null, null, "E"))
+                    .as("nhưng có phương án thì vẫn là trắc nghiệm, và là trắc nghiệm hỏng đáp án").isTrue();
+        }
+    }
 }

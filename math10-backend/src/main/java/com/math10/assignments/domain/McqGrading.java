@@ -27,8 +27,24 @@ public final class McqGrading {
     private McqGrading() {
     }
 
-    /** Một câu trong đề kèm đáp án đúng. {@code correctOption} null nghĩa là đề chưa nhập đáp án. */
-    public record Key(Long problemId, String correctOption) {
+    /**
+     * Một câu trong đề kèm đáp án đúng.
+     *
+     * <p>{@code multipleChoice} false nghĩa là câu <b>tự luận</b> — phải người chấm, xem
+     * {@link WorksheetScoring}. Cần cờ riêng vì {@code correctOption} null mang hai nghĩa khác hẳn
+     * nhau: "câu này không có đáp án để chấm máy" và "đây là câu trắc nghiệm mà giáo viên quên
+     * nhập đáp án". Gộp hai nghĩa đó lại thì mỗi lần quên nhập đáp án là một câu tự luận mọc ra
+     * lặng lẽ, và {@link #requireGradable} — cái lưới chặn quên đáp án — mất tác dụng.
+     *
+     * <p>Với {@code multipleChoice} true mà {@code correctOption} null thì đề hỏng, không phải
+     * đề tự luận: {@link #requireGradable} chặn.
+     */
+    public record Key(Long problemId, String correctOption, boolean multipleChoice) {
+
+        /** Câu trắc nghiệm — dạng gọn cho những chỗ chỉ làm việc với đề trắc nghiệm. */
+        public Key(Long problemId, String correctOption) {
+            this(problemId, correctOption, true);
+        }
     }
 
     /** Kết quả chấm. {@code rawScore} là điểm gốc thang 10, chưa trừ phần trăm nộp muộn. */
@@ -51,6 +67,32 @@ public final class McqGrading {
         // Phải chặn null trước: Set.of(...) ném NullPointerException khi hỏi contains(null).
         String normalized = normalize(option);
         return normalized != null && OPTIONS.contains(normalized);
+    }
+
+    /**
+     * Câu này là trắc nghiệm hay tự luận. Đề không có cột "loại câu", nên phải suy ra từ dữ liệu
+     * sẵn có — và suy sai thì hoặc là bài trắc nghiệm bỗng bắt giáo viên chấm tay, hoặc là câu
+     * quên đáp án lọt lưới {@link #requireGradable}.
+     *
+     * <p>Trắc nghiệm khi <b>có phương án in ra, hoặc đã nhập đáp án đúng</b>. Vế thứ hai là để
+     * không phá đề cũ: nhiều câu nhập từ file PDF/DOCX in bốn phương án ngay trong đề bài, bốn cột
+     * {@code option_a..d} để trống nhưng {@code correct_option} vẫn có — bỏ vế đó thì toàn bộ
+     * những phiếu ấy lặng lẽ biến thành đề tự luận và điểm cũ không tính lại được.
+     *
+     * <p>Còn lại — không phương án, không đáp án — là tự luận. Một câu trắc nghiệm mà thiếu cả hai
+     * thì trong dữ liệu không còn dấu hiệu nào để nhận ra; chỗ chữa là lúc soạn đề, không phải ở đây.
+     *
+     * <p>Luật nằm ở đây, nhận vào bốn phương án và đáp án dạng chuỗi, chứ không nhận entity: màn
+     * hình làm bài của học sinh đọc đề bằng JDBC thô còn đường chấm đọc bằng JPA, mà hai bên bắt
+     * buộc phải trả lời giống nhau — lệch một câu là học sinh gõ tự luận vào câu mà server đợi A/B/C/D.
+     */
+    public static boolean laTracNghiem(String optionA, String optionB, String optionC, String optionD,
+                                       String correctOption) {
+        return coChu(optionA) || coChu(optionB) || coChu(optionC) || coChu(optionD) || isOption(correctOption);
+    }
+
+    private static boolean coChu(String value) {
+        return value != null && !value.isBlank();
     }
 
     /**
