@@ -26,7 +26,8 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-05 | Tài liệu — chỉ người có quyền mới tải được file | **A** | `DocumentServiceImpl.checkCanRead`; `DocumentUrls`; `DocumentController.content/thumbnail`; `PdfThumbnail.tsx`, `PdfPageViewer.tsx`, `pdfOcr.ts`. Test: `DocumentAccessTest` (12 ca), `DocumentUrlsTest` (9 ca) — đã kiểm bằng mutation: gỡ guard giáo viên thì đúng 2 ca đỏ | Bucket R2 phải chuyển sang **private** (việc vận hành, xem cuối file). `readObject` nạp cả file vào RAM — sách lớn cần hỗ trợ range request |
 | HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **A** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn. Migration `V202608271000__assignment_lifecycle.sql` nay **đã chạy thật** trên PostgreSQL rỗng qua `SchemaMigrationTest` (xem HT-90) | `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
 | HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (21 ca) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Đề tự luận vẫn chỉ có điểm tổng + nhận xét chung, chưa chấm theo từng câu (#54) |
-| HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Mới có tầng `@SpringBootTest`. Chưa dựng ma trận quyền `@WebMvcTest` (Admin/Teacher/Student × endpoint) tuy `spring-security-test` đã có sẵn |
+| HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Chưa có `@DataJpaTest` cho tầng repository, và chưa có test runner cho frontend |
+| HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
 
 ## Chi tiết HT-05
 
@@ -179,8 +180,53 @@ Phép đếm `số migration đã chạy == số file V*.sql` là để bắt l�
 cột); bỏ ràng buộc `ck_assignments_open_before_due` → suite đỏ. Khôi phục xong `diff` xác nhận
 file migration giống hệt byte.
 
-Còn thiếu tầng `@WebMvcTest` cho ma trận quyền — `spring-security-test` đã nằm sẵn trong pom từ
-trước, chưa lớp test nào dùng.
+## Chi tiết HT-91
+
+Repo có 38 controller. Trước lát này **không phép thử nào gọi một endpoint bằng sai vai trò để
+xem có bị chặn không** — toàn bộ quyền chỉ là chú thích `@PreAuthorize` chưa ai bấm thử.
+
+`PermissionMatrixTest` gọi 31 endpoint nhạy cảm bằng cả bốn tư cách (khách, học sinh, giáo viên,
+quản trị), 123 ô, mỗi ô một ca test có tên đọc được kiểu `HOC_SINH · GET /api/admin/dashboard →
+chặn`.
+
+**Vì sao dựng cả ứng dụng thay vì `@WebMvcTest` như kế hoạch ghi.** `@EnableMethodSecurity` nằm
+trên `Math10BackendApplication`, chuỗi lọc thật nằm trong `SecurityConfig`. Lát cắt web dựng lại
+một phiên bản gần đúng của hai thứ đó, nên nó có thể xanh trong khi bản chạy thật đang hở — đúng
+loại sai lầm mà một ma trận quyền phải không được mắc. Phép thử mutation thứ ba dưới đây cho thấy
+điều này không phải lo xa: gỡ `@EnableMethodSecurity` làm **38 ô đỏ**, mà một `@WebMvcTest` rất
+có thể vẫn xanh. Cái giá là test cần CSDL nhúng của HT-90, chạy thêm khoảng 20 giây.
+
+Quy ước khẳng định: bị chặn → **đúng 403**; đi qua → mã bất kỳ *trừ* 401/403. Ô "đi qua" phần lớn
+trả 200 với danh sách rỗng, hoặc 404/400 vì id trong bảng cố tình là 999999. Như vậy là đủ, vì
+câu hỏi duy nhất ở đây là "cổng vai trò có chặn không", không phải "endpoint trả đúng dữ liệu
+chưa".
+
+Bảng chỉ nhận những endpoint mà cổng vai trò là thứ **duy nhất** chặn. Chỗ nào còn một lớp kiểm
+chủ sở hữu phía sau thì gỡ `@PreAuthorize` ra vẫn bị lớp kia đỡ, và ô đó sẽ xanh giả. Bốn đường
+dẫn theo lớp (`/api/classes/**`, `/api/assignments?classId=`, `/api/teacher/submissions?classId=`)
+vì thế nằm riêng ở nhóm "Quyền theo lớp", chỉ khẳng định hành vi quan sát được: quản trị đi tắt
+qua cả hai lớp, ba vai còn lại đều 403. Tách hai lớp đó ra khỏi nhau cần dữ liệu thật (giáo viên A
+và giáo viên B) — đó là việc của ma trận IDOR ở Lát 2.
+
+Đã kiểm bằng chứng, cả ba phép sửa đều làm suite đỏ đúng chỗ:
+
+1. Gỡ `@PreAuthorize("hasRole('ADMIN')")` khỏi `AdminDashboardController.dashboard` → đỏ đúng 2 ô
+   (học sinh và giáo viên). Ô khách vẫn 403 — chuỗi lọc vẫn đòi đăng nhập, hai lớp là khác nhau.
+2. Nới `@PreAuthorize` của `TeacherDocumentController` từ `hasRole('TEACHER')` sang
+   `hasAnyRole('ADMIN','TEACHER')` → đỏ đúng 1 ô (quản trị).
+3. Gỡ `@EnableMethodSecurity` khỏi `Math10BackendApplication` → **38 ô đỏ**.
+
+Khôi phục xong `git status` xác nhận không file nguồn nào còn lệch.
+
+Hai điều bảng này ghim lại, không phải lỗi nhưng nên biết:
+
+- **Khách chưa đăng nhập nhận 403, không phải 401.** Chuỗi lọc không khai báo `formLogin` hay
+  `httpBasic` nên Spring Security dùng `Http403ForbiddenEntryPoint`. Client vì thế không phân
+  biệt được "chưa đăng nhập" với "sai vai trò". Token rác thì đúng 401, do
+  `JwtAuthenticationFilter` tự trả.
+- **Quản trị không vào được `/api/teacher/documents` và `/api/teacher/document-folders`** (chỉ
+  `hasRole('TEACHER')`), trong khi vẫn vào được `/api/teacher/dashboard` và `/api/worksheets`.
+  Bảng ghim đúng hành vi hiện tại; nếu đây là ngoài ý muốn thì sửa chú thích rồi sửa bảng.
 
 ## Việc vận hành còn nợ
 
