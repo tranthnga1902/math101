@@ -33,6 +33,18 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!--
+                Phien ban PostgreSQL nhung cho test. May nay khong co Docker nen khong dung duoc
+                Testcontainers; zonky tai binary PostgreSQL that ve chay truc tiep, co ban Windows.
+                Ghim 16.x cho gan Neon staging.
+            -->
+            <dependency>
+                <groupId>io.zonky.test.postgres</groupId>
+                <artifactId>embedded-postgres-binaries-bom</artifactId>
+                <version>16.14.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -113,6 +125,28 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-database-spring-test</artifactId>
+            <version>2.8.0</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Bo chay PostgreSQL nhung; embedded-database-spring-test chi la lop noi voi Spring. -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>2.2.2</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Binary PostgreSQL cho Windows. Zonky mac dinh chi keo ban Linux, khong khai bao
+            dong nay thi test bao khong tim thay binary.
+        -->
+        <dependency>
+            <groupId>io.zonky.test.postgres</groupId>
+            <artifactId>embedded-postgres-binaries-windows-amd64</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -137,6 +171,21 @@
                             <version>${mapstruct.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!--
+                Chan cua ngo test cham vao Neon staging. application.yml nap `../.env.staging`
+                bang mot import optional; tro bien nay vao mot duong dan khong ton tai thi import
+                do rong, nen test khong bao gio cam duoc chuoi ket noi that. Gia tri gia cho
+                DATABASE_* va JWT_SECRET nam trong src/test/resources/application-test.properties.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <MATH10_ENV_FILE>khong-nap-env-khi-chay-test</MATH10_ENV_FILE>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>

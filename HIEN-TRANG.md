@@ -24,8 +24,9 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | Mã | Phần | Mức | Bằng chứng | Còn thiếu |
 |----|------|-----|------------|-----------|
 | HT-05 | Tài liệu — chỉ người có quyền mới tải được file | **A** | `DocumentServiceImpl.checkCanRead`; `DocumentUrls`; `DocumentController.content/thumbnail`; `PdfThumbnail.tsx`, `PdfPageViewer.tsx`, `pdfOcr.ts`. Test: `DocumentAccessTest` (12 ca), `DocumentUrlsTest` (9 ca) — đã kiểm bằng mutation: gỡ guard giáo viên thì đúng 2 ca đỏ | Bucket R2 phải chuyển sang **private** (việc vận hành, xem cuối file). `readObject` nạp cả file vào RAM — sách lớn cần hỗ trợ range request |
-| HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **B** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn | Migration `V202608271000__assignment_lifecycle.sql` **chưa từng chạy trên bất kỳ DB nào** — máy không có Postgres cục bộ, DB duy nhất là Neon staging dùng chung. Đây là lý do dòng này ở B chứ không phải A. `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
+| HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **A** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn. Migration `V202608271000__assignment_lifecycle.sql` nay **đã chạy thật** trên PostgreSQL rỗng qua `SchemaMigrationTest` (xem HT-90) | `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
 | HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (21 ca) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Đề tự luận vẫn chỉ có điểm tổng + nhận xét chung, chưa chấm theo từng câu (#54) |
+| HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Mới có tầng `@SpringBootTest`. Chưa dựng ma trận quyền `@WebMvcTest` (Admin/Teacher/Student × endpoint) tuy `spring-security-test` đã có sẵn |
 
 ## Chi tiết HT-05
 
@@ -104,13 +105,10 @@ nên nó sẽ **biên dịch sạch mà vẫn sai** — đúng loại bẫy như
 null; bỏ trừ điểm; `scoreVisible` luôn true; bỏ nhánh DRAFT; bỏ nhánh `returnedAt`) — cả sáu lần
 suite đều đỏ (4, 2, 3, 3, 1, 1 ca), rồi khôi phục file về nguyên trạng.
 
-**Ranh giới xác minh, nói rõ để khỏi hiểu nhầm:** 83 test backend xanh và `npm run build` sạch
-chứng minh *luật* đúng và mã biên dịch được. Chúng **không** chứng minh migration chạy được —
-file SQL đó chưa từng được thi hành. Tôi đã đối chiếu tay từng cột với entity (`open_at`,
-`max_attempts`, `late_policy`, `late_penalty_percent`, `publish_score_at`, `attempt_no`,
-`submitted_late`, `raw_score`) nên `ddl-auto: validate` sẽ không kêu, nhưng đối chiếu tay không
-phải bằng chứng tự động. Chạy được lần đầu là khi có embedded PostgreSQL (Lát 1) hoặc khi bạn
-đồng ý cho chạy lên Neon staging.
+**Ranh giới xác minh — đã khép lại.** Khi lát này vừa xong, migration chưa từng được thi hành ở
+đâu; tôi mới chỉ đối chiếu tay từng cột với entity. Đối chiếu tay không phải bằng chứng tự động,
+nên dòng này khi đó chấm **B**. Sau khi dựng embedded PostgreSQL (HT-90), `SchemaMigrationTest`
+chạy cả 34 migration lên một CSDL rỗng rồi bắt `ddl-auto=validate` soi lại — nay là **A**.
 
 ## Chi tiết HT-51
 
@@ -150,6 +148,39 @@ nhưng **không màn nào gọi**. Backend làm đúng mà giáo viên không c�
 coi như không có — nên lát này mới dựng `AssignmentAnalysisDialog`. Nút "Chấm lại cả lớp" bị khoá
 ngay tại chỗ khi đề còn câu trống đáp án, kèm danh sách số thứ tự câu thiếu; đó là bản chiếu của
 luật server chứ không phải nơi kiểm.
+
+## Chi tiết HT-90
+
+Trước lát này repo có 38 controller, 55 entity, 34 migration — và **0 test nào chạm vào cơ sở dữ
+liệu**. Toàn bộ test là Mockito thuần, nghĩa là không phép thử nào chứng minh được một migration
+chạy được hay schema khớp entity. Mọi file SQL mới là lời hứa chưa kiểm.
+
+Máy này **không có Docker**, nên Testcontainers không dùng được. Zonky tải binary PostgreSQL thật
+về chạy trực tiếp, có bản Windows — đó là lý do chọn nó.
+
+**Chỗ nguy hiểm nhất khi dựng, ghi lại để đừng ai gỡ nhầm:** `application.yml` cho Flyway một
+chuỗi kết nối *riêng* (`spring.flyway.url: ${DATABASE_DIRECT_URL:${DATABASE_URL}}`). Nếu để
+nguyên, test sẽ mở kết nối riêng của Flyway và **chạy migration thẳng lên Neon staging dùng
+chung**, bất kể ứng dụng đang dùng CSDL nhúng. Nên có hai lớp chặn:
+
+1. `pom.xml` trỏ `MATH10_ENV_FILE` sang một đường dẫn không tồn tại, nên phép import
+   `optional:file:../.env.staging` rỗng — test không bao giờ cầm được chuỗi kết nối thật.
+2. `application-test.properties` để trống `spring.flyway.url/user/password`, buộc Flyway dùng
+   DataSource của ứng dụng, tức là CSDL nhúng.
+
+Bằng chứng cả hai lớp đều ăn: log chạy test in `jdbc:postgresql://localhost:64358/twwxhqpklrmt`,
+và `ddl-auto=validate` xanh — validate chỉ xanh được nếu Flyway đã dựng bảng **ở chính CSDL nhúng
+đó**. Nếu Flyway đi nhầm sang staging thì CSDL nhúng sẽ trống trơn và validate đỏ ngay.
+
+Phép đếm `số migration đã chạy == số file V*.sql` là để bắt lỗi đặt sai tên phiên bản: file nằm
+đúng thư mục nhưng Flyway không nhặt, và loại lỗi đó im lặng cho tới lúc triển khai thật.
+
+Đã kiểm bằng chứng: bỏ dòng tạo cột `open_at` khỏi migration → suite đỏ (`validate` báo thiếu
+cột); bỏ ràng buộc `ck_assignments_open_before_due` → suite đỏ. Khôi phục xong `diff` xác nhận
+file migration giống hệt byte.
+
+Còn thiếu tầng `@WebMvcTest` cho ma trận quyền — `spring-security-test` đã nằm sẵn trong pom từ
+trước, chưa lớp test nào dùng.
 
 ## Việc vận hành còn nợ
 
