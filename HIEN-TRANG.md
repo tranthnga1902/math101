@@ -29,6 +29,7 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Chưa có `@DataJpaTest` cho tầng repository, và chưa có test runner cho frontend |
 | HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
 | HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
+| HT-93 | Phiên đăng nhập — làm mới, đăng xuất, và thu hồi được token | **A** | Migration `V202608281000__refresh_token_index.sql`. API: `AuthController.refresh/logout`, `AuthServiceImpl` (token mờ 256 bit, chỉ lưu bản băm SHA-256, xoay vòng mỗi lượt làm mới, phát hiện token bị dùng lại thì cắt sạch phiên), `JwtService` chặn cấu hình sai ngay lúc khởi động, `SecurityConfig` mở `/api/auth/refresh` + `/api/auth/logout`. UI: `api.ts` (`refreshSession`, `logoutSession`, `accessTokenExpiresAt`), `App.tsx` tự làm mới trước hạn 2 phút và đăng xuất có gọi máy chủ, `ChangePasswordDialog` báo mọi phiên cũ đã bị thu hồi. Test: `AuthSessionLifecycleTest` (13 ca, chạy trên PostgreSQL nhúng) + `JwtServiceTest` (2 ca mới). Kiểm bằng mutation, **5/5 đợt sửa đều đỏ, không đợt nào xanh giả**: bỏ xoay vòng → 2, bỏ `noRollbackFor` → 2, `logout` không thu hồi → 2, lưu token gốc thay vì bản băm → 6, nới hạn access token → 2 | Chưa kiểm bằng trình duyệt: khởi động backend cục bộ sẽ áp migration mới lên Neon staging, mà việc đó đang bị hoãn. Chưa có danh sách thiết bị đang đăng nhập cho người dùng tự thu hồi, và chưa có việc dọn định kỳ các dòng `refresh_tokens` hết hạn |
 
 ## Chi tiết HT-05
 
@@ -286,8 +287,77 @@ Hai điều bảng này ghim lại:
   giáo viên phụ trách vẫn thấy đủ. Điều kiện là `returned_at` còn trống *và* `publish_score_at`
   còn ở tương lai.
 
+## Chi tiết HT-93
+
+Trước lát này, **một phiên đăng nhập đã cấp ra thì không có cách nào thu hồi**. Mất máy, khoá tài
+khoản, đổi mật khẩu — token cũ vẫn dùng được cho tới khi hết hạn. Mà "cho tới khi hết hạn" là
+**~41,7 ngày**: `application.yml` khai `jwt-expiration: 3600000` với tên biến môi trường
+`JWT_EXPIRATION`, ai đọc cũng hiểu là mili-giây, còn `JwtService` cộng thẳng con số đó vào trường
+`exp` của JWT — đơn vị **giây**. `SecurityConfig` thì đã mở sẵn `/api/auth/refresh` từ trước, chỉ
+là endpoint chưa bao giờ tồn tại; entity `RefreshToken` và bảng `refresh_tokens` cũng có sẵn mà
+không service nào đụng tới, nên `logout` ở frontend chỉ xoá `localStorage` — giấu token đi chứ
+không giết nó.
+
+Sáu quyết định đáng ghi lại:
+
+- **Đổi hẳn tên biến môi trường**, `JWT_EXPIRATION` → `JWT_ACCESS_TTL_SECONDS` +
+  `JWT_REFRESH_TTL_SECONDS`. Chỉ sửa giá trị mặc định là không đủ: giá trị `3600000` còn sót trên
+  bảng điều khiển Render/Vercel sẽ lặng lẽ đè lên mặc định mới và bug quay lại nguyên vẹn. Đổi tên
+  thì giá trị cũ hoá vô hại vì không ai đọc nó nữa. Kèm theo, `JwtService` **từ chối khởi động**
+  với mọi giá trị ≤ 0 hoặc > 86400 — hỏng cấu hình thì gãy ngay lúc dựng bean, không chạy im ru
+  suốt một tháng. Hai ca trong `JwtServiceTest` giữ chỗ này vĩnh viễn.
+- **Refresh token là chuỗi ngẫu nhiên 256 bit, không phải JWT.** JWT tự xác thực bằng chữ ký, tức
+  là không thu hồi được — đúng cái tính chất khiến access token nguy hiểm. Token mờ phải tra CSDL
+  mới dùng được, mà đã tra CSDL thì thu hồi được. Trong bảng **chỉ có bản băm SHA-256**: đọc trộm
+  `refresh_tokens` cũng không dựng lại được token gốc.
+- **Xoay vòng mỗi lượt làm mới, và token bị dùng lại thì cắt sạch phiên.** Đổi token cũ lấy cặp
+  mới xong thì token cũ chết ngay. Nếu về sau có ai xuất trình lại đúng token đã thu hồi, chỉ có
+  hai khả năng — bản sao bị đánh cắp, hoặc bản gốc bị đánh cắp — và cả hai đều đáng thu hồi **toàn
+  bộ** phiên của người đó chứ không chỉ lượt gọi này.
+- **`@Transactional(noRollbackFor = BusinessException.class)`.** Đây là cái bẫy suýt làm biện pháp
+  trên thành vô nghĩa. Nhánh phát hiện dùng lại vừa ghi thu hồi vừa ném `BusinessException`, mà
+  Spring mặc định cuốn ngược giao dịch khi gặp `RuntimeException` — lệnh thu hồi bị xoá sạch, API
+  vẫn trả lỗi đúng, nhìn bên ngoài không thấy gì bất thường. Đợt mutation thứ hai chứng minh chỗ
+  này có giá trị: gỡ `noRollbackFor` làm đỏ 2 ca, đúng hai nhánh có ghi-rồi-ném (dùng lại token và
+  tài khoản bị khoá).
+- **`/auth/logout` để `permitAll`.** Access token hết hạn rồi thì vẫn phải đăng xuất được, nếu
+  không thì đúng lúc cần thu hồi nhất lại là lúc không thu hồi nổi. Bản thân refresh token chính
+  là bằng chứng sở hữu phiên cần thu hồi, không cần thêm bằng chứng nào khác.
+- **Một thông điệp lỗi duy nhất cho mọi lý do refresh hỏng**, và logout luôn trả 200 dù token có
+  tồn tại hay không. Phân biệt "token không tồn tại" với "token đã hết hạn" là biếu không cho
+  người dò một kênh đếm token.
+
+Phía frontend, `App.tsx` hẹn giờ đổi token trước hạn 2 phút, nhưng **chặn trên ở 25 phút**. Lý do
+không hiển nhiên: phiên cũ còn trong `localStorage` mang access token 41,7 ngày, khoảng chờ tính ra
+vượt 2^31 mili-giây, và `setTimeout` quá ngưỡng đó thì trình duyệt **kích hoạt ngay lập tức** thay
+vì chờ — thành vòng lặp gọi API liên tục.
+
+Đã kiểm bằng chứng. Năm đợt sửa, cả năm đều đỏ:
+
+| Đợt | Chỗ vô hiệu hoá | Dự tính | Thực tế |
+|---|---|---|---|
+| 1 | Bỏ xoay vòng (không thu hồi token cũ sau khi đổi) | 2 | **2** |
+| 2 | Bỏ `noRollbackFor` | 1 | **2** |
+| 3 | `logout` không thu hồi gì | 2 | **2** |
+| 4 | Lưu token gốc thay vì bản băm | 1 | **6** |
+| 5 | Hạ TTL access token 1800 → 86400 | 2 | **2** |
+
+Hai đợt đỏ nhiều hơn dự tính đều có lý do đúng, không phải khẳng định dính chùm. Đợt 2: nhánh tài
+khoản bị khoá cũng ghi-rồi-ném theo đúng cơ chế đó. Đợt 4: ghi token gốc trong khi tra theo bản băm
+làm gãy cả đường tra cứu, nên hỏng lan sang mọi ca dùng refresh — ô riêng về cách lưu trữ
+(`chiLuuBanBam`) nằm trong số đó.
+
+**Chưa kiểm bằng trình duyệt, và đây là chỗ hụt thật chứ không phải đã kiểm mà quên ghi.** Chạy
+backend cục bộ sẽ áp migration mới lên Neon staging, việc đang bị hoãn có chủ đích. Bằng chứng
+của tính năng này là 13 phép thử tích hợp trên PostgreSQL nhúng cộng với `npm run build` sạch;
+luồng trình duyệt sẽ kiểm khi staging mở lại.
+
 ## Việc vận hành còn nợ
 
 - **Chuyển bucket Cloudflare R2 sang private.** Mã nguồn nay không phát tán URL R2 nữa, nhưng
   các URL đã lộ trước đây vẫn mở được chừng nào bucket còn public. Đây là việc trên bảng điều
   khiển Cloudflare, không nằm trong repo.
+- **Đặt lại biến môi trường tuổi thọ token trên Render/Vercel.** `JWT_EXPIRATION` **không còn được
+  đọc nữa**; thay bằng `JWT_ACCESS_TTL_SECONDS=1800` và `JWT_REFRESH_TTL_SECONDS=2592000` (đơn vị
+  giây). Nếu không đặt thì backend dùng đúng hai giá trị mặc định đó, nên không có nguy cơ gãy —
+  nhưng giá trị cũ `3600000` để nguyên trên bảng điều khiển sẽ chỉ nằm đó gây hiểu nhầm, cần xoá.

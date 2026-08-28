@@ -26,6 +26,23 @@ class JwtServiceTest {
         assertThat(principal.roleCode()).isEqualTo("STUDENT");
     }
 
+    /**
+     * Giá trị cũ trong .env là 3600000, đặt tên JWT_EXPIRATION nên ai cũng đọc ra mili-giây,
+     * còn createAccessToken cộng thẳng vào "exp" tính bằng giây — access token sống ~41,7 ngày.
+     * Không thu hồi được, nên phải chặn ngay lúc dựng bean thay vì để chạy im ru.
+     */
+    @Test
+    void rejectsMillisecondLookingExpiration() {
+        assertThatThrownBy(() -> new JwtService(SECRET, 3_600_000L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("GIÂY");
+    }
+
+    @Test
+    void rejectsNonPositiveExpiration() {
+        assertThatThrownBy(() -> new JwtService(SECRET, 0L)).isInstanceOf(IllegalStateException.class);
+    }
+
     @Test
     void rejectsInvalidSignature() {
         JwtService service = new JwtService(SECRET, 1800);

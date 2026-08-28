@@ -69,7 +69,12 @@ math10:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   jwt-secret: ${JWT_SECRET}
-  jwt-expiration: ${JWT_EXPIRATION:3600000}
+  # Đơn vị GIÂY. Tên biến môi trường cũ là JWT_EXPIRATION với mặc định 3600000, ai đọc cũng
+  # tưởng mili-giây, nhưng JwtService cộng thẳng vào "exp" của JWT (đơn vị giây) nên access
+  # token sống ~41,7 ngày. Đổi hẳn tên biến để giá trị cũ còn sót trên môi trường triển khai
+  # không âm thầm quay lại; JwtService chặn mọi giá trị quá 24 giờ ngay lúc khởi động.
+  jwt-expiration: ${JWT_ACCESS_TTL_SECONDS:1800}
+  refresh-expiration: ${JWT_REFRESH_TTL_SECONDS:2592000}
   staging-seed-enabled: ${E2E_SEED_ENABLED:false}
   e2e-student-username: ${E2E_STUDENT_USERNAME:}
   e2e-student-email: ${E2E_STUDENT_EMAIL:}

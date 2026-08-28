@@ -2,6 +2,7 @@ package com.math10.authentication.controller;
 
 import com.math10.authentication.dto.ChangePasswordRequest;
 import com.math10.authentication.dto.LoginRequest;
+import com.math10.authentication.dto.RefreshTokenRequest;
 import com.math10.authentication.dto.TokenResponse;
 import com.math10.authentication.service.AuthService;
 import com.math10.common.dto.ApiResponse;
@@ -23,6 +24,21 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok("Đăng nhập thành công", authService.login(request));
+    }
+
+    @PostMapping("/refresh")
+    public ApiResponse<TokenResponse> refresh(@RequestBody RefreshTokenRequest request) {
+        return ApiResponse.ok("Làm mới phiên đăng nhập", authService.refresh(request));
+    }
+
+    /**
+     * Không đòi access token: token truy cập hết hạn rồi thì vẫn phải đăng xuất được.
+     * Bản thân refresh token chính là bằng chứng sở hữu phiên cần thu hồi.
+     */
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(@RequestBody(required = false) RefreshTokenRequest request) {
+        authService.logout(request);
+        return ApiResponse.ok("Đăng xuất thành công", null);
     }
 
     @PostMapping("/change-password")

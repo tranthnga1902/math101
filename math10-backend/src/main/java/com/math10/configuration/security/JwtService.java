@@ -24,10 +24,18 @@ public class JwtService {
     private final String jwtSecret;
     private final long expiresInSeconds;
 
+    /** Access token không thu hồi được, nên đời nó phải ngắn. Quá ngưỡng này là cấu hình sai. */
+    private static final long TOI_DA_GIAY = 24 * 60 * 60;
+
     public JwtService(
             @Value("${math10.jwt-secret}") String jwtSecret,
             @Value("${math10.jwt-expiration}") long expiresInSeconds
     ) {
+        if (expiresInSeconds <= 0 || expiresInSeconds > TOI_DA_GIAY) {
+            throw new IllegalStateException(
+                    "math10.jwt-expiration tính bằng GIÂY và phải trong khoảng 1..%d, đang nhận %d."
+                            .formatted(TOI_DA_GIAY, expiresInSeconds));
+        }
         this.jwtSecret = jwtSecret;
         this.expiresInSeconds = expiresInSeconds;
     }

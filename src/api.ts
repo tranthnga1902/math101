@@ -184,11 +184,44 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   }, options.signal);
 }
 
-export async function login(email: string, password: string): Promise<AuthSession> {
-  const tokens = await request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ identifier: email, password }) });
+function toSession(tokens: TokenResponse): AuthSession {
   const claims = decodeJwt(tokens.accessToken);
   const role = normalizeRole(tokens.roleCode ?? tokens.role ?? claims.role);
   return { ...tokens, userId: Number(tokens.userId ?? claims.sub), email: tokens.email ?? claims.email, role };
+}
+
+export async function login(email: string, password: string): Promise<AuthSession> {
+  return toSession(await request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ identifier: email, password }) }));
+}
+
+/** Thời điểm access token hết hạn (mili-giây epoch); 0 nghĩa là không đọc được hạn. */
+export function accessTokenExpiresAt(token: string): number {
+  try {
+    const exp = (decodeJwt(token) as { exp?: number }).exp;
+    return exp ? exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Đổi refresh token lấy cặp token mới. Máy chủ xoay vòng: token cũ chết ngay sau lượt gọi này. */
+export async function refreshSession(session: AuthSession): Promise<AuthSession> {
+  return toSession(await request<TokenResponse>("/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken: session.refreshToken ?? "" }),
+  }));
+}
+
+/**
+ * Thu hồi phiên ở phía máy chủ. Không cần access token còn hạn.
+ * Nuốt lỗi: mất mạng hay token đã chết thì người dùng vẫn phải đăng xuất được khỏi máy này.
+ */
+export async function logoutSession(session: AuthSession): Promise<void> {
+  try {
+    await request<void>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken: session.refreshToken ?? "" }) });
+  } catch {
+    /* bỏ qua */
+  }
 }
 
 export function changePassword(session: AuthSession, currentPassword: string, newPassword: string, confirmPassword: string) {

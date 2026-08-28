@@ -41,6 +41,9 @@ import {
   getUsers,
   getStudentProgress,
   login,
+  logoutSession,
+  refreshSession,
+  accessTokenExpiresAt,
   normalizeRole,
   markLessonProgress,
   updateCourse,
@@ -130,7 +133,22 @@ export default function App() {
   const [session, setSession] = useState<AuthSession | null>(()=>{try{const value=localStorage.getItem("math10.session");if(!value)return null;const saved=JSON.parse(value) as AuthSession & {roleCode?:string};const normalized={...saved,role:normalizeRole(saved.role ?? saved.roleCode)} as AuthSession;localStorage.setItem("math10.session",JSON.stringify(normalized));return normalized}catch{localStorage.removeItem("math10.session");return null}});
   const publicSlug=location.pathname.match(/^\/q\/([A-Za-z0-9]+)$/)?.[1];
   const acceptSession=(next:AuthSession)=>{localStorage.setItem("math10.session",JSON.stringify(next));setSession(next)};
-  const logout=()=>{localStorage.removeItem("math10.session");setSession(null)};
+  const forgetSession=()=>{localStorage.removeItem("math10.session");setSession(null)};
+  // Đăng xuất phải thu hồi refresh token ở máy chủ, không chỉ xoá localStorage — nếu không thì
+  // "đăng xuất" chỉ giấu token đi chứ token vẫn dùng được.
+  const logout=()=>{const dangDong=session;forgetSession();if(dangDong)void logoutSession(dangDong)};
+
+  // Access token sống 30 phút và không thu hồi được, nên phải tự đổi lấy bản mới trước khi hết
+  // hạn. Chặn trên 25 phút để phiên cũ (token dài ngày, chưa có refresh token) không rơi vào
+  // setTimeout quá 2^31 mili-giây — quá ngưỡng đó trình duyệt kích hoạt ngay lập tức.
+  useEffect(()=>{
+    if(!session?.refreshToken)return;
+    const conLai=accessTokenExpiresAt(session.accessToken)-Date.now()-120_000;
+    const cho=Math.min(Math.max(conLai,0),25*60_000);
+    const hen=setTimeout(()=>{refreshSession(session).then(acceptSession).catch(forgetSession)},cho);
+    return ()=>clearTimeout(hen);
+  },[session]);
+
   if(publicSlug)return <PublicProblemPage slug={publicSlug} session={session}/>;
   if (!session) return <LoginPage onLogin={acceptSession} />;
   return <AppShell session={session} onLogout={logout} />;
@@ -212,7 +230,7 @@ function AppShell({ session, onLogout }: { session: AuthSession; onLogout: () =>
     <MainLayout session={session} onLogout={onLogout} onChangePassword={()=>setPasswordOpen(true)}>
       {activeSection => <>
         <TeacherDashboard session={session} activeSection={activeSection} />
-        {passwordOpen&&<ChangePasswordDialog session={session} onClose={()=>setPasswordOpen(false)}/>}
+        {passwordOpen&&<ChangePasswordDialog session={session} onClose={()=>setPasswordOpen(false)} onLogout={onLogout}/>}
       </>}
     </MainLayout>
   );
@@ -220,7 +238,7 @@ function AppShell({ session, onLogout }: { session: AuthSession; onLogout: () =>
     <AdminShell session={session} onLogout={onLogout} onChangePassword={()=>setPasswordOpen(true)}>
       {activeSection => <>
         <AdminDashboard session={session} activeSection={activeSection} />
-        {passwordOpen&&<ChangePasswordDialog session={session} onClose={()=>setPasswordOpen(false)}/>}
+        {passwordOpen&&<ChangePasswordDialog session={session} onClose={()=>setPasswordOpen(false)} onLogout={onLogout}/>}
       </>}
     </AdminShell>
   );
@@ -460,7 +478,7 @@ return (
  );
 }
 
-function ChangePasswordDialog({session,onClose}:{session:AuthSession;onClose:()=>void}) {
+function ChangePasswordDialog({session,onClose,onLogout}:{session:AuthSession;onClose:()=>void;onLogout:()=>void}) {
   const [currentPassword,setCurrentPassword]=useState("");
   const [newPassword,setNewPassword]=useState("");
   const [confirmPassword,setConfirmPassword]=useState("");
@@ -468,7 +486,7 @@ function ChangePasswordDialog({session,onClose}:{session:AuthSession;onClose:()=
   const [success,setSuccess]=useState(false);
   const [busy,setBusy]=useState(false);
   const submit=async(event:React.FormEvent)=>{event.preventDefault();setBusy(true);setError("");try{await changePassword(session,currentPassword,newPassword,confirmPassword);setSuccess(true)}catch(reason){setError(messageOf(reason))}finally{setBusy(false)}};
-  return <div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><h2>Đổi mật khẩu</h2><button onClick={onClose}>Đóng</button></div>{success?<div className="success-state">Đổi mật khẩu thành công. Hãy dùng mật khẩu mới ở lần đăng nhập tiếp theo.</div>:<form className="live-form" onSubmit={submit}><label>Mật khẩu hiện tại<input type="password" required value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/></label><label>Mật khẩu mới<input type="password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label><label>Xác nhận mật khẩu mới<input type="password" minLength={8} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>{error&&<div className="api-error">{error}</div>}<button className="primary" disabled={busy}>{busy?"Đang lưu…":"Đổi mật khẩu"}</button></form>}</section></div>;
+  return <div className="dialog-backdrop"><section className="dialog-card"><div className="panel-head"><h2>Đổi mật khẩu</h2><button onClick={onClose}>Đóng</button></div>{success?<div className="success-state"><p>Đổi mật khẩu thành công. Mọi phiên đăng nhập cũ đã bị thu hồi, kể cả trên thiết bị khác.</p><button className="primary" onClick={onLogout}>Đăng nhập lại</button></div>:<form className="live-form" onSubmit={submit}><label>Mật khẩu hiện tại<input type="password" required value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/></label><label>Mật khẩu mới<input type="password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label><label>Xác nhận mật khẩu mới<input type="password" minLength={8} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>{error&&<div className="api-error">{error}</div>}<button className="primary" disabled={busy}>{busy?"Đang lưu…":"Đổi mật khẩu"}</button></form>}</section></div>;
 }
 
 function StudentDashboard({ session, onLogout, onChangePassword }: { session: AuthSession; onLogout: () => void; onChangePassword: () => void }) {
