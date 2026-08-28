@@ -4,14 +4,17 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.math10.assignments.domain.AssignmentWindow;
 import com.math10.assignments.domain.McqGrading;
+import com.math10.assignments.domain.WorksheetScoring;
 import com.math10.assignments.dto.AssignmentProgressResponse;
 import com.math10.assignments.dto.AssignmentResultResponse;
 import com.math10.assignments.dto.AssignmentSubmitRequest;
+import com.math10.assignments.dto.SubmissionItemView;
 import com.math10.assignments.entity.Assignment;
 import com.math10.assignments.entity.AssignmentProgress;
 import com.math10.assignments.entity.AssignmentState;
 import com.math10.assignments.repository.AssignmentProgressRepository;
 import com.math10.assignments.repository.AssignmentRepository;
+import com.math10.assignments.repository.SubmissionItemGradeRepository;
 import com.math10.assignments.service.SubmissionLogService;
 import com.math10.common.dto.ApiResponse;
 import com.math10.common.exception.BusinessException;
@@ -21,7 +24,6 @@ import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.assignments.service.WorksheetAnswerKeys;
 import com.math10.progress.entity.LearningProgress;
 import com.math10.progress.repository.LearningProgressRepository;
-import com.math10.worksheets.repository.WorksheetItemRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -44,8 +46,8 @@ public class AssignmentProgressController {
     private final ClassStudentRepository classStudents;
     private final CurrentUserService current;
     private final LearningProgressRepository learningProgress;
-    private final WorksheetItemRepository worksheetItems;
     private final WorksheetAnswerKeys answerKeys;
+    private final SubmissionItemGradeRepository itemGrades;
     private final ObjectMapper objectMapper;
 
     @PatchMapping("/{assignmentId}/opened")
@@ -93,30 +95,38 @@ public class AssignmentProgressController {
         LocalDateTime now = LocalDateTime.now();
         AssignmentWindow.requireSubmittable(assignment, row, now);
         List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId());
-        McqGrading.requireCompleteAnswers(keys, request.answers());
-        McqGrading.Result graded = McqGrading.grade(keys, request.answers());
-        int correct = graded.correct();
-        int total = graded.total();
+        WorksheetScoring.requireCompleteAnswers(keys, request.answers());
+        WorksheetScoring.ThongKeTracNghiem tracNghiem = WorksheetScoring.thongKeTracNghiem(keys, request.answers());
+        // Máy chấm phần trắc nghiệm ngay; phần tự luận chờ giáo viên nên chưa có điểm người chấm.
+        WorksheetScoring.KetQua ketQua = WorksheetScoring.tongHop(keys, request.answers(), Map.of());
         boolean late = AssignmentWindow.isLate(assignment, now);
         if (row.getOpenedAt() == null) row.setOpenedAt(now);
         row.setAnswerJson(write(request.answers()));
         row.setSubmittedAt(now);
         row.setCompletedAt(now);
         row.setCompletionPercent(100);
-        row.setCorrectCount(correct);
-        row.setTotalQuestions(total);
+        row.setCorrectCount(tracNghiem.dung());
+        row.setTotalQuestions(tracNghiem.tong());
         // Cho nộp nhiều lượt thì lượt sau đè lượt trước: điểm ghi vào sổ là lần nộp cuối cùng.
         row.setAttemptNo(attempt(row));
         row.setSubmittedLate(late);
-        BigDecimal rawScore = graded.rawScore();
+        row.setMaxScore(WorksheetScoring.MAX_SCORE);
+        BigDecimal rawScore = ketQua.rawScore();
         row.setRawScore(rawScore);
-        row.setScore(AssignmentWindow.applyLatePenalty(assignment, rawScore, late));
-        row.setMaxScore(McqGrading.MAX_SCORE);
-        row.setGradedAt(now);
-        row.setGradingStatus("GRADED");
+        row.setScore(rawScore == null ? null : AssignmentWindow.applyLatePenalty(assignment, rawScore, late));
+        // Đề toàn trắc nghiệm thì chấm xong ngay như trước. Đề có câu tự luận thì dừng ở SUBMITTED
+        // với điểm để trống: điền 0 vào đây là báo cho học sinh một con số thấp hơn thật, và họ
+        // nhìn thấy nó trước khi giáo viên kịp mở bài ra chấm.
+        row.setGradedAt(ketQua.chamXong() ? now : null);
+        row.setGradingStatus(ketQua.chamXong() ? "GRADED" : "SUBMITTED");
+        // Nộp lại thì điểm từng câu của lượt trước không còn ứng với bài nào — xoá, đừng để giáo
+        // viên chấm tiếp lên bài cũ.
+        if (row.getId() != null) itemGrades.deleteByProgressId(row.getId());
         syncWorksheet(assignmentId, row, true);
         AssignmentProgress saved = progress.save(row);
-        String note = correct + "/" + total + " câu đúng" + (late ? " · nộp muộn" : "");
+        String note = ketQua.chamXong()
+                ? tracNghiem.dung() + "/" + tracNghiem.tong() + " câu đúng" + (late ? " · nộp muộn" : "")
+                : "Chờ chấm " + ketQua.conThieu() + " câu tự luận" + (late ? " · nộp muộn" : "");
         submissionLog.record(assignment, saved.getStudentId(), "SUBMITTED", saved.getScore(), note);
         return ApiResponse.ok(late ? "Đã nhận bài nộp muộn" : "Nộp bài thành công", result(assignment, saved, false));
     }
@@ -132,13 +142,26 @@ public class AssignmentProgressController {
         // chặn "đã nộp", nên hết hạn rồi vẫn tự động lưu được, và bài cho nộp nhiều lượt thì
         // lượt thứ hai lại không sửa nổi đáp án.
         AssignmentWindow.requireSubmittable(assignment,row,LocalDateTime.now());
-        Set<Long> allowed=new HashSet<>();
-        worksheetItems.findByWorksheetIdOrderByOrderIndex(assignment.getWorksheetId()).forEach(item->allowed.add(item.getProblemId()));
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        Map<Long,McqGrading.Key> theoCauHoi=new LinkedHashMap<>();
+        keys.forEach(key->theoCauHoi.put(key.problemId(),key));
         Map<Long,String> merged=new LinkedHashMap<>(read(row.getAnswerJson()));
-        request.answers().forEach((problemId,answer)->{if(!allowed.contains(problemId)||!McqGrading.isOption(answer))throw new BusinessException("Đáp án không hợp lệ");merged.put(problemId,McqGrading.normalize(answer));});
+        request.answers().forEach((problemId,answer)->{
+            McqGrading.Key key=theoCauHoi.get(problemId);
+            if(key==null)throw new BusinessException("Đáp án không hợp lệ");
+            if(WorksheetScoring.laTuLuan(key)){
+                // Xoá khỏi bài làm khi ô trống, thay vì lưu chuỗi rỗng: em nào gõ rồi xoá đi thì
+                // câu đó phải quay lại là chưa làm, cả ở phần trăm hoàn thành lẫn ở lúc nộp.
+                String tuLuan=WorksheetScoring.chuanHoaTuLuan(answer);
+                if(tuLuan==null)merged.remove(problemId);else merged.put(problemId,tuLuan);
+            }else{
+                if(!McqGrading.isOption(answer))throw new BusinessException("Đáp án không hợp lệ");
+                merged.put(problemId,McqGrading.normalize(answer));
+            }
+        });
         if(row.getOpenedAt()==null)row.setOpenedAt(LocalDateTime.now());
         row.setAnswerJson(write(merged));
-        row.setCompletionPercent(Math.max(10,(int)Math.round(90.0*merged.size()/Math.max(allowed.size(),1))));
+        row.setCompletionPercent(Math.max(10,(int)Math.round(90.0*merged.size()/Math.max(keys.size(),1))));
         return ApiResponse.ok("Đã tự động lưu đáp án",result(assignment,progress.save(row),true));
     }
 
@@ -227,6 +250,44 @@ public class AssignmentProgressController {
                 released ? row.getTeacherFeedback() : null, includeAnswers ? read(row.getAnswerJson()) : Map.of(),
                 AssignmentWindow.stateOf(assignment, now).name(), assignment.getOpenAt(), assignment.getDueAt(),
                 AssignmentWindow.attemptsLeft(assignment, row), row.isSubmittedLate(),
-                released && row.isSubmittedLate() ? row.getRawScore() : null);
+                released && row.isSubmittedLate() ? row.getRawScore() : null,
+                released ? bangDiemTungCau(assignment, row) : List.of());
+    }
+
+    /**
+     * Điểm và nhận xét từng câu cho học sinh xem.
+     *
+     * <p>Chỉ dựng khi điểm đã công bố — người gọi đã kiểm — vì mỗi lần dựng là thêm mấy lượt hỏi
+     * cơ sở dữ liệu, mà hàm {@code result} này còn nằm trên cả đường tự động lưu đáp án, chạy vài
+     * giây một lần suốt buổi làm bài.
+     *
+     * <p><b>Không kèm đáp án đúng.</b> Học sinh thấy bài mình làm, điểm từng câu và lời phê của
+     * thầy cô; đáp án của đề thì không đi ra bằng đường này — xem {@link AssignmentResultResponse}.
+     */
+    private List<SubmissionItemView> bangDiemTungCau(Assignment assignment, AssignmentProgress row) {
+        if (assignment.getWorksheetId() == null || row.getId() == null || row.getSubmittedAt() == null) return List.of();
+        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId());
+        if (keys.isEmpty()) return List.of();
+        BigDecimal toiDaMoiCau = WorksheetScoring.diemToiDaMoiCau(keys.size());
+        Map<Long, String> baiLam = read(row.getAnswerJson());
+        // Đề còn câu trắc nghiệm quên đáp án thì không dựng bảng chấm nào cả: cái sai nằm ở đề,
+        // và bịa ra "câu này em sai" cho học sinh xem là biến lỗi soạn đề thành lỗi của các em.
+        Map<Long, BigDecimal> tuDong;
+        try { tuDong = WorksheetScoring.diemTuDong(keys, baiLam); }
+        catch (BusinessException exception) { return List.of(); }
+        Map<Long, com.math10.assignments.entity.SubmissionItemGrade> tay = new LinkedHashMap<>();
+        itemGrades.findByProgressId(row.getId()).forEach(item -> tay.put(item.getProblemId(), item));
+        List<SubmissionItemView> items = new ArrayList<>();
+        int orderNo = 0;
+        for (McqGrading.Key key : keys) {
+            orderNo++;
+            boolean tuLuan = WorksheetScoring.laTuLuan(key);
+            var luu = tay.get(key.problemId());
+            items.add(new SubmissionItemView(key.problemId(), orderNo, null, null, tuLuan, null,
+                    baiLam.get(key.problemId()),
+                    tuLuan ? (luu == null ? null : luu.getScore()) : tuDong.get(key.problemId()),
+                    toiDaMoiCau, luu == null ? null : luu.getFeedback()));
+        }
+        return items;
     }
 }

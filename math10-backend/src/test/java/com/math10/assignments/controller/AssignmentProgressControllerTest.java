@@ -7,7 +7,6 @@ import com.math10.common.exception.BusinessException;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.assignments.service.WorksheetAnswerKeys;
-import com.math10.worksheets.repository.WorksheetItemRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
 import java.time.LocalDateTime;
@@ -53,6 +52,6 @@ class AssignmentProgressControllerTest {
  }
  private AssignmentProgressController controller(){
   return new AssignmentProgressController(assignments,progress,mock(SubmissionLogService.class),classes,current,
-    mock(LearningProgressRepository.class),mock(WorksheetItemRepository.class),mock(WorksheetAnswerKeys.class),new ObjectMapper());
+    mock(LearningProgressRepository.class),mock(WorksheetAnswerKeys.class),mock(SubmissionItemGradeRepository.class),new ObjectMapper());
  }
 }

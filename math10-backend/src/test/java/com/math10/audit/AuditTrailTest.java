@@ -157,7 +157,7 @@ class AuditTrailTest {
             goi(giaoVien, "TEACHER", HttpMethod.POST,
                     "/api/teacher/submissions/assignments/%d/regrade".formatted(bai), null);
             assertThat((String) mot("REGRADE", "ASSIGNMENT", bai).get("new_data"))
-                    .isEqualTo("updated=1,scoreChanged=1");
+                    .isEqualTo("updated=1,scoreChanged=1,skipped=0");
         }
 
         @Test
