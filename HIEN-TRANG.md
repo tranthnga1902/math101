@@ -28,6 +28,7 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (21 ca) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Đề tự luận vẫn chỉ có điểm tổng + nhận xét chung, chưa chấm theo từng câu (#54) |
 | HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Chưa có `@DataJpaTest` cho tầng repository, và chưa có test runner cho frontend |
 | HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
+| HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
 
 ## Chi tiết HT-05
 
@@ -227,6 +228,63 @@ Hai điều bảng này ghim lại, không phải lỗi nhưng nên biết:
 - **Quản trị không vào được `/api/teacher/documents` và `/api/teacher/document-folders`** (chỉ
   `hasRole('TEACHER')`), trong khi vẫn vào được `/api/teacher/dashboard` và `/api/worksheets`.
   Bảng ghim đúng hành vi hiện tại; nếu đây là ngoài ý muốn thì sửa chú thích rồi sửa bảng.
+
+## Chi tiết HT-92
+
+HT-91 chỉ trả lời được "vai này có được gọi đường dẫn này không". Câu hỏi đắt hơn nằm ngoài tầm
+của nó: **giáo viên B, một tài khoản hoàn toàn hợp lệ, có đọc được lớp của giáo viên A khi đoán
+ra id không.** Muốn tách hai lớp chặn đó ra thì phải có dữ liệu thật, nên `IdorMatrixTest` dựng
+hẳn hai lớp học song song và cho mọi người gọi chéo:
+
+```
+lớp A ── giáo viên A ── học sinh A ── bài giao A ── phiếu A ── tài liệu riêng A
+lớp B ── giáo viên B ── học sinh B ── bài giao B ── phiếu B ── tài liệu riêng B
+quản trị: không thuộc lớp nào, nhưng đi tắt qua mọi kiểm chủ sở hữu
+```
+
+Kỳ vọng của mỗi ô tính bằng một công thức duy nhất, không có ngoại lệ chép tay:
+`qua = vaiHieuLuc.contains(vai) && (là quản trị || lớp của người gọi == lớp đang gọi)`. Công thức
+này tự nó dự đoán đúng cả chỗ **quản trị bị chặn** ở `/api/student/classes/**` — cổng vai trò ở
+đó chỉ mở cho `STUDENT`.
+
+Ba quyết định đáng ghi lại, vì mỗi cái đều là cách né một loại xanh giả:
+
+- **Cột `vaiHieuLuc` ghi theo hành vi thật, không chép `@PreAuthorize`.** `/api/classes/{id}/progress`
+  khai báo cả ba vai ở cổng, nhưng `requireTeacher` phía sau loại học sinh ra, nên bảng ghi hai
+  vai. Đợt mutation đầu tiên chứng minh việc này có giá trị: gỡ `ClassAccessGuard` làm đỏ **12 ô
+  học sinh** — đúng những ô mà một bảng chép theo chú thích sẽ bỏ sót.
+- **Tài liệu nền đều để `file_url` rỗng.** Nhờ vậy lượt gọi đi qua được guard sẽ dừng ở "tài liệu
+  này không có file để xem" → **400**, còn bị chặn thì **403**. Khẳng định chốt được chính xác
+  lượt gọi dừng ở đâu thay vì chỉ nói "không phải 403", và không cần khoá R2 nào. Đợt mutation
+  thứ ba báo lỗi đúng dạng đó: `expected: 403 but was: 400`.
+- **Đường ghi chọn loại không có thân yêu cầu** (`DELETE /api/assignments/{id}`,
+  `PATCH .../return`, `PATCH .../archive`…). Tầng phân giải tham số chạy *trước* method security,
+  nên một `@RequestBody` thiếu hoặc sai sẽ trả 400 cho mọi vai và che mất cổng quyền. Riêng
+  `POST /api/classes/{id}/curriculum` gửi thân tối thiểu hợp lệ để qua tầng kiểm dữ liệu.
+
+Đã kiểm bằng chứng. Năm đợt sửa, mỗi đợt nhắm một cổng ở một module khác nhau, **cả năm đều đỏ
+đúng số ô dự tính từ trước — không dư, không thiếu**:
+
+| Đợt | Chỗ vô hiệu hoá | Số ô đỏ | Vì sao đúng chừng đó |
+|---|---|---|---|
+| 1 | `ClassAccessGuard.requireTeacher` + `requireMember` | **36** | 22 ô chéo lớp trên 9 đường dùng guard, cộng 12 ô học sinh chạm vào 3 đường chỉ-giáo-viên của `ClassContentController`, cộng 2 phép thử ghi |
+| 2 | `WorksheetController.owned` + `TeacherSubmissionController.checkClass` | **8** | 2 ô `submissions?classId`, 2 ô `worksheets/{id}`, 2 ô `analysis`, 2 phép thử ghi. `gradebook` vẫn xanh vì nó có bản kiểm lớp riêng |
+| 3 | Nhánh giáo viên của `DocumentServiceImpl.checkCanRead` | **3** | Tài liệu riêng, tài liệu kho chung đã ẩn, tài liệu gắn lớp. Tài liệu kho chung đã xuất bản vẫn xanh vì vốn ai cũng đọc được |
+| 4 | `ownedDocument` + nhánh học sinh của `checkCanRead` | **4** | 3 nhóm đọc tài liệu phía học sinh, cộng phép thử lưu trữ |
+| 5 | `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` | **9** | 4 ô `assignments?classId`, 2 ô `gradebook`, 2 ô `result`, 1 phép thử xoá bài giao |
+
+Khôi phục xong, toàn bộ 396 phép thử xanh và `git status` xác nhận không file nguồn nào còn lệch.
+
+Hai điều bảng này ghim lại:
+
+- **Quyền đọc tài liệu của học sinh đến từ việc gắn lớp, không từ thuộc tính tài liệu.** Học sinh
+  lớp A mở được tài liệu riêng của giáo viên A khi nó đã được gắn vào lớp A, dù `audience` vẫn là
+  `TEACHER_ONLY`; học sinh lớp B thì không. Đây là hành vi cố ý, và là chỗ dễ sửa hỏng nhất khi
+  ai đó dọn lại `checkCanRead`.
+- **Điểm đã chấm nhưng chưa trả thì không lộ.** Học sinh gọi `/api/assignment-progress/{id}/result`
+  nhận 200 với `gradingStatus = GRADED` nhưng `score` và `teacherFeedback` đều null, trong khi
+  giáo viên phụ trách vẫn thấy đủ. Điều kiện là `returned_at` còn trống *và* `publish_score_at`
+  còn ở tương lai.
 
 ## Việc vận hành còn nợ
 
