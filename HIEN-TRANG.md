@@ -25,7 +25,8 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 |----|------|-----|------------|-----------|
 | HT-05 | Tài liệu — chỉ người có quyền mới tải được file | **A** | `DocumentServiceImpl.checkCanRead`; `DocumentUrls`; `DocumentController.content/thumbnail`; `PdfThumbnail.tsx`, `PdfPageViewer.tsx`, `pdfOcr.ts`. Test: `DocumentAccessTest` (12 ca), `DocumentUrlsTest` (9 ca) — đã kiểm bằng mutation: gỡ guard giáo viên thì đúng 2 ca đỏ | Bucket R2 phải chuyển sang **private** (việc vận hành, xem cuối file). `readObject` nạp cả file vào RAM — sách lớn cần hỗ trợ range request |
 | HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **A** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn. Migration `V202608271000__assignment_lifecycle.sql` nay **đã chạy thật** trên PostgreSQL rỗng qua `SchemaMigrationTest` (xem HT-90) | `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
-| HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (21 ca) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Đề tự luận vẫn chỉ có điểm tổng + nhận xét chung, chưa chấm theo từng câu (#54) |
+| HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (**27 ca**, thêm 6 ca phân loại trắc nghiệm/tự luận ở lát HT-54) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Phần tự luận nay tách sang **HT-54** |
+| HT-54 | Chấm tự luận theo từng câu — cả đường nộp bài tự luận lẫn đường chấm | **A** | Migration `V202608281200__submission_item_grades.sql` (điểm để trống ≠ 0 điểm; dòng bị **xoá thẳng** vì ràng buộc duy nhất không tính `deleted_at`). Luật gom vào `WorksheetScoring` (trần điểm mỗi câu, chuẩn hoá bài tự luận, soát bài nộp phiếu trộn, tổng hợp về thang 10 theo **tỉ lệ**); `McqGrading.laTracNghiem` là chỗ duy nhất phân loại câu, dùng chung cho cả đường JDBC lẫn JPA. API: `PUT /api/teacher/submissions/{id}/grade-items`, `GET .../items`, bài nộp của học sinh nhận văn bản tự do cho câu tự luận, `GET /api/assignment-progress/{id}/result` trả bảng từng câu **sau khi trả bài** và không mang theo đáp án. Entity `SubmissionItemGrade` + repository. UI: `useGradingSheet.ts` (một chỗ quyết định chấm từng câu hay chấm cả bài) + `GradingSheetItems.tsx` dùng chung cho **hai** màn hình chấm (`TeacherSubmissionView`, `ClassGradingPanel`); `WorksheetRunner.tsx` cho học sinh gõ lời giải. Test: `WorksheetScoringTest` (27 ca) + `EssayGradingFlowTest` (20 ca, PostgreSQL nhúng, đi hết dây nộp → chấm dở → chốt → trả bài). Kiểm bằng mutation **6 đợt, 6/6 đều đỏ**, dự tính khớp thực tế 5/6 lần | Chưa kiểm bằng trình duyệt vì lý do như HT-93 (khởi động backend cục bộ sẽ áp migration lên Neon staging). Trần độ dài bài tự luận 5000 ký tự là số chọn tay, chưa có dữ liệu thật để hiệu chỉnh. Chưa có ô nhập công thức cho bài làm tự luận — học sinh gõ văn bản thuần |
 | HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Chưa có `@DataJpaTest` cho tầng repository, và chưa có test runner cho frontend |
 | HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
 | HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
@@ -152,6 +153,82 @@ nhưng **không màn nào gọi**. Backend làm đúng mà giáo viên không c�
 coi như không có — nên lát này mới dựng `AssignmentAnalysisDialog`. Nút "Chấm lại cả lớp" bị khoá
 ngay tại chỗ khi đề còn câu trống đáp án, kèm danh sách số thứ tự câu thiếu; đó là bản chiếu của
 luật server chứ không phải nơi kiểm.
+
+## Chi tiết HT-54
+
+Việc này ghi trong bảng là "thêm ô chấm từng câu". Khi bắt tay vào mới thấy **hệ thống chưa có
+đường tự luận nào cả**: bài nộp chỉ nhận A/B/C/D — `requireCompleteAnswers` từ chối mọi thứ khác —
+và một bài chỉ có đúng một điểm tổng với một ô nhận xét chung. Không có gì để thêm ô chấm vào. Nên
+lát này mở cả đường nộp trước, rồi mới có cái để chấm.
+
+### Tổng điểm là tỉ lệ, không phải phép cộng
+
+Chỗ này quyết định con số nằm trên học bạ, nên nói rõ. Trần điểm mỗi câu là `10 / số câu` làm tròn
+hai chữ số. Đề 3 câu thì mỗi câu 3.33 — cộng thẳng lại là **9.99**, tức là học sinh làm đúng cả
+bài vẫn không được 10.
+
+Cách chữa quen thuộc là rải phần dư cho câu đầu (3.34 / 3.33 / 3.33). Cách đó còn hỏng nặng hơn:
+hai em cùng đúng 2 trên 3 câu sẽ nhận điểm khác nhau tuỳ đúng câu nào — và đó là chỗ phụ huynh
+hỏi mà không ai giải thích được. `tongHop` vì thế quy về tỉ lệ: `(Σ điểm) × 10 / (trần mỗi câu ×
+số câu)`. Với đề toàn trắc nghiệm, công thức này **rút gọn về đúng** `số câu đúng / số câu × 10`,
+nên **điểm của mọi bài đã chấm trước đây không đổi** — có một phép thử quét mọi cặp (đề 1…12 câu ×
+đúng 0…n câu) đối chiếu thẳng với `McqGrading.grade` để giữ điều đó.
+
+### "Chưa chấm" và "chấm rồi, được 0" là hai trạng thái khác nhau
+
+`score` để trống trong `submission_item_grades` nghĩa là chưa ai đọc câu đó. Nếu gộp nó với 0 điểm
+thì mọi bài giáo viên chưa mở ra đều tự chốt điểm — và con số ấy thấp hơn thật, hiện ra trước mắt
+học sinh trong lúc giáo viên còn đang chấm dở. Nên `tongHop` trả `rawScore = null` khi còn câu
+chưa chấm, bài ở lại trạng thái `SUBMITTED`, và chỉ chuyển `GRADED` khi `conThieu == 0`. Xoá trắng
+một ô điểm đã chấm là **mở lại** bài, không phải cho 0.
+
+Cột `max_score` được chép vào từng dòng lúc chấm chứ không tính lại từ số câu của đề mỗi lần đọc.
+Thêm hay bớt một câu trong phiếu sau đó sẽ không lặng lẽ đổi thang điểm của những bài đã chấm xong.
+
+### Hai màn hình chấm cùng một bài nộp
+
+Đây là chỗ suýt hỏng. Có **hai** hộp chấm — mục "Chấm và trả điểm" và bảng chấm trong chi tiết lớp
+— và `PUT /grade` (chấm cả bài) gọi `itemGrades.deleteByProgressId`. Nghĩa là giáo viên chấm 20 câu
+tự luận ở màn hình này, đồng nghiệp gõ một điểm tổng ở màn hình kia, **toàn bộ điểm từng câu biến
+mất** mà không ai được báo. Luật chọn đường chấm vì thế được nhấc lên `useGradingSheet` dùng chung,
+để không màn hình nào tự quyết định lấy.
+
+### Không để đáp án đi theo bảng chấm về phía học sinh
+
+`GET /result` trả bảng từng câu, nhưng `publicCode`, `statement` và `correctOption` đều để trống —
+học sinh cần biết mình mất điểm ở đâu, không cần đáp án của đề. Bài cho nộp nhiều lượt, hoặc giao
+lệch giờ giữa các lớp, thì một em mở tab mạng của trình duyệt là cả khối có đáp án, mà không để lại
+dấu vết nào. Phía giáo viên thì ngược lại, phải thấy đáp án mới chấm được — cùng một phép thử ghim
+cả hai chiều.
+
+### Đã kiểm bằng chứng. 6 đợt sửa, 6/6 đều đỏ
+
+Suite xanh ngay lần chạy đầu, mà một phép thử chưa từng đỏ thì chưa chứng minh được gì. Sáu phép
+sửa, mỗi phép nhắm đúng một khẳng định, dự tính trước rồi mới chạy:
+
+| Phép sửa | Dự tính | Thực tế |
+|---|---|---|
+| Tổng = cộng thẳng thay vì tỉ lệ | ≥ 6 | **7** |
+| Câu chưa chấm tính 0 điểm | 8 | **8** |
+| `requireGradable` bỏ lưới trắc nghiệm thiếu đáp án | 1 | **1** |
+| Bảng chấm phía học sinh mang theo đáp án | 1 | **1** |
+| Nộp lại không xoá điểm từng câu lượt trước | 1 | **1** |
+| Đường chấm từng câu quên trừ điểm nộp muộn | 1 | **1** |
+
+Đợt đầu đỏ hơn dự tính một ca: `traRoiThiThay` — cùng một khẳng định về tỉ lệ, nhưng nhìn từ phía
+học sinh. Đợt thứ tư đáng chú ý theo hướng khác: nó đỏ **đúng một ca trên toàn bộ 480**, nghĩa là
+trước lát này không có lưới nào khác chặn đáp án lọt sang phía học sinh.
+
+Toàn bộ suite backend: **480 ca, 0 lỗi** (trước lát này là 427). `npm run build` sạch.
+
+### Cố ý chưa làm
+
+- **Chưa có ô nhập công thức cho bài làm tự luận.** Học sinh gõ văn bản thuần. Làm tử tế thì phải
+  kéo trình soạn công thức vào màn hình làm bài và soát lại phía máy chủ — là một lát riêng.
+- **Trần 5000 ký tự là số chọn tay.** `answer_json` là cột text không giới hạn mà sổ điểm đọc cả
+  cột đó cho từng bài, nên phải có trần; con số cụ thể chờ dữ liệu thật.
+- **Chưa kiểm bằng trình duyệt.** Lý do như HT-93: chạy backend cục bộ sẽ áp migration mới lên Neon
+  staging. Bằng chứng lát này là `EssayGradingFlowTest` đi hết dây trên PostgreSQL nhúng.
 
 ## Chi tiết HT-90
 
