@@ -30,6 +30,7 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
 | HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
 | HT-93 | Phiên đăng nhập — làm mới, đăng xuất, và thu hồi được token | **A** | Migration `V202608281000__refresh_token_index.sql`. API: `AuthController.refresh/logout`, `AuthServiceImpl` (token mờ 256 bit, chỉ lưu bản băm SHA-256, xoay vòng mỗi lượt làm mới, phát hiện token bị dùng lại thì cắt sạch phiên), `JwtService` chặn cấu hình sai ngay lúc khởi động, `SecurityConfig` mở `/api/auth/refresh` + `/api/auth/logout`. UI: `api.ts` (`refreshSession`, `logoutSession`, `accessTokenExpiresAt`), `App.tsx` tự làm mới trước hạn 2 phút và đăng xuất có gọi máy chủ, `ChangePasswordDialog` báo mọi phiên cũ đã bị thu hồi. Test: `AuthSessionLifecycleTest` (13 ca, chạy trên PostgreSQL nhúng) + `JwtServiceTest` (2 ca mới). Kiểm bằng mutation, **5/5 đợt sửa đều đỏ, không đợt nào xanh giả**: bỏ xoay vòng → 2, bỏ `noRollbackFor` → 2, `logout` không thu hồi → 2, lưu token gốc thay vì bản băm → 6, nới hạn access token → 2 | Chưa kiểm bằng trình duyệt: khởi động backend cục bộ sẽ áp migration mới lên Neon staging, mà việc đó đang bị hoãn. Chưa có danh sách thiết bị đang đăng nhập cho người dùng tự thu hồi, và chưa có việc dọn định kỳ các dòng `refresh_tokens` hết hạn |
+| HT-94 | Nhật ký hoạt động — phủ hết thao tác đổi điểm và đổi quyền, lọc chạy dưới CSDL | **A** | Migration `V202608281100__audit_log_search.sql` (dựng lại `idx_audit_target` có thêm `created_at`, thêm `idx_audit_created`). API: nhật ký mở rộng từ 4 loại đối tượng lên **7** — thêm `ASSIGNMENT` (CREATE/UPDATE/DELETE/REGRADE), `SUBMISSION` (GRADE/RETURN), `DOCUMENT` (ARCHIVE/RESTORE/PUBLISH/HIDE/DELETE) và 6 thao tác `CLASS` về thành viên và tài liệu; `AuditController` lọc 6 tiêu chí dưới CSDL và **tự đặt thứ tự mặc định** `createdAt desc, id desc`. UI: `AuditManagement.tsx` lọc phía máy chủ + phân trang thật. Test: `AuditTrailTest` **16 ca** trên PostgreSQL nhúng. Chính bộ test này bắt được một lỗi thật: truy vấn lọc **trả 500 ở mọi lượt gọi** trên PostgreSQL. Kiểm bằng mutation 2 đợt, **7/7 phép sửa đều đỏ**: dự tính 3 → thực tế 4, dự tính 4 → thực tế 6 | Chưa gộp tên đối tượng thành hằng số dùng chung; lượt bị từ chối 403 chưa để lại dấu vết; `addCurriculum`/`removeCurriculum` cố ý chưa ghi; chưa kiểm bằng trình duyệt vì lý do như HT-93 |
 
 ## Chi tiết HT-05
 
@@ -351,6 +352,109 @@ làm gãy cả đường tra cứu, nên hỏng lan sang mọi ca dùng refresh 
 backend cục bộ sẽ áp migration mới lên Neon staging, việc đang bị hoãn có chủ đích. Bằng chứng
 của tính năng này là 13 phép thử tích hợp trên PostgreSQL nhúng cộng với `npm run build` sạch;
 luồng trình duyệt sẽ kiểm khi staging mở lại.
+
+## Chi tiết HT-94
+
+Trước lát này nhật ký ghi 4 loại đối tượng: `USER`, `COURSE`, `CLASS` (mỗi tạo/sửa/xoá lớp) và
+`PROBLEM`. Nghĩa là **những thao tác đáng ngờ nhất trong một hệ thống dạy học lại không để lại dấu
+vết nào**: chấm điểm, chấm lại cả lớp bằng một nút bấm, thêm và gỡ học sinh, gắn tài liệu vào lớp,
+xuất bản hay ẩn tài liệu. Đổi điểm một học sinh, hay hạ điểm cả lớp vì sửa nhầm đáp án, đều không
+có dòng nào nói ai làm và lúc nào. Lát này đưa số loại đối tượng lên **7** và phủ 30 điểm ghi.
+
+### Lỗi thật mà bộ test bắt được: nhật ký trả 500 ở mọi lượt gọi
+
+Đây là kết quả đáng giá nhất của lát. `AuditLogRepository.search` viết theo lối quen thuộc
+`(:tham_so is null or cot = :tham_so)` cho cả sáu tiêu chí. Năm tiêu chí đầu là số và chuỗi nên
+không sao. Tiêu chí thứ sáu là mốc thời gian, và ở đó câu truy vấn **gãy trên PostgreSQL**:
+
+```
+ERROR: could not determine data type of parameter $11
+```
+
+Nguyên nhân: trình điều khiển PostgreSQL không tự phân biệt được `timestamp` với `timestamptz`,
+nên khi tham số thời gian mang giá trị null nó gửi kiểu "unspecified". Vế `? is null` đứng một
+mình không có gì để CSDL suy ra kiểu, và cả câu truy vấn bị từ chối. Hệ quả: **`GET /api/audit-logs`
+trả 500 ở *mọi* lượt gọi**, kể cả lượt không lọc gì — tức là màn hình nhật ký của quản trị viên
+hỏng hoàn toàn, không phải hỏng ở một trường hợp biên.
+
+Cách sửa: đưa tham số vào trong `coalesce` cạnh chính cột nó so sánh —
+`l.createdAt >= coalesce(:from, l.createdAt)`. CSDL suy được kiểu từ cột, và khi không lọc ngày thì
+vế này thành `created_at >= created_at`, luôn đúng.
+
+Đáng nói là **lỗi này không thể lộ ra bằng unit test Mockito**, vì repository bị mock thì câu JPQL
+không bao giờ chạm tới CSDL. Nó cũng không lộ ra ở H2 hay CSDL trong bộ nhớ. Phải là PostgreSQL
+thật — đúng thứ mà HT-90 dựng lên — mới thấy.
+
+### Thứ tự mặc định phải do máy chủ đặt
+
+Truy vấn không có `order by`, và trước lát này **không chỗ nào cấp thứ tự mặc định**: không phải
+repository, không phải service, không phải controller. Frontend thì tự gửi `sort=createdAt,desc`.
+Hai chỗ hỏng:
+
+- Bất kỳ lượt gọi nào không kèm tham số sắp xếp — công cụ khác, script, hay chính frontend sau một
+  lần sửa — sẽ nhận về thứ tự tuỳ CSDL. Nhật ký không theo thời gian thì vô dụng.
+- Ngay cả `createdAt,desc` cũng thiếu khoá phụ. Chấm lại cả lớp và nhập danh sách ghi **nhiều dòng
+  trong cùng một thao tác**, cùng `created_at`. Sắp xếp chỉ theo thời gian thì thứ tự giữa những
+  dòng đó không xác định, nên khi lật trang **cùng một dòng có thể hiện ở hai trang, hoặc không
+  hiện ở trang nào** — đúng kiểu mất mát mà không ai để ý.
+
+Nay `AuditController` khai `@PageableDefault(size = 50, sort = {"createdAt", "id"}, direction = DESC)`,
+và `api.ts` **bỏ hẳn** tham số `sort` phía client — vì tham số của lời gọi đè lên mặc định, gửi
+`createdAt,desc` chính là bỏ mất khoá phụ `id`.
+
+### Hai chỗ dữ liệu nhạy cảm không được lọt vào nhật ký
+
+Bảng nhật ký thì **mọi quản trị viên đều đọc được**, nên nó không phải chỗ đổ nguyên thân yêu cầu.
+
+- `AddStudentRequest` mang **mật khẩu khởi tạo dạng chữ thường**. Nhật ký chỉ ghi mã học sinh và
+  việc có tạo tài khoản mới hay không.
+- `assignment_progress.answer_json` là **bài làm của học sinh**. Nhật ký chấm điểm chỉ ghi điểm và
+  trạng thái.
+
+Cả hai đều có ca test riêng, và mỗi ca có thêm một khẳng định "việc đó vẫn được ghi" để phép thử
+phủ định không thể xanh giả vì đơn giản là chẳng có gì được ghi cả. Đợt mutation thứ hai chứng minh
+cái chốt này hoạt động (xem bảng dưới).
+
+### Đã kiểm bằng chứng. Hai đợt sửa, 7/7 phép sửa đều đỏ
+
+| Đợt | Chỗ vô hiệu hoá | Dự tính | Thực tế |
+|---|---|---|---|
+| 1 | Bỏ thứ tự mặc định ở `AuditController` | 1 | **2** |
+| 1 | `AuditServiceImpl` bỏ qua tham số `days` | 1 | **1** |
+| 1 | Bỏ điều kiện vai trò trong truy vấn con | 1 | **1** |
+| 2 | Bỏ ghi nhật ký `GRADE` | 1 | **2** |
+| 2 | Bỏ ghi nhật ký `REGRADE` | 1 | **1** |
+| 2 | Bỏ ghi nhật ký `DELETE DOCUMENT` | 1 | **1** |
+| 2 | Đưa mật khẩu vào `new_data` của `ADD_STUDENT` | 1 | **2** |
+
+Ba lần đỏ nhiều hơn dự tính, cả ba đều đúng chứ không phải khẳng định dính chùm:
+
+- Bỏ thứ tự mặc định làm đỏ thêm `khongBiTrangDauNuot` — phép thử đó dựng sẵn nhiều dòng rồi lật
+  trang để chứng minh không dòng nào bị nuốt, nên nó phụ thuộc vào thứ tự ổn định đúng như thiết kế.
+- Bỏ ghi `GRADE` làm đỏ thêm `khongLoBaiLam`, ngay ở khẳng định chốt "việc chấm vẫn được ghi". Đây
+  chính là chỗ đáng mừng: nó chứng minh phép thử "không lộ bài làm" không thể xanh giả.
+- Rò mật khẩu làm đỏ thêm `thanhVienLop`, vì phép thử đó ghim nguyên chuỗi `new_data`. Hai lưới
+  độc lập cùng bắt một lỗi.
+
+Ngoài ra, chính lỗi 500 kể ở trên là một "đợt mutation tự nhiên": trước khi sửa, 5 ca trong nhóm
+lọc đỏ hết; sau khi sửa, cả 16 ca xanh. Toàn bộ suite backend: **427 ca, 0 lỗi** (trước lát này là
+411). `npm run build` sạch.
+
+### Ba việc cố ý không làm trong lát này
+
+Ghi lại để lát sau khỏi bàn lại:
+
+- **Chưa gộp tên loại đối tượng thành hằng số dùng chung.** Sẽ phải sửa 5 module đã có từ trước,
+  đụng vào code không thuộc lát này mà không thêm bằng chứng nào.
+- **Chưa ghi nhật ký các lượt bị từ chối 403.** Về nguyên tắc thì đáng ghi, nhưng đặt vào
+  `GlobalExceptionHandler` sẽ khiến ~285 ô của `PermissionMatrixTest` và `IdorMatrixTest` sinh ra
+  dòng nhật ký trong lúc chạy. Cần tách kênh riêng trước, không làm kèm.
+- **`addCurriculum`/`removeCurriculum` không ghi.** Đó là con trỏ chương trình học, không phải phép
+  cấp quyền — khác hẳn `ATTACH_DOCUMENT` vốn mở đường cho học sinh đọc một tài liệu.
+
+**Chưa kiểm bằng trình duyệt, cùng một lý do với HT-93**: khởi động backend cục bộ sẽ áp migration
+mới lên Neon staging, việc đang bị hoãn có chủ đích. Bằng chứng của tính năng này là 16 phép thử
+tích hợp trên PostgreSQL nhúng cộng `npm run build` sạch.
 
 ## Việc vận hành còn nợ
 

@@ -1,5 +1,6 @@
 package com.math10.assignments.controller;
 import com.math10.assignments.domain.AssignmentWindow;
+import com.math10.audit.service.AuditService;
 import com.math10.assignments.dto.*;
 import com.math10.assignments.entity.Assignment;
 import com.math10.assignments.entity.AssignmentState;
@@ -29,6 +30,7 @@ public class AssignmentController {
  private final ClassTeacherRepository classTeachers; private final ClassStudentRepository classStudents;
  private final LessonRepository lessons; private final ChapterRepository chapters; private final ClassCourseRepository classCourses; private final WorksheetRepository worksheets;
  private final com.math10.classes.repository.ClassDocumentRepository classDocuments;
+ private final AuditService audit;
  @GetMapping @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
  public ApiResponse<List<AssignmentResponse>> list(@RequestParam Long classId){
   checkClassAccess(classId,false);
@@ -38,11 +40,11 @@ public class AssignmentController {
   return ApiResponse.ok("Danh sách bài giao",repository.findByClassIdOrderByCreatedAtDesc(classId).stream()
     .filter(a->!student||AssignmentWindow.stateOf(a,now).visibleToStudent()).map(this::map).toList());}
  @PostMapping @PreAuthorize("hasAnyRole('ADMIN','TEACHER')") @Transactional
- public ApiResponse<AssignmentResponse> create(@Valid @RequestBody AssignmentRequest r){checkClassAccess(r.classId(),true);Assignment a=new Assignment();apply(a,r);a.setCreatedBy(current.requireUserId());return ApiResponse.created("Giao bài thành công",map(repository.save(a)));}
+ public ApiResponse<AssignmentResponse> create(@Valid @RequestBody AssignmentRequest r){checkClassAccess(r.classId(),true);Assignment a=new Assignment();apply(a,r);a.setCreatedBy(current.requireUserId());AssignmentResponse saved=map(repository.save(a));audit.record("CREATE","ASSIGNMENT",saved.id(),null,saved.toString());return ApiResponse.created("Giao bài thành công",saved);}
  @PutMapping("/{id}") @PreAuthorize("hasAnyRole('ADMIN','TEACHER')") @Transactional
- public ApiResponse<AssignmentResponse> update(@PathVariable Long id,@Valid @RequestBody AssignmentRequest r){Assignment a=find(id);checkClassAccess(a.getClassId(),true);checkClassAccess(r.classId(),true);apply(a,r);return ApiResponse.ok("Cập nhật bài giao",map(a));}
+ public ApiResponse<AssignmentResponse> update(@PathVariable Long id,@Valid @RequestBody AssignmentRequest r){Assignment a=find(id);checkClassAccess(a.getClassId(),true);checkClassAccess(r.classId(),true);String old=map(a).toString();apply(a,r);AssignmentResponse after=map(a);audit.record("UPDATE","ASSIGNMENT",id,old,after.toString());return ApiResponse.ok("Cập nhật bài giao",after);}
  @DeleteMapping("/{id}") @PreAuthorize("hasAnyRole('ADMIN','TEACHER')") @Transactional
- public ApiResponse<Void> delete(@PathVariable Long id){Assignment a=find(id);checkClassAccess(a.getClassId(),true);a.markDeleted();return ApiResponse.noContent("Xóa bài giao");}
+ public ApiResponse<Void> delete(@PathVariable Long id){Assignment a=find(id);checkClassAccess(a.getClassId(),true);audit.record("DELETE","ASSIGNMENT",id,map(a).toString(),null);a.markDeleted();return ApiResponse.noContent("Xóa bài giao");}
  private void checkClassAccess(Long classId,boolean write){String role=current.requireRoleCode();if("ADMIN".equals(role))return;Long uid=current.requireUserId();boolean allowed="TEACHER".equals(role)&&classTeachers.existsByClassIdAndTeacherId(classId,uid);if(!write&&"STUDENT".equals(role))allowed=classStudents.existsByClassIdAndStudentId(classId,uid);if(!allowed)throw new AccessDeniedException("Không có quyền truy cập lớp");}
  private Assignment find(Long id){return repository.findById(id).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài giao"));}
  private void apply(Assignment a,AssignmentRequest r){

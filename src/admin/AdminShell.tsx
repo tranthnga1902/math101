@@ -59,9 +59,9 @@ export function AdminShell({session,children,onLogout,onChangePassword}:{session
 export function AdminDashboard({session,activeSection}:{session:AuthSession;activeSection:string}) {
   const metadata=useMetadata(session);
   const statsQuery=useQuery({queryKey:["admin-stats",session.accessToken],queryFn:()=>getAdminStats(session)});
-  const logsQuery=useQuery({queryKey:["admin-audit-logs",session.accessToken],queryFn:()=>getAuditLogs(session)});
+  const logsQuery=useQuery({queryKey:["admin-audit-logs",session.accessToken],queryFn:()=>getAuditLogs(session,{size:6})});
   const stats=statsQuery.data??null;
-  const logs=logsQuery.data??[];
+  const logs=logsQuery.data?.items??[];
   const error=statsQuery.isError?messageOf(statsQuery.error):logsQuery.isError?messageOf(logsQuery.error):"";
   return <div className="page live-dashboard admin-page-section">
       {error&&<div className="api-error">{error}</div>}

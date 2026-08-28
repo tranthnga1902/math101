@@ -347,9 +347,33 @@ export async function downloadUserImportTemplate(session:AuthSession){
  const url=URL.createObjectURL(await response.blob());const link=document.createElement("a");link.href=url;link.download="user-import-template.xlsx";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
-export async function getAuditLogs(session: AuthSession) {
-  const page = await request<{ content: AuditLog[] }>("/audit-logs?page=0&size=50&sort=createdAt,desc", {}, session.accessToken);
-  return page.content;
+export type AuditLogFilter = {
+  actorUserId?: string; actorRole?: string; targetType?: string; targetId?: string; action?: string;
+  days?: string; page?: number; size?: number;
+};
+export type AuditLogPage = { items: AuditLog[]; total: number; page: number; pages: number };
+
+/**
+ * Lọc đặt ở máy chủ chứ không ở trình duyệt. Nhật ký nay ghi cả bài giao, chấm điểm, thành viên
+ * lớp và tài liệu, nên 50 dòng mới nhất chỉ là vài phút hoạt động — lọc trên tập đó sẽ báo "không
+ * có kết quả" cho những việc thật sự đã xảy ra, tức là nói dối người đi tra nhật ký.
+ */
+export async function getAuditLogs(session: AuthSession, filter: AuditLogFilter = {}): Promise<AuditLogPage> {
+  // Không gửi tham số sort: máy chủ đã đặt mặc định "createdAt desc, id desc", và tham số sort của
+  // lời gọi sẽ đè lên mặc định đó — gửi "createdAt,desc" là bỏ mất khoá phụ id, khiến những dòng
+  // ghi cùng một lúc (chấm lại cả lớp, nhập danh sách) nhảy giữa các trang.
+  const size = filter.size ?? 50;
+  const params = new URLSearchParams({ page: String(filter.page ?? 0), size: String(size) });
+  for (const key of ["actorUserId", "actorRole", "targetType", "targetId", "action", "days"] as const) {
+    const value = filter[key];
+    if (value) params.set(key, value);
+  }
+  const page = await request<{ content: AuditLog[]; totalElements?: number; totalPages?: number; number?: number }>(
+    `/audit-logs?${params}`, {}, session.accessToken);
+  return {
+    items: page.content, total: page.totalElements ?? page.content.length,
+    page: page.number ?? 0, pages: page.totalPages ?? 1,
+  };
 }
 
 export const getSubjects=(s:AuthSession)=>request<Subject[]>("/subjects",{},s.accessToken);

@@ -8,6 +8,7 @@ import com.math10.assignments.entity.AssignmentProgress;
 import com.math10.assignments.repository.AssignmentProgressRepository;
 import com.math10.assignments.repository.AssignmentRepository;
 import com.math10.assignments.service.SubmissionLogService;
+import com.math10.audit.service.AuditService;
 import com.math10.common.dto.ApiResponse;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
@@ -48,6 +49,7 @@ public class TeacherSubmissionController {
     private final WorksheetAnswerKeys answerKeys;
     private final ProblemRepository problems;
     private final ObjectMapper objectMapper;
+    private final AuditService audit;
 
     /**
      * Tỉ lệ đúng từng câu. Dùng đúng phép so sánh của {@link McqGrading} chứ không tự so lại,
@@ -96,9 +98,10 @@ public class TeacherSubmissionController {
         Assignment assignment=worksheetAssignment(assignmentId);
         List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
         McqGrading.requireGradable(keys);
-        int updated=0;
+        int updated=0,doiDiem=0;
         for(var row:progress.findByAssignmentId(assignmentId)){
             if(row.getSubmittedAt()==null)continue;
+            BigDecimal diemCu=row.getScore();
             McqGrading.Result graded=McqGrading.grade(keys,readAnswers(row.getAnswerJson()));
             row.setCorrectCount(graded.correct());row.setTotalQuestions(graded.total());
             // Tính lại từ điểm gốc rồi mới trừ muộn: chấm lại nhiều lần không được trừ chồng lên nhau.
@@ -107,7 +110,12 @@ public class TeacherSubmissionController {
             row.setMaxScore(McqGrading.MAX_SCORE);
             row.setGradedAt(LocalDateTime.now());if(row.getReturnedAt()==null)row.setGradingStatus("GRADED");
             progress.save(row);updated++;
+            if(diemCu==null||row.getScore()==null||diemCu.compareTo(row.getScore())!=0)doiDiem++;
         }
+        // Đây là thao tác đổi điểm cả lớp bằng một nút bấm, và trước lát này nó không để lại dấu
+        // vết nào: không có bản ghi nào nói ai bấm, lúc nào, và bao nhiêu bài đổi điểm.
+        audit.record("REGRADE","ASSIGNMENT",assignmentId,null,
+                "updated=%d,scoreChanged=%d".formatted(updated,doiDiem));
         return ApiResponse.ok("Đã chấm lại toàn bộ bài nộp",Map.of("updated",updated));
     }
 
@@ -144,6 +152,7 @@ public class TeacherSubmissionController {
     public ApiResponse<Void> grade(@PathVariable Long id,@Valid @RequestBody GradeRequest request) {
         AssignmentProgress row=owned(id);
         Assignment assignment=assignment(row);
+        String truoc=diemHienTai(row);
         if(row.getSubmittedAt()==null)throw new BusinessException("Học sinh chưa nộp bài");
         if(!"BAT_BUOC".equals(assignment.getRequirement()))throw new BusinessException("Bài tự chọn chỉ ghi nhận đã làm, không chấm điểm");
         // Giáo viên nhập điểm bài làm; phần trừ nộp muộn là chính sách của bài, máy áp dụng,
@@ -152,6 +161,7 @@ public class TeacherSubmissionController {
         row.setMaxScore(BigDecimal.TEN);row.setTeacherFeedback(request.feedback());
         row.setGradedAt(LocalDateTime.now());row.setGradingStatus("GRADED");row.setReturnedAt(null);progress.save(row);
         submissionLog.record(assignment,row.getStudentId(),"GRADED",row.getScore(),request.feedback());
+        audit.record("GRADE","SUBMISSION",id,truoc,diemHienTai(row));
         return ApiResponse.noContent("Đã lưu điểm");
     }
 
@@ -160,9 +170,21 @@ public class TeacherSubmissionController {
     public ApiResponse<Void> release(@PathVariable Long id) {
         AssignmentProgress row=owned(id);
         if(row.getScore()==null)throw new BusinessException("Phải chấm điểm trước khi trả bài");
+        String truoc=diemHienTai(row);
         row.setReturnedAt(LocalDateTime.now());row.setGradingStatus("RETURNED");progress.save(row);
         submissionLog.record(assignment(row),row.getStudentId(),"RETURNED",row.getScore(),null);
+        audit.record("RETURN","SUBMISSION",id,truoc,diemHienTai(row));
         return ApiResponse.noContent("Đã trả điểm cho học sinh");
+    }
+
+    /**
+     * Tóm tắt gọn cho nhật ký. Cố tình không ghi cả bản ghi bài nộp: {@code answer_json} là bài
+     * làm của học sinh, đưa vào bảng nhật ký là nhân bản dữ liệu học tập ra một chỗ mà mọi quản
+     * trị viên đều đọc được, trong khi câu hỏi nhật ký cần trả lời chỉ là điểm đã đổi thế nào.
+     */
+    private static String diemHienTai(AssignmentProgress row){
+        return "student=%d,score=%s,rawScore=%s,status=%s".formatted(
+                row.getStudentId(),row.getScore(),row.getRawScore(),row.getGradingStatus());
     }
 
     private Assignment assignment(AssignmentProgress row){

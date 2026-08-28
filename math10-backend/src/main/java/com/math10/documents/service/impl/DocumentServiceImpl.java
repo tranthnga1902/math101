@@ -1,5 +1,6 @@
 package com.math10.documents.service.impl;
 
+import com.math10.audit.service.AuditService;
 import com.math10.chapters.repository.ChapterRepository;
 import com.math10.classes.repository.ClassDocumentRepository;
 import com.math10.common.exception.BusinessException;
@@ -92,6 +93,17 @@ public class DocumentServiceImpl implements DocumentService {
     private final StorageUrlSupport storageUrls;
     private final PdfThumbnailService pdfThumbnailService;
     private final PdfMarkdownService pdfMarkdownService;
+    private final AuditService audit;
+
+    /**
+     * Ghi nhật ký ngay tại tầng nghiệp vụ chứ không ở controller: cùng một phép đổi trạng thái
+     * được gọi từ cả {@code AdminDocumentController} lẫn {@code TeacherDocumentController}, đặt ở
+     * đây thì không có đường nào lọt.
+     */
+    private void ghiTrangThai(String action, Document doc, DocumentStatus truoc) {
+        audit.record(action, "DOCUMENT", doc.getId(),
+                "status=%s".formatted(truoc), "status=%s".formatted(doc.getStatus()));
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -235,16 +247,22 @@ public class DocumentServiceImpl implements DocumentService {
     @Transactional
     public DocumentResponse archiveMyDocument(Long id) {
         Document document = ownedDocument(id);
+        DocumentStatus truoc = document.getStatus();
         document.setStatus(DocumentStatus.HIDDEN);
-        return map(documents.save(document));
+        DocumentResponse saved = map(documents.save(document));
+        ghiTrangThai("ARCHIVE", document, truoc);
+        return saved;
     }
 
     @Override
     @Transactional
     public DocumentResponse restoreMyDocument(Long id) {
         Document document = ownedDocument(id);
+        DocumentStatus truoc = document.getStatus();
         document.setStatus(DocumentStatus.DRAFT);
-        return map(documents.save(document));
+        DocumentResponse saved = map(documents.save(document));
+        ghiTrangThai("RESTORE", document, truoc);
+        return saved;
     }
 
     private Document ownedDocument(Long id) {
@@ -290,6 +308,8 @@ public class DocumentServiceImpl implements DocumentService {
         if (document.getOwnerId() != null) {
             throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể xóa");
         }
+        audit.record("DELETE", "DOCUMENT", id,
+                "title=%s,docType=%s,status=%s".formatted(document.getTitle(), document.getDocType(), document.getStatus()), null);
         document.markDeleted();
     }
 
@@ -798,8 +818,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
             throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
         }
+        DocumentStatus truoc = doc.getStatus();
         doc.setStatus(DocumentStatus.PUBLISHED);
-        return mapTextbook(documents.save(doc));
+        TextbookListResponse saved = mapTextbook(documents.save(doc));
+        ghiTrangThai("PUBLISH", doc, truoc);
+        return saved;
     }
 
     @Override
@@ -809,8 +832,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
             throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
         }
+        DocumentStatus truoc = doc.getStatus();
         doc.setStatus(DocumentStatus.HIDDEN);
-        return mapTextbook(documents.save(doc));
+        TextbookListResponse saved = mapTextbook(documents.save(doc));
+        ghiTrangThai("HIDE", doc, truoc);
+        return saved;
     }
 
     @Override

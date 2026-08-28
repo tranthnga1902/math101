@@ -1,5 +1,6 @@
 package com.math10.classes.controller;
 
+import com.math10.audit.service.AuditService;
 import com.math10.classes.entity.ClassCurriculum;
 import com.math10.classes.entity.ClassDocument;
 import com.math10.classes.entity.ClassRequirement;
@@ -44,6 +45,7 @@ public class ClassContentController {
     private final DocumentRepository documents;
     private final ClassAccessGuard guard;
     private final CurrentUserService current;
+    private final AuditService audit;
 
     // ==================== Chương trình học ====================
 
@@ -154,6 +156,11 @@ public class ClassContentController {
         return ApiResponse.ok("Kho tài liệu có thể gắn vào lớp", rows);
     }
 
+    /**
+     * Gắn tài liệu vào lớp <em>chính là</em> việc cấp quyền đọc cho học sinh của lớp — đây là cơ
+     * chế duy nhất mở tài liệu ra cho học sinh. Nên mọi lần gắn/gỡ đều phải để lại dấu vết, cùng
+     * mức với thêm/bớt người trong lớp.
+     */
     @PostMapping("/documents")
     @Transactional
     public ApiResponse<Void> attachDocument(@PathVariable Long classId, @Valid @RequestBody ClassDocumentRequest request) {
@@ -174,6 +181,8 @@ public class ClassContentController {
         row.setNote(request.note());
         row.setAttachedBy(current.requireUserId());
         classDocuments.save(row);
+        audit.record("ATTACH_DOCUMENT", "CLASS", classId, null,
+                "documentId=%d,requirement=%s".formatted(request.documentId(), row.getRequirement()));
         return ApiResponse.created("Đã gắn tài liệu vào lớp", null);
     }
 
@@ -185,9 +194,12 @@ public class ClassContentController {
         requireTeacher(classId);
         ClassDocument row = classDocuments.findByIdAndClassId(id, classId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu trong lớp"));
+        String truoc = "documentId=%d,requirement=%s".formatted(row.getDocumentId(), row.getRequirement());
         if (request.requirement() != null) row.setRequirement(request.requirement());
         if (request.note() != null) row.setNote(request.note());
         classDocuments.save(row);
+        audit.record("UPDATE_DOCUMENT", "CLASS", classId, truoc,
+                "documentId=%d,requirement=%s".formatted(row.getDocumentId(), row.getRequirement()));
         return ApiResponse.ok("Đã cập nhật tài liệu của lớp", null);
     }
 
@@ -199,6 +211,8 @@ public class ClassContentController {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài liệu trong lớp"));
         row.markDeleted();
         classDocuments.save(row);
+        audit.record("DETACH_DOCUMENT", "CLASS", classId,
+                "documentId=%d,requirement=%s".formatted(row.getDocumentId(), row.getRequirement()), null);
         return ApiResponse.noContent("Đã bỏ tài liệu khỏi lớp");
     }
 
