@@ -33,6 +33,7 @@ import { LessonDetailPage } from "./LessonDetailPage";
 import { AssignmentsPage } from "./AssignmentsPage";
 import { WorksheetRunner } from "./WorksheetRunner";
 import { avatarInitials, buildGreeting, formatPercent } from "./format";
+import { AuthedImage } from "../lib/authedImage";
 
 type StudentExperienceProps = {
   session: AuthSession;
@@ -228,13 +229,11 @@ function TextbooksTab({ session }: { session: AuthSession }) {
         {books.map((book) => (
           <article key={book.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 space-y-3">
             <div className="aspect-[3/4] bg-surface-container rounded-lg overflow-hidden">
-              {book.thumbnailUrl ? (
-                <img src={book.thumbnailUrl} alt={book.title} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-on-surface-variant">
+              <AuthedImage url={book.thumbnailUrl} accessToken={session.accessToken} alt={book.title}
+                className="w-full h-full object-cover"
+                fallback={<div className="w-full h-full flex items-center justify-center text-on-surface-variant">
                   <span className="material-symbols-outlined text-4xl">auto_stories</span>
-                </div>
-              )}
+                </div>} />
             </div>
             <h3 className="text-base font-semibold">{book.title}</h3>
             <p className="text-xs text-on-surface-variant">
@@ -403,13 +402,11 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {section.items.map((doc) => (
               <article key={doc.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex items-start gap-3">
-                {doc.thumbnailUrl ? (
-                  <img src={doc.thumbnailUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 border border-outline-variant" />
-                ) : (
-                  <span className="w-12 h-12 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
+                <AuthedImage url={doc.thumbnailUrl} accessToken={session.accessToken} alt=""
+                  className="w-12 h-12 rounded-lg object-cover shrink-0 border border-outline-variant"
+                  fallback={<span className="w-12 h-12 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined">{doc.docType === "VIDEO" ? "play_circle" : "description"}</span>
-                  </span>
-                )}
+                  </span>} />
                 <div className="min-w-0 flex-1">
                   <h4 className="font-semibold text-sm line-clamp-2">{doc.title}</h4>
                   <p className="text-xs text-on-surface-variant mt-1">{types.find((item) => item.value === doc.docType)?.label ?? doc.docType}</p>

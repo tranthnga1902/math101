@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { assignmentGate, assignmentKind, formatPercent } from "./format";
+import { AuthedImage } from "../lib/authedImage";
 
 type AssignmentsPageProps = {
   session: AuthSession;
@@ -137,13 +138,11 @@ export function AssignmentsPage({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {exams.map((doc) => (
               <article key={doc.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex items-start gap-3">
-                {doc.thumbnailUrl ? (
-                  <img src={doc.thumbnailUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 border border-outline-variant" />
-                ) : (
-                  <span className="w-12 h-12 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
+                <AuthedImage url={doc.thumbnailUrl} accessToken={session.accessToken} alt=""
+                  className="w-12 h-12 rounded-lg object-cover shrink-0 border border-outline-variant"
+                  fallback={<span className="w-12 h-12 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined">description</span>
-                  </span>
-                )}
+                  </span>} />
                 <div className="min-w-0 flex-1">
                   <h4 className="font-semibold text-sm line-clamp-2">{doc.title}</h4>
                   <button type="button" onClick={() => openExam(doc)} className="mt-2 inline-flex h-8 px-3 items-center rounded-lg bg-primary text-on-primary text-xs font-medium">

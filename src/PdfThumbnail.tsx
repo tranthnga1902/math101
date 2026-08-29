@@ -2,14 +2,9 @@ import { useEffect, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 // Vite sẽ bundle worker vào asset và trả URL khi build; dev thì ?url trỏ tới dev server.
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { API_BASE_URL } from "./api";
-import { LruCache } from "./lib/lruCache";
+import { anhCache as cache, resolveApiUrl, useAuthedImage } from "./lib/authedImage";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
-// Giới hạn 60 ảnh bìa — nhẹ hơn trang PDF full-size nhưng vẫn cần cap để
-// không phình RAM khi lướt qua danh sách nhiều tài liệu.
-const cache = new LruCache<string, string>(60);
 
 type Props = {
   fileUrl: string;
@@ -23,70 +18,28 @@ type Props = {
   docType?: string;
 };
 
-function resolveUrl(fileUrl: string): string {
-  if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
-  if (!fileUrl) return fileUrl;
-  if (fileUrl.startsWith("/")) return `${API_BASE_URL}${fileUrl}`;
-  return `${API_BASE_URL}/${fileUrl}`;
-}
-
-/** Ảnh bìa phải qua fetch có token nên không gán thẳng vào <img src> được; đổi sang data URL. */
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Không đọc được ảnh bìa"));
-    reader.readAsDataURL(blob);
-  });
-}
-
 export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, renderScale = 0.4, thumbnailUrl, docType }: Props) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [rendered, setRendered] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
 
   // ĐỀ THI dùng kích thước nhỏ hơn (renderScale thấp hơn → ảnh bìa nhỏ hơn)
   const effectiveScale = docType === "DE_THI" ? Math.min(renderScale, 0.2) : renderScale;
 
-  // Ưu tiên ảnh bìa backend đã render sẵn. Bìa nay đi qua endpoint có xác thực
-  // (/api/documents/{id}/thumbnail) nên phải fetch kèm token rồi mới đưa vào <img>.
-  useEffect(() => {
-    if (!thumbnailUrl) return;
-    const resolved = resolveUrl(thumbnailUrl);
-    if (cache.has(resolved)) {
-      setDataUrl(cache.get(resolved)!);
-      setError("");
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const headers: Record<string, string> = {};
-        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-        const res = await fetch(resolved, { headers, credentials: "include" });
-        if (!res.ok) throw new Error(`Tải ảnh bìa thất bại (${res.status})`);
-        const url = await blobToDataUrl(await res.blob());
-        cache.set(resolved, url);
-        if (cancelled) return;
-        setDataUrl(url);
-        setError("");
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Lỗi tải ảnh bìa");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [thumbnailUrl, accessToken]);
+  // Ưu tiên ảnh bìa backend đã render sẵn; nó đi qua endpoint có xác thực nên phải tải kèm token.
+  const bia = useAuthedImage(thumbnailUrl, accessToken);
+  const dataUrl = bia.src ?? rendered;
 
-  // Chỉ fetch + render live khi không có thumbnailUrl
+  // Render live từ PDF khi không có ảnh bìa sẵn — hoặc khi có mà tải hỏng. Bìa hỏng thường là
+  // tài liệu cũ upload trước lúc có bước render bìa, và với người dùng thì "không thấy gì" và
+  // "bìa chưa được sinh" trông y hệt nhau; vẽ lấy trang đầu vẫn hơn một ô xám.
   useEffect(() => {
-    if (!fileUrl || thumbnailUrl) return;
+    if (!fileUrl || (thumbnailUrl && !bia.loi)) return;
     // fileUrl từ API luôn là đường dẫn tương đối tới endpoint có xác thực của backend —
     // đọc file qua đó thì không phụ thuộc cấu hình CORS của domain R2, và bucket để private được.
-    const resolved = resolveUrl(fileUrl);
+    const resolved = resolveApiUrl(fileUrl);
     const key = `${resolved}#p${pageNumber}#s${effectiveScale}`;
     if (cache.has(key)) {
-      setDataUrl(cache.get(key)!);
+      setRendered(cache.get(key)!);
       return;
     }
     let cancelled = false;
@@ -111,7 +64,7 @@ export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, 
         await page.render({ canvasContext: ctx, viewport }).promise;
         const url = canvas.toDataURL("image/png");
         cache.set(key, url);
-        if (!cancelled) setDataUrl(url);
+        if (!cancelled) setRendered(url);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Lỗi render PDF");
       }
@@ -120,9 +73,9 @@ export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, 
     return () => {
       cancelled = true;
     };
-  }, [fileUrl, accessToken, pageNumber, effectiveScale, thumbnailUrl]);
+  }, [fileUrl, accessToken, pageNumber, effectiveScale, thumbnailUrl, bia.loi]);
 
-  if (error) {
+  if (error || (bia.loi && !fileUrl)) {
     return (
       <div className={`flex h-[132px] w-[96px] shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-center text-[10px] font-medium text-slate-400 ${className ?? ""}`}>
         Không tải được<br />bìa

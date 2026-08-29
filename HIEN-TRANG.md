@@ -27,6 +27,8 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-44 | Bài giao — vòng đời (giờ mở, hạn nộp, số lượt, giờ công bố điểm) và trừ điểm nộp muộn | **A** | `AssignmentWindow` (một bản luật duy nhất), `AssignmentState`, `LatePolicy`, `AssignmentRows`; gọi từ `AssignmentProgressController`, `TeacherSubmissionController`, `StudentLearningController`, `StudentClassController`. UI: `ClassTaskPanel.tsx` (đặt lịch + tự kiểm mâu thuẫn), `assignmentGate()` trong `format.ts` dùng ở `AssignmentsPage`, `MyClassesPage`, `WorksheetRunner`. Test: `AssignmentWindowTest` (26 ca) — kiểm bằng mutation, **6/6 phép sửa đều làm suite đỏ**; `AssignmentProgressControllerTest` thêm 2 ca chặn DRAFT và quá hạn. Migration `V202608271000__assignment_lifecycle.sql` nay **đã chạy thật** trên PostgreSQL rỗng qua `SchemaMigrationTest` (xem HT-90) | `assignmentGate` không có test vì frontend chưa có test runner. Chưa có `assignment_targets` (giao theo nhóm / từng học sinh) |
 | HT-51 | Chấm trắc nghiệm — một bản luật cho nộp bài, chấm lại và thống kê | **A** | `McqGrading` (chuẩn hoá đáp án, soát đề chấm được, soát bài nộp đủ câu, tính điểm thang 10); `WorksheetAnswerKeys` nạp đáp án cả phiếu bằng một truy vấn. Gọi từ `AssignmentProgressController.submit/saveAnswers` và `TeacherSubmissionController.regrade/analysis`. UI: `AssignmentAnalysisDialog.tsx` mở từ nút "Tỉ lệ đúng" trong `ClassTaskPanel.tsx`. Test: `McqGradingTest` (**27 ca**, thêm 6 ca phân loại trắc nghiệm/tự luận ở lát HT-54) — kiểm bằng mutation, **7/7 phép sửa đều làm suite đỏ** | Chưa có test cho `AssignmentAnalysisDialog` vì frontend chưa có test runner. Phần tự luận nay tách sang **HT-54** |
 | HT-54 | Chấm tự luận theo từng câu — cả đường nộp bài tự luận lẫn đường chấm | **A** | Migration `V202608281200__submission_item_grades.sql` (điểm để trống ≠ 0 điểm; dòng bị **xoá thẳng** vì ràng buộc duy nhất không tính `deleted_at`). Luật gom vào `WorksheetScoring` (trần điểm mỗi câu, chuẩn hoá bài tự luận, soát bài nộp phiếu trộn, tổng hợp về thang 10 theo **tỉ lệ**); `McqGrading.laTracNghiem` là chỗ duy nhất phân loại câu, dùng chung cho cả đường JDBC lẫn JPA. API: `PUT /api/teacher/submissions/{id}/grade-items`, `GET .../items`, bài nộp của học sinh nhận văn bản tự do cho câu tự luận, `GET /api/assignment-progress/{id}/result` trả bảng từng câu **sau khi trả bài** và không mang theo đáp án. Entity `SubmissionItemGrade` + repository. UI: `useGradingSheet.ts` (một chỗ quyết định chấm từng câu hay chấm cả bài) + `GradingSheetItems.tsx` dùng chung cho **hai** màn hình chấm (`TeacherSubmissionView`, `ClassGradingPanel`); `WorksheetRunner.tsx` cho học sinh gõ lời giải. Test: `WorksheetScoringTest` (27 ca) + `EssayGradingFlowTest` (20 ca, PostgreSQL nhúng, đi hết dây nộp → chấm dở → chốt → trả bài). Kiểm bằng mutation **6 đợt, 6/6 đều đỏ**, dự tính khớp thực tế 5/6 lần | Chưa kiểm bằng trình duyệt vì lý do như HT-93 (khởi động backend cục bộ sẽ áp migration lên Neon staging). Trần độ dài bài tự luận 5000 ký tự là số chọn tay, chưa có dữ liệu thật để hiệu chỉnh. Chưa có ô nhập công thức cho bài làm tự luận — học sinh gõ văn bản thuần |
+| HT-59/60 | Sổ điểm — bảng lớp × bài giao, trạng thái chấm, và hàng đợi chấm bài | **A** | Truy vấn `/api/teacher/gradebook` trong `TeacherWorkspaceController` bỏ bài **nháp**, thêm cột `graded_items` (đếm câu đã có điểm), và đặt thứ tự đủ chặt để không đổi giữa hai lượt gọi (`full_name, u.id, created_at, a.id`). UI: `GradebookMatrix.tsx` tra ô bằng `Map` thay cho `rows.find` lồng nhau, bốn tầng `z-index` cho ô góc / hàng tiêu đề / cột tên, thêm cột trung bình; `TeacherGradingView.tsx` bỏ khung chấm **giả** (bốn ô "Câu 1…Câu 4" khoá cứng kèm dòng chữ báo chưa có endpoint lưu điểm — nay sai) và dùng thẳng `ClassGradingPanel`; `ClassGradingPanel.tsx` thêm ô tìm học sinh/bài. Test: `GradebookViewTest` (**13 ca**, PostgreSQL nhúng) — hình dạng bảng, trạng thái chấm, lớp 40 em × 12 bài. Kiểm bằng mutation **2 đợt, 2/2 đều đỏ**: bỏ lọc DRAFT → 1 ca, `graded_items` thành hằng số → 3 ca | Ba màn hình chấm cùng một bài nộp (`TeacherSubmissionView`, `ClassGradingPanel`, và sổ điểm) vẫn là ba nơi phải nhớ cùng một luật. Cột trung bình tính trên các bài **đã chốt điểm**, bài chấm dở không vào — chưa hỏi giáo viên xem có đúng ý không. Chưa kiểm bằng trình duyệt vì lý do như HT-93 |
+| HT-95 | Ảnh bìa tài liệu — hiện được sau khi bucket chuyển private | **B** | `src/lib/authedImage.tsx`: `resolveApiUrl` (đường dẫn API là tương đối với backend, không phải với trang đang mở), `useAuthedImage` (tải kèm `Authorization`, đổi sang data URL, cache LRU 60 ảnh dùng chung), `AuthedImage`. Thay cho `<img src={thumbnailUrl}>` thô ở **5 chỗ**: `TextbookManagement`, `TeacherDocumentLibrary`, `AssignmentsPage`, và hai chỗ trong `StudentExperience`. `PdfThumbnail.tsx` bỏ bản sao riêng của `resolveUrl`/`blobToDataUrl`/`cache`, dùng chung mô-đun mới, và **khi ảnh bìa tải hỏng thì vẽ lấy trang 1 của PDF** thay vì trả ô xám. `npm run build` sạch | **Chưa có test** — frontend chưa có test runner, nên chỉ ở mức B. Sách tải lên **trước** khi có bước render bìa vẫn không có ảnh; đường sửa là `POST /api/admin/documents/backfill-thumbnails`, nhưng chạy nó là đụng dữ liệu thật nên chờ bạn quyết |
 | HT-90 | Hạ tầng test — chạy migration trên PostgreSQL thật, không cần Docker | **A** | `pom.xml` thêm `io.zonky.test:embedded-database-spring-test` + `embedded-postgres` + binary `windows-amd64`; `src/test/resources/application-test.properties`; `SchemaMigrationTest` (7 ca) dựng cả ứng dụng trên CSDL rỗng. Kiểm bằng mutation: bỏ một cột khỏi migration, và bỏ một ràng buộc — cả hai lần suite đều đỏ | Chưa có `@DataJpaTest` cho tầng repository, và chưa có test runner cho frontend |
 | HT-91 | Quyền — ma trận vai trò × endpoint | **A** | `PermissionMatrixTest`: 31 endpoint nhạy cảm × 4 tư cách (khách / học sinh / giáo viên / quản trị) = **123 ô**, dựng cả ứng dụng nên dùng đúng `SecurityConfig` và `@EnableMethodSecurity` của bản chạy thật. Kiểm bằng mutation, **3/3 phép sửa đều đỏ đúng chỗ**: gỡ guard của `/api/admin/dashboard` → 2 ô, nới guard của `/api/teacher/documents` → 1 ô, gỡ `@EnableMethodSecurity` → **38 ô** | Chỉ phủ cổng vai trò. Quyền theo từng bản ghi (giáo viên A đọc lớp của giáo viên B) chưa tách được khỏi cổng vai trò vì cần dữ liệu thật — ma trận IDOR ở Lát 2 |
 | HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
@@ -533,11 +535,67 @@ Ghi lại để lát sau khỏi bàn lại:
 mới lên Neon staging, việc đang bị hoãn có chủ đích. Bằng chứng của tính năng này là 16 phép thử
 tích hợp trên PostgreSQL nhúng cộng `npm run build` sạch.
 
+## Chi tiết HT-59/60
+
+Sổ điểm đã chạy từ trước, nên lát này không thêm tính năng mới mà đi tìm chỗ nó **nói sai**. Tìm
+được ba chỗ, cả ba đều thuộc loại không ai để ý cho tới lúc dùng thật.
+
+### Bài nháp hiện trong sổ điểm của học sinh
+
+Truy vấn `cross join assignments a` lấy **mọi** bài giao của lớp, kể cả bài `DRAFT`. Giáo viên soạn
+dở một đề rồi để đó, thế là cả lớp có thêm một cột trắng trong sổ — trông y hệt một bài mà cả lớp
+đều chưa làm. Không hỏng dữ liệu, nhưng nó biến sổ điểm thành thứ không đọc được: không phân biệt
+được "chưa ai làm" với "chưa giao". Thêm `and a.status<>'DRAFT'`. Bài `CLOSED` thì **giữ lại** — đã
+giao và đã chấm thì phải còn trong sổ, đóng cửa không phải là xoá.
+
+### "Chờ chấm" và "chấm dở" trông giống hệt nhau
+
+Bài chỉ chuyển sang `GRADED` khi **không còn câu nào trống điểm**. Nghĩa là một bài mới chấm 1 trong
+2 câu tự luận vẫn mang `grading_status = SUBMITTED`, đúng như bài chưa ai đụng tới. Giáo viên chấm
+dở 12 bài rồi nghỉ, hôm sau mở lên thấy con số "chờ chấm" y như cũ, không biết mình đã làm tới đâu.
+
+Cột `graded_items` — đếm số dòng `submission_item_grades` đã có điểm — là thứ duy nhất tách được hai
+nhóm đó, và `TeacherGradingView` nay hiện ba con số thay vì hai. Đây cũng là cột mà phép thử mutation
+đánh mạnh nhất: đặt nó thành hằng số `0` làm **3 ca đỏ**, trong đó có ca "xoá điểm một câu thì bài mở
+lại" — tức là cột này không chỉ để hiển thị, nó là bằng chứng cho cả chiều ngược của luồng chấm.
+
+### Thứ tự các dòng đổi giữa hai lượt gọi
+
+`order by u.full_name, a.created_at` không đủ chặt. Hai học sinh trùng tên — chuyện thường trong một
+lớp 45 em — thì thứ tự giữa hai em do CSDL tuỳ ý quyết, và có thể **khác nhau ở hai lượt gọi liên
+tiếp**. Sổ điểm là bảng người ta đọc bằng cách rà ngón tay theo hàng; hàng đổi chỗ sau khi bấm làm
+mới là cách nhanh nhất để nhập nhầm điểm. Thêm `u.id` và `a.id` làm chốt chặn cuối.
+
+### Khung chấm giả trong hàng đợi chấm bài
+
+`TeacherGradingView` dựng bốn ô "Câu 1…Câu 4" khoá cứng, không liên quan gì tới đề thật, kèm một
+dòng chữ báo rằng **chưa có endpoint lưu điểm**. Dòng đó nay sai — đường chấm từng câu đã có từ
+HT-54 — và một màn hình nói với giáo viên rằng tính năng chưa tồn tại thì tệ hơn là không có màn
+hình. Bỏ hẳn, dùng thẳng `ClassGradingPanel`. Cố ý **không** dựng bản sao thứ ba của hộp chấm: mỗi
+màn hình chấm thêm là thêm một chỗ có thể quên luật "đề tự luận thì không gõ điểm cả bài", mà quên
+một lần là `PUT /grade` xoá sạch bảng điểm từng câu bên kia vừa chấm.
+
+### Lớp lớn
+
+`GradebookMatrix` tra từng ô bằng `rows.find` lồng trong hai vòng lặp. Lớp 40 em × 12 bài là 480 ô,
+mỗi ô quét trung bình nửa mảng 480 dòng — khoảng 115 nghìn phép so sánh mỗi lần vẽ lại, và vẽ lại
+xảy ra ở mỗi lần gõ phím vào ô lọc. Thay bằng `Map` khoá `studentId:assignmentId`, dựng một lần.
+Phép thử `bonMuoiEmMuoiHaiBai` chốt đúng 480 dòng và 480 ô **không trùng nhau**, nên nếu truy vấn
+sau này sinh ra dòng thừa do join hỏng thì test đỏ chứ không phải người dùng phát hiện.
+
+Ba tầng `z-index` cũng sai: ô góc, hàng tiêu đề và cột tên đều `sticky` nhưng không xếp hạng, nên
+khi cuộn chéo thì cột tên vẽ đè lên hàng tiêu đề ở một số trình duyệt. Bốn tầng rõ ràng: góc 30,
+tiêu đề cột 20, tiêu đề hàng 10, ô thường không đặt.
+
 ## Việc vận hành còn nợ
 
 - **Chuyển bucket Cloudflare R2 sang private.** Mã nguồn nay không phát tán URL R2 nữa, nhưng
   các URL đã lộ trước đây vẫn mở được chừng nào bucket còn public. Đây là việc trên bảng điều
   khiển Cloudflare, không nằm trong repo.
+- **Chạy `POST /api/admin/documents/backfill-thumbnails` một lượt.** Sách và tài liệu tải lên
+  **trước** khi có bước render bìa không có ảnh nào trong kho, nên dù HT-95 đã sửa đường tải ảnh,
+  những cuốn đó vẫn hiện ô chữ thay cho bìa. Endpoint để sửa đã có sẵn; đây là lượt gọi ghi vào
+  dữ liệu thật nên chờ bạn quyết, không tự chạy.
 - **Đặt lại biến môi trường tuổi thọ token trên Render/Vercel.** `JWT_EXPIRATION` **không còn được
   đọc nữa**; thay bằng `JWT_ACCESS_TTL_SECONDS=1800` và `JWT_REFRESH_TTL_SECONDS=2592000` (đơn vị
   giây). Nếu không đặt thì backend dùng đúng hai giá trị mặc định đó, nên không có nguy cơ gãy —
