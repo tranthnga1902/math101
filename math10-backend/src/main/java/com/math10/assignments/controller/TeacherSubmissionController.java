@@ -66,7 +66,7 @@ public class TeacherSubmissionController {
         Assignment assignment=worksheetAssignment(assignmentId);
         List<Map<Long,String>> baiLam=progress.findByAssignmentId(assignmentId).stream()
                 .filter(row->row.getSubmittedAt()!=null).map(row->readAnswers(row.getAnswerJson())).toList();
-        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         Map<Long,String> codeByProblem=new LinkedHashMap<>();
         problems.findAllById(keys.stream().map(McqGrading.Key::problemId).toList())
                 .forEach(problem->codeByProblem.put(problem.getId(),problem.getPublicCode()));
@@ -113,7 +113,7 @@ public class TeacherSubmissionController {
     @PostMapping("/assignments/{assignmentId}/regrade") @Transactional
     public ApiResponse<Map<String,Integer>> regrade(@PathVariable Long assignmentId){
         Assignment assignment=worksheetAssignment(assignmentId);
-        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         WorksheetScoring.requireGradable(keys);
         boolean coTuLuan=WorksheetScoring.coCauTuLuan(keys);
         List<AssignmentProgress> rows=progress.findByAssignmentId(assignmentId).stream()
@@ -259,7 +259,7 @@ public class TeacherSubmissionController {
         if(row.getSubmittedAt()==null)throw new BusinessException("Học sinh chưa nộp bài");
         if(!"BAT_BUOC".equals(assignment.getRequirement()))throw new BusinessException("Bài tự chọn chỉ ghi nhận đã làm, không chấm điểm");
         String truoc=diemHienTai(row);
-        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         WorksheetScoring.requireGradable(keys);
         if(!WorksheetScoring.coCauTuLuan(keys))throw new BusinessException("Phiếu này không có câu tự luận để chấm tay");
         BigDecimal toiDaMoiCau=WorksheetScoring.diemToiDaMoiCau(keys.size());
@@ -309,7 +309,7 @@ public class TeacherSubmissionController {
     }
 
     private SubmissionGradingSheetResponse bangCham(AssignmentProgress row,Assignment assignment){
-        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         WorksheetScoring.requireGradable(keys);
         BigDecimal toiDaMoiCau=WorksheetScoring.diemToiDaMoiCau(keys.size());
         Map<Long,String> baiLam=readAnswers(row.getAnswerJson());

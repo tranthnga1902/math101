@@ -10,6 +10,7 @@ public class Assignment extends BaseEntity {
  @Column(name="class_id",nullable=false) private Long classId;
  @Column(name="lesson_id") private Long lessonId;
  @Column(name="worksheet_id") private Long worksheetId;
+ @Column(name="worksheet_version_id") private Long worksheetVersionId;
  @Column(name="document_id") private Long documentId;
  @Column(nullable=false) private String title;
  /** Giờ mở. Null = mở ngay khi trạng thái chuyển sang PUBLISHED. */

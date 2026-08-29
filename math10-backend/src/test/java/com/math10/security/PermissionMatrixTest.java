@@ -115,6 +115,16 @@ class PermissionMatrixTest {
             O.chiQuanTri(HttpMethod.GET, "/api/admin/class-overview"),
             O.chiQuanTri(HttpMethod.GET, "/api/admin/taxonomy/tree"),
             O.chiQuanTri(HttpMethod.DELETE, "/api/admin/taxonomy/nodes/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/courses/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/chapters/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/lessons/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/resources/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/program-schedules/999999"),
+            O.chiQuanTri(HttpMethod.POST, "/api/admin/programs/999999/publish"),
+            O.chiQuanTri(HttpMethod.GET, "/api/admin/program-templates"),
+            O.chiQuanTri(HttpMethod.GET, "/api/admin/course-instances"),
+            O.chiQuanTri(HttpMethod.GET, "/api/admin/videos"),
+            O.chiQuanTri(HttpMethod.GET, "/api/admin/special-topics"),
             O.chiQuanTri(HttpMethod.GET, "/api/users"),
             O.chiQuanTri(HttpMethod.DELETE, "/api/users/999999"),
 
@@ -133,12 +143,14 @@ class PermissionMatrixTest {
             // ----- Chỉ giáo viên: quản trị cũng không vào được -----
             O.chiGiaoVien(HttpMethod.GET, "/api/teacher/documents"),
             O.chiGiaoVien(HttpMethod.GET, "/api/teacher/document-folders"),
+            O.chiGiaoVien(HttpMethod.GET, "/api/teacher/resources"),
 
             // ----- Chỉ học sinh -----
             O.chiHocSinh(HttpMethod.GET, "/api/student/classes"),
             O.chiHocSinh(HttpMethod.GET, "/api/student/taxonomy"),
             O.chiHocSinh(HttpMethod.GET, "/api/student/courses"),
             O.chiHocSinh(HttpMethod.GET, "/api/student/assignments"),
+            O.chiHocSinh(HttpMethod.GET, "/api/student/teacher-resources"),
             O.chiHocSinh(HttpMethod.PATCH, "/api/assignment-progress/999999/opened"),
             O.chiHocSinh(HttpMethod.PATCH, "/api/problem-progress/999999/opened"),
 
@@ -147,6 +159,9 @@ class PermissionMatrixTest {
             O.daDangNhap(HttpMethod.GET, "/api/documents/student"),
             O.daDangNhap(HttpMethod.GET, "/api/documents/student/exams"),
             O.daDangNhap(HttpMethod.GET, "/api/documents/textbooks"),
+            O.daDangNhap(HttpMethod.GET, "/api/program-schedules/current?courseId=999999"),
+            O.daDangNhap(HttpMethod.GET, "/api/programs"),
+            O.daDangNhap(HttpMethod.GET, "/api/programs/999999/resources"),
             // Không có @PreAuthorize; chỉ dựa vào anyRequest().authenticated() của chuỗi lọc.
             O.daDangNhap(HttpMethod.POST, "/api/auth/change-password"),
 

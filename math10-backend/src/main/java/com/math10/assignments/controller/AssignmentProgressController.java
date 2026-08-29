@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -49,6 +50,7 @@ public class AssignmentProgressController {
     private final WorksheetAnswerKeys answerKeys;
     private final SubmissionItemGradeRepository itemGrades;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbc;
 
     @PatchMapping("/{assignmentId}/opened")
     @Transactional
@@ -94,7 +96,7 @@ public class AssignmentProgressController {
         AssignmentProgress row = get(assignmentId);
         LocalDateTime now = LocalDateTime.now();
         AssignmentWindow.requireSubmittable(assignment, row, now);
-        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         WorksheetScoring.requireCompleteAnswers(keys, request.answers());
         WorksheetScoring.ThongKeTracNghiem tracNghiem = WorksheetScoring.thongKeTracNghiem(keys, request.answers());
         // Máy chấm phần trắc nghiệm ngay; phần tự luận chờ giáo viên nên chưa có điểm người chấm.
@@ -124,6 +126,15 @@ public class AssignmentProgressController {
         if (row.getId() != null) itemGrades.deleteByProgressId(row.getId());
         syncWorksheet(assignmentId, row, true);
         AssignmentProgress saved = progress.save(row);
+        Long submissionId = jdbc.queryForObject("insert into submissions(assignment_id,student_id,attempt_no,status,submitted_at,raw_score,final_score,created_at,updated_at) values(?,?,?,'SUBMITTED',?,?,?,now(),now()) returning id",Long.class,assignment.getId(),saved.getStudentId(),saved.getAttemptNo(),saved.getSubmittedAt(),saved.getRawScore(),saved.getScore());
+        for (Map.Entry<Long,String> answer : request.answers().entrySet()) {
+            String itemSql="select id from worksheet_items where worksheet_id=? and (problem_id=? or id=?) and deleted_at is null";
+            List<Long> worksheetItems = assignment.getWorksheetVersionId()==null
+                    ? jdbc.queryForList(itemSql,Long.class,assignment.getWorksheetId(),answer.getKey(),-answer.getKey())
+                    : jdbc.queryForList(itemSql+" and worksheet_version_id=?",Long.class,assignment.getWorksheetId(),answer.getKey(),-answer.getKey(),assignment.getWorksheetVersionId());
+            if (!worksheetItems.isEmpty()) jdbc.update("insert into submission_answers(submission_id,worksheet_item_id,answer_json,created_at,updated_at) values(?,?,?::jsonb,now(),now())",submissionId,worksheetItems.get(0),write(Map.of(answer.getKey(),answer.getValue())));
+        }
+        jdbc.update("insert into submission_events(submission_id,actor_id,action,metadata,created_at,updated_at) values(?,?, 'SUBMITTED',?::jsonb,now(),now())",submissionId,saved.getStudentId(),"{\"attempt\":"+saved.getAttemptNo()+"}");
         String note = ketQua.chamXong()
                 ? tracNghiem.dung() + "/" + tracNghiem.tong() + " câu đúng" + (late ? " · nộp muộn" : "")
                 : "Chờ chấm " + ketQua.conThieu() + " câu tự luận" + (late ? " · nộp muộn" : "");
@@ -142,7 +153,7 @@ public class AssignmentProgressController {
         // chặn "đã nộp", nên hết hạn rồi vẫn tự động lưu được, và bài cho nộp nhiều lượt thì
         // lượt thứ hai lại không sửa nổi đáp án.
         AssignmentWindow.requireSubmittable(assignment,row,LocalDateTime.now());
-        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys=answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         Map<Long,McqGrading.Key> theoCauHoi=new LinkedHashMap<>();
         keys.forEach(key->theoCauHoi.put(key.problemId(),key));
         Map<Long,String> merged=new LinkedHashMap<>(read(row.getAnswerJson()));
@@ -266,7 +277,7 @@ public class AssignmentProgressController {
      */
     private List<SubmissionItemView> bangDiemTungCau(Assignment assignment, AssignmentProgress row) {
         if (assignment.getWorksheetId() == null || row.getId() == null || row.getSubmittedAt() == null) return List.of();
-        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId());
+        List<McqGrading.Key> keys = answerKeys.of(assignment.getWorksheetId(), assignment.getWorksheetVersionId());
         if (keys.isEmpty()) return List.of();
         BigDecimal toiDaMoiCau = WorksheetScoring.diemToiDaMoiCau(keys.size());
         Map<Long, String> baiLam = read(row.getAnswerJson());

@@ -12,4 +12,8 @@ public class Worksheet extends BaseEntity {
  @Column(name="show_student_fields",nullable=false) private Boolean showStudentFields=true;
  @Column(name="created_by",nullable=false) private Long createdBy;
  @Column(name="lesson_id") private Long lessonId;
+ @Column(nullable=false,length=30) private String status="DRAFT";
+ @Column(nullable=false) private Integer version=1;
+ @Column(name="parent_worksheet_id") private Long parentWorksheetId;
+ @Column(name="exercise_type_id") private Long exerciseTypeId;
 }

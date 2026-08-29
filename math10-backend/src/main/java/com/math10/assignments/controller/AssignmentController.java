@@ -24,6 +24,7 @@ import com.math10.chapters.repository.ChapterRepository;
 import com.math10.enrollments.repository.ClassCourseRepository;
 import com.math10.worksheets.repository.WorksheetRepository;
 import com.math10.common.exception.BusinessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 @RestController @RequiredArgsConstructor @RequestMapping("/api/assignments")
 public class AssignmentController {
  private final AssignmentRepository repository; private final CurrentUserService current;
@@ -31,6 +32,7 @@ public class AssignmentController {
  private final LessonRepository lessons; private final ChapterRepository chapters; private final ClassCourseRepository classCourses; private final WorksheetRepository worksheets;
  private final com.math10.classes.repository.ClassDocumentRepository classDocuments;
  private final AuditService audit;
+ private final JdbcTemplate jdbc;
  @GetMapping @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
  public ApiResponse<List<AssignmentResponse>> list(@RequestParam Long classId){
   checkClassAccess(classId,false);
@@ -60,6 +62,7 @@ public class AssignmentController {
   if(latePolicy==LatePolicy.PENALTY&&penalty<=0)throw new BusinessException("Chọn trừ điểm nộp muộn thì phần trăm trừ phải lớn hơn 0");
   if(latePolicy!=LatePolicy.REJECT&&r.dueAt()==null)throw new BusinessException("Không đặt hạn nộp thì không có khái niệm nộp muộn");
   if(r.lessonId()!=null){var lesson=lessons.findById(r.lessonId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài học"));var chapter=chapters.findById(lesson.getChapterId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy chương"));if(!classCourses.existsByClassIdAndCourseId(r.classId(),chapter.getCourseId()))throw new BusinessException("Bài học không thuộc khóa học đã gán cho lớp");}if(r.worksheetId()!=null){var sheet=worksheets.findById(r.worksheetId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy phiếu bài tập"));if(!"ADMIN".equals(current.requireRoleCode())&&!sheet.getCreatedBy().equals(current.requireUserId()))throw new AccessDeniedException("Không có quyền giao phiếu bài tập này");}a.setClassId(r.classId());a.setLessonId(r.lessonId());a.setWorksheetId(r.worksheetId());a.setDocumentId(r.documentId());a.setTitle(r.title());a.setOpenAt(r.openAt());a.setDueAt(r.dueAt());a.setStatus(r.status());a.setRequirement(requirement);
+  if(r.worksheetId()!=null){List<Long> publishedVersions=jdbc.queryForList("select id from worksheet_versions where worksheet_id=? and status='PUBLISHED' and deleted_at is null order by version desc limit 1",Long.class,r.worksheetId());if(!publishedVersions.isEmpty())a.setWorksheetVersionId(publishedVersions.get(0));}
   a.setMaxAttempts(r.maxAttempts()==null?1:r.maxAttempts());a.setLatePolicy(latePolicy.name());a.setLatePenaltyPercent(latePolicy==LatePolicy.PENALTY?penalty:0);a.setPublishScoreAt(r.publishScoreAt());}
  private AssignmentResponse map(Assignment a){AssignmentState state=AssignmentWindow.stateOf(a,LocalDateTime.now());return new AssignmentResponse(a.getId(),a.getClassId(),a.getLessonId(),a.getWorksheetId(),a.getDocumentId(),a.getTitle(),a.getOpenAt(),a.getDueAt(),a.getStatus(),state.name(),a.getRequirement(),a.getMaxAttempts(),a.getLatePolicy(),a.getLatePenaltyPercent(),a.getPublishScoreAt(),a.getCreatedBy());}
 }

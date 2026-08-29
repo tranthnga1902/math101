@@ -14,6 +14,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.math10.progress.repository.LearningProgressRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * Ở đây kiểm phần nối dây: controller có thật sự hỏi {@link com.math10.assignments.domain.AssignmentWindow}
  * trước khi ghi hay không. Bản thân luật vòng đời đã có test riêng trong {@code AssignmentWindowTest}.
@@ -52,6 +53,6 @@ class AssignmentProgressControllerTest {
  }
  private AssignmentProgressController controller(){
   return new AssignmentProgressController(assignments,progress,mock(SubmissionLogService.class),classes,current,
-    mock(LearningProgressRepository.class),mock(WorksheetAnswerKeys.class),mock(SubmissionItemGradeRepository.class),new ObjectMapper());
+    mock(LearningProgressRepository.class),mock(WorksheetAnswerKeys.class),mock(SubmissionItemGradeRepository.class),new ObjectMapper(),mock(JdbcTemplate.class));
  }
 }

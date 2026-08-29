@@ -35,26 +35,26 @@ public class LessonResourceController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<LessonResourceResponse> create(@Valid @RequestBody LessonResourceRequest request) {
         return ApiResponse.created("Tạo tài liệu thành công", resourceService.create(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<LessonResourceResponse> update(@PathVariable Long id, @Valid @RequestBody LessonResourceRequest request) {
         return ApiResponse.ok("Cập nhật tài liệu thành công", resourceService.update(id, request));
     }
 
     @PatchMapping("/reorder")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> reorder(@Valid @RequestBody ReorderRequest request) {
         resourceService.reorder(request);
         return ApiResponse.ok("Sắp xếp tài liệu thành công", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         resourceService.softDelete(id);
         return ApiResponse.noContent("Xóa tài liệu thành công");

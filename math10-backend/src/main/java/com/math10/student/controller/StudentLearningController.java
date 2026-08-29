@@ -151,7 +151,7 @@ public class StudentLearningController {
             // Chưa tới giờ mở: hiện tên bài, không hiện một câu hỏi nào.
             List<StudentAssignmentResponse.Item> content = worksheetId == null || !state.contentVisibleToStudent()
                     ? List.of()
-                    : items(worksheetId);
+                    : items(worksheetId, assignment.getWorksheetVersionId());
             boolean released = AssignmentWindow.scoreVisible(assignment, progress, now);
             result.add(new StudentAssignmentResponse(
                     assignment.getId(),
@@ -180,12 +180,21 @@ public class StudentLearningController {
      * trắc nghiệm hay tự luận — giá trị của nó không đi vào {@code Item}, nên đáp án không rời
      * khỏi server qua đường này.
      */
-    private List<StudentAssignmentResponse.Item> items(Long worksheetId) {
-        return jdbc.query("""
-                select p.id,wi.order_index,p.public_code,p.qr_slug,p.statement_latex,p.difficulty,p.option_a,p.option_b,p.option_c,p.option_d,p.correct_option
-                from worksheet_items wi join problems p on p.id=wi.problem_id and p.deleted_at is null
-                where wi.worksheet_id=? and wi.deleted_at is null order by wi.order_index
-                """, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"), rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), !McqGrading.laTracNghiem(rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), rs.getString("correct_option"))), worksheetId);
+    private List<StudentAssignmentResponse.Item> items(Long worksheetId, Long worksheetVersionId) {
+        String versionFilter=worksheetVersionId==null?"":" and wi.worksheet_version_id=?";
+        String sql="""
+                select coalesce(p.id,-wi.id) id,wi.order_index,p.public_code,p.qr_slug,
+                       coalesce(p.statement_latex,wi.content_snapshot) statement_latex,
+                       coalesce(p.difficulty,'STANDARD') difficulty,
+                       coalesce(p.option_a,wi.option_a_snapshot) option_a,
+                       coalesce(p.option_b,wi.option_b_snapshot) option_b,
+                       coalesce(p.option_c,wi.option_c_snapshot) option_c,
+                       coalesce(p.option_d,wi.option_d_snapshot) option_d,
+                       coalesce(p.correct_option,wi.answer_snapshot) correct_option
+                from worksheet_items wi left join problems p on p.id=wi.problem_id and p.deleted_at is null
+                where wi.worksheet_id=? and wi.deleted_at is null"""+versionFilter+" order by wi.order_index";
+        Object[] args=worksheetVersionId==null?new Object[]{worksheetId}:new Object[]{worksheetId,worksheetVersionId};
+        return jdbc.query(sql, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"), rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), !McqGrading.laTracNghiem(rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), rs.getString("correct_option"))), args);
     }
 
     private List<StudentCourseResponse.Resource> resources(Long lessonId) {
