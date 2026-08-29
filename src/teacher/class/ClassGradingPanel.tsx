@@ -20,6 +20,7 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<TeacherSubmission | null>(null);
   const [filter, setFilter] = useState("");
+  const [search, setSearch] = useState("");
 
   const query = useQuery({
     queryKey: ["teacher-submissions", session.accessToken, classId],
@@ -40,7 +41,13 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
   });
 
   const all = query.data ?? [];
-  const rows = all.filter(row => !filter || row.grading_status === filter);
+  // Lớp 45 em nộp 3 bài là 135 dòng; cuộn tay tìm một em là việc không ai làm nổi hai lần.
+  // localeCompare theo "vi" để gõ không dấu vẫn không lệch — so sánh là contains nên chỉ cần
+  // hạ chữ hoa theo đúng vùng ngôn ngữ.
+  const needle = search.trim().toLocaleLowerCase("vi");
+  const rows = all.filter(row =>
+    (!filter || row.grading_status === filter) &&
+    (!needle || `${row.full_name} ${row.username} ${row.title}`.toLocaleLowerCase("vi").includes(needle)));
   const pending = all.filter(row => row.grading_status === "SUBMITTED").length;
   const graded = all.filter(row => row.grading_status === "GRADED").length;
   const error = query.isError ? messageOf(query.error) : release.isError ? messageOf(release.error) : "";
@@ -51,13 +58,17 @@ export function ClassGradingPanel({ session, classId }: { session: AuthSession; 
         <h3 className="text-base font-bold text-on-surface">Chấm và trả điểm</h3>
         <p className="text-xs text-on-surface-variant">{pending} bài chờ chấm · {graded} bài chờ trả điểm</p>
       </div>
-      <select value={filter} onChange={e => setFilter(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
-        <option value="">Tất cả trạng thái</option>
-        <option value="SUBMITTED">Chờ chấm</option>
-        <option value="GRADED">Đã chấm</option>
-        <option value="RETURNED">Đã trả</option>
-      </select>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm học sinh hoặc bài…"
+          className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface min-w-[200px]" />
+        <select value={filter} onChange={e => setFilter(e.target.value)}
+          className="h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm text-on-surface">
+          <option value="">Tất cả trạng thái</option>
+          <option value="SUBMITTED">Chờ chấm</option>
+          <option value="GRADED">Đã chấm</option>
+          <option value="RETURNED">Đã trả</option>
+        </select>
+      </div>
     </div>
 
     {error && <div className="api-error">{error}</div>}

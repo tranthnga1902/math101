@@ -27,13 +27,33 @@ public class TeacherWorkspaceController {
    select distinct c.id,c.code,c.name,c.grade_id,c.status from classes c join class_teachers ct on ct.class_id=c.id and ct.deleted_at is null
    where c.deleted_at is null and (? or ct.teacher_id=?) order by c.name
    ""","ADMIN".equals(current.requireRoleCode()),id));}
+ /**
+  * Sổ điểm của một lớp: mọi học sinh × mọi bài đã giao, kể cả ô chưa có bài nộp.
+  *
+  * <p><b>Bỏ bài nháp.</b> Bài DRAFT chưa đến tay học sinh nên ô nào của nó cũng là "chưa mở" —
+  * đưa vào thì mỗi bài nháp là một cột trắng kéo tụt mọi con số trung bình mà màn hình tính từ
+  * sổ điểm này (tỉ lệ hoàn thành của lớp, danh sách em cần chú ý, bảng nhiệm vụ). Giáo viên soạn
+  * sẵn mười bài cho cả học kỳ là lớp tự nhiên xuống hạng, không một lời báo.
+  *
+  * <p><b>Thứ tự phải chốt tới khoá chính.</b> Sắp theo mỗi {@code full_name} là chưa đủ: trong một
+  * lớp có hai em trùng họ tên là chuyện thường, và khi đó thứ tự giữa hai em do PostgreSQL tuỳ
+  * nghi quyết định, đổi giữa hai lần tải cùng dữ liệu.
+  *
+  * <p>{@code graded_items} đếm số câu đã chấm tay của bài nộp — chỗ duy nhất phân biệt được "nộp
+  * rồi chưa ai đụng" với "giáo viên chấm dở nửa chừng". Cả hai đều mang {@code grading_status}
+  * SUBMITTED, vì bài chỉ chuyển GRADED khi không còn câu nào trống điểm.
+  */
  @GetMapping("/gradebook") public ApiResponse<List<Map<String,Object>>> gradebook(@RequestParam Long classId){check(classId);return ApiResponse.ok("Sổ điểm",jdbc.queryForList("""
-   select u.id student_id,u.full_name,u.username,a.id assignment_id,a.title,
+   select u.id student_id,u.full_name,u.username,a.id assignment_id,a.title,a.status assignment_status,a.due_at,
+   ap.id progress_id,
    case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end status,
-   coalesce(ap.completion_percent,0) completion_percent,ap.score,ap.max_score,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,ap.returned_at
+   coalesce(ap.completion_percent,0) completion_percent,ap.score,ap.max_score,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
+   ap.submitted_at,ap.returned_at,
+   coalesce((select count(*) from submission_item_grades sig where sig.progress_id=ap.id and sig.score is not null),0) graded_items
    from class_students cs join users u on u.id=cs.student_id and u.deleted_at is null
    cross join assignments a left join assignment_progress ap on ap.student_id=u.id and ap.assignment_id=a.id and ap.deleted_at is null
-   where cs.class_id=? and cs.deleted_at is null and a.class_id=? and a.deleted_at is null order by u.full_name,a.created_at
+   where cs.class_id=? and cs.deleted_at is null and a.class_id=? and a.deleted_at is null and a.status<>'DRAFT'
+   order by u.full_name,u.id,a.created_at,a.id
    """,classId,classId));}
  private void check(Long classId){if("ADMIN".equals(current.requireRoleCode()))return;Integer n=jdbc.queryForObject("select count(*) from class_teachers where class_id=? and teacher_id=? and deleted_at is null",Integer.class,classId,current.requireUserId());if(n==null||n==0)throw new AccessDeniedException("Không có quyền truy cập lớp");}
  @GetMapping("/class-results") public ApiResponse<List<Map<String,Object>>> classResults(){
