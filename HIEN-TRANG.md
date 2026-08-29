@@ -7,6 +7,13 @@ Bảng được **bồi dần theo từng tính năng**: mỗi lần một tính
 (DB → API → UI → test) thì thêm/cập nhật đúng dòng của nó. Phần chưa soát thì để trống,
 không đoán — một dòng đoán còn hại hơn một dòng trống.
 
+> **Đọc chữ "chưa commit" trong file này như một mốc thời gian, không phải trạng thái.**
+> Suốt thời gian soạn file này, toàn bộ module chương trình học và xưởng nội dung — 10 migration,
+> hai module Java, ba trang giao diện — chỉ nằm trên đĩa, không có trong lịch sử git. Nhiều đoạn
+> dưới đây lập luận dựa trên đúng điều đó ("migration chưa chạy ở đâu nên sửa tại chỗ được").
+> Lập luận ấy đúng **vào lúc viết**. Nay đã commit thành sáu bản ghi, `7bde517` → `b57baeb`, nên từ
+> giờ mỗi lần sửa schema là **một migration vá**, không sửa tại chỗ được nữa.
+
 ## Quy ước mức
 
 | Mức | Nghĩa |
@@ -34,6 +41,8 @@ Test được tính là bằng chứng chỉ khi nó **đỏ lên nếu gỡ đo
 | HT-92 | Quyền — ma trận IDOR, quyền theo từng bản ghi | **A** | `IdorMatrixTest`: dựng hai lớp học thật song song (giáo viên A/B, học sinh A/B, bài giao, phiếu, bài nộp, tài liệu) rồi cho mọi người gọi chéo sang phần của người kia — **162 ô**. Gồm 120 ô ma trận theo lớp (12 đường × 5 người × 2 lớp), 30 ô ma trận theo bản ghi, 6 phép thử đường ghi (mỗi phép soi lại CSDL để chắc lượt gọi bị chặn không kịp sửa gì), 4 nhóm quyền đọc file tài liệu, 2 ca điểm chưa công bố. Kiểm bằng mutation, **5/5 đợt sửa đều đỏ đúng số ô dự tính**: `ClassAccessGuard` → 36, `WorksheetController.owned` + `TeacherSubmissionController.checkClass` → 8, nhánh giáo viên của `DocumentServiceImpl.checkCanRead` → 3, `ownedDocument` + nhánh học sinh → 4, `AssignmentController.checkClassAccess` + `TeacherWorkspaceController.check` + `AssignmentProgressController.get` → 9 | Đường ghi chỉ chạy chiều chặn (chiều cho phép sẽ phá dữ liệu nền); bằng chứng "chủ sở hữu vào được" lấy từ các đường đọc tương ứng. Chưa phủ `/api/documents/{id}/thumbnail` và các đường quản trị lớp của Admin |
 | HT-93 | Phiên đăng nhập — làm mới, đăng xuất, và thu hồi được token | **A** | Migration `V202608281000__refresh_token_index.sql`. API: `AuthController.refresh/logout`, `AuthServiceImpl` (token mờ 256 bit, chỉ lưu bản băm SHA-256, xoay vòng mỗi lượt làm mới, phát hiện token bị dùng lại thì cắt sạch phiên), `JwtService` chặn cấu hình sai ngay lúc khởi động, `SecurityConfig` mở `/api/auth/refresh` + `/api/auth/logout`. UI: `api.ts` (`refreshSession`, `logoutSession`, `accessTokenExpiresAt`), `App.tsx` tự làm mới trước hạn 2 phút và đăng xuất có gọi máy chủ, `ChangePasswordDialog` báo mọi phiên cũ đã bị thu hồi. Test: `AuthSessionLifecycleTest` (13 ca, chạy trên PostgreSQL nhúng) + `JwtServiceTest` (2 ca mới). Kiểm bằng mutation, **5/5 đợt sửa đều đỏ, không đợt nào xanh giả**: bỏ xoay vòng → 2, bỏ `noRollbackFor` → 2, `logout` không thu hồi → 2, lưu token gốc thay vì bản băm → 6, nới hạn access token → 2 | Chưa kiểm bằng trình duyệt: khởi động backend cục bộ sẽ áp migration mới lên Neon staging, mà việc đó đang bị hoãn. Chưa có danh sách thiết bị đang đăng nhập cho người dùng tự thu hồi, và chưa có việc dọn định kỳ các dòng `refresh_tokens` hết hạn |
 | HT-94 | Nhật ký hoạt động — phủ hết thao tác đổi điểm và đổi quyền, lọc chạy dưới CSDL | **A** | Migration `V202608281100__audit_log_search.sql` (dựng lại `idx_audit_target` có thêm `created_at`, thêm `idx_audit_created`). API: nhật ký mở rộng từ 4 loại đối tượng lên **7** — thêm `ASSIGNMENT` (CREATE/UPDATE/DELETE/REGRADE), `SUBMISSION` (GRADE/RETURN), `DOCUMENT` (ARCHIVE/RESTORE/PUBLISH/HIDE/DELETE) và 6 thao tác `CLASS` về thành viên và tài liệu; `AuditController` lọc 6 tiêu chí dưới CSDL và **tự đặt thứ tự mặc định** `createdAt desc, id desc`. UI: `AuditManagement.tsx` lọc phía máy chủ + phân trang thật. Test: `AuditTrailTest` **16 ca** trên PostgreSQL nhúng. Chính bộ test này bắt được một lỗi thật: truy vấn lọc **trả 500 ở mọi lượt gọi** trên PostgreSQL. Kiểm bằng mutation 2 đợt, **7/7 phép sửa đều đỏ**: dự tính 3 → thực tế 4, dự tính 4 → thực tế 6 | Chưa gộp tên đối tượng thành hằng số dùng chung; lượt bị từ chối 403 chưa để lại dấu vết; `addCurriculum`/`removeCurriculum` cố ý chưa ghi; chưa kiểm bằng trình duyệt vì lý do như HT-93 |
+| HT-96 | Chương trình học — ba tầng chương trình / mẫu / khóa theo năm | **C** | 7 migration (`V202608291000` → `V202608291600`) tạo **22 bảng**, `alter` 6 bảng cũ; 7 controller = **62 endpoint** (`programs/` 39, `teachercontent/` 17, học liệu giáo viên 6); UI `ProgramResourcePage.tsx`; `PermissionMatrixTest` đã phủ 9 endpoint. Test chức năng: 2 — `LichKhoaHocTheoNamTest` (1 ca) và `TeacherContentPipelineTest` (1 ca, đi hết dây tải lên → tách câu → duyệt → biến thể → dựng phiếu) — mở hai khóa 2026/2027 và 2027/2028 từ cùng một mẫu, mỗi khóa giữ lịch riêng. Chính nó bắt được lỗi Đ1 và là bằng chứng đỏ-rồi-xanh: trước khi sửa `PUT /api/admin/courses/2/schedule → 500 duplicate key … uq_program_schedule_chapter`, sau khi sửa xanh. Lượt chạy đó cũng là lần đầu **cả 45 migration chạy trên CSDL rỗng** — sạch; sau khi sửa, cả bộ `Tests run: 554, Failures: 0, Errors: 0` | Mức **C** chứ không phải B: **20/22 bảng không có entity**, chỉ chạm qua `JdbcTemplate`, nên `ddl-auto=validate` không canh được gì ở đây — 62 endpoint chạy trên vùng không ai canh. Chồng lịch nay đã chặn ở tầng CSDL nhưng bằng **trigger**, không chống được hai giao dịch đồng thời và canh chặt hơn bất biến đã phát biểu (Đ2); `worksheet_questions` là bảng chết đã đổ sẵn dữ liệu sai (Đ5), `documents.content_group` `not null default 'REFERENCE'` dán nhãn sai toàn bộ tài liệu cũ (Đ3). Toàn bộ **chưa commit**. Kế hoạch: [`docs/ke-hoach-admin-chuong-trinh.md`](docs/ke-hoach-admin-chuong-trinh.md) |
+| HT-97 | Xưởng nội dung giáo viên — tải đề, tách câu hỏi, sinh biến thể, dựng phiếu | **C** | Migration `V202608291600`–`V202608291900` (9 bảng: `teacher_source_documents`, `document_blocks`, `extracted_questions`, `math_fragments`, `question_variants`, `worksheet_versions`, `document_templates`, `question_boundary_events`, `question_transformations`; thêm 7 cột snapshot vào `worksheet_items` và `assignments.worksheet_version_id`). API: `teachercontent/TeacherContentController` = **22 endpoint**. UI: `TeacherContentPipeline.tsx`, đã nối vào `App.tsx` ở mục `teacher-pipeline`. Test: `TeacherContentPipelineTest` — 1 ca đi trọn dây tải lên → tách khối → duyệt → biến thể → dựng phiếu, cộng 1 phép thử IDOR (giáo viên khác nhận 404); `QuestionMathAnalysisServiceTest` — 3 ca cho cổng chặn biến đổi; `QuestionTransformationServiceTest` — 40 biến thể của 4 dạng toán đều VALID; `QuestionTransformationEdgeCaseTest` — 3 ca biên (đáp án 0, đỉnh (0,0), `sin(x)` lọt cổng) | Mức **C**: 9 bảng, **0 entity**; 4 test cho 22 endpoint. Bước tách câu hỏi chạy bằng heuristic (`Cau 1.`, `A.`…`D.`, `Answer:`) và mới thử trên đúng một file đúng khuôn — đề thật sai khuôn sẽ tách sai **âm thầm**, không ném lỗi. `worksheet_versions` (#28/#45) đã nối vào đường giao bài và chấm điểm nhưng **chưa có test** chứng minh sửa phiếu sau khi giao không đổi bài đã nộp. Cổng chặn biến đổi phân loại dạng toán bằng khớp chuỗi nên `sin(x)` lọt qua thành biểu thức bậc nhất khi đề hỏi hệ số — đã có test chốt, **chưa sửa**. `validate()` của engine chỉ kiểm hình dạng (đủ bốn phương án khác nhau) chứ không kiểm toán, nên `VALID` không đồng nghĩa đề đúng. `question_boundary_events` chỉ ghi, không có đường đọc |
 
 ## Chi tiết HT-05
 
@@ -586,6 +595,176 @@ sau này sinh ra dòng thừa do join hỏng thì test đỏ chứ không phải
 Ba tầng `z-index` cũng sai: ô góc, hàng tiêu đề và cột tên đều `sticky` nhưng không xếp hạng, nên
 khi cuộn chéo thì cột tên vẽ đè lên hàng tiêu đề ở một số trình duyệt. Bốn tầng rõ ràng: góc 30,
 tiêu đề cột 20, tiêu đề hàng 10, ô thường không đặt.
+
+## Chi tiết HT-96
+
+### Module này đã được code gần hết, và nằm ngoài git
+
+Khảo sát cây làm việc cho ra con số không đọc được từ bảng tiến độ: **7 migration tạo
+22 bảng, 7 controller mới mở 62 endpoint, và không có một dòng nào trong lịch sử git.** Mất máy là
+mất trắng, và schema đã commit không khớp code.
+
+Hai mươi hai bảng: 14 bảng chương trình (`program_schedules`, `exercise_types`, `videos`,
+`special_topics`, `program_resources`, `program_templates`, `program_template_chapters`,
+`course_instances`, `teacher_resources`, `resource_shares`, `submissions`, `submission_answers`,
+`submission_events`, `student_resource_progress`), 7 bảng xưởng nội dung giáo viên
+(`teacher_source_documents`, `document_blocks`, `extracted_questions`, `math_fragments`,
+`question_variants`, `worksheet_versions`, `document_templates`), và `worksheet_questions` —
+một bảng không ai đọc.
+
+### Vì sao mức C chứ không phải B
+
+Mức B nghĩa là "đủ migration + API + UI, chỉ thiếu test". Ở đây thiếu nhiều hơn thế:
+**20 trên 22 bảng không có entity JPA** — chỉ `ProgramSchedule` và `ExerciseType` có. Hai mươi bảng
+còn lại chỉ được chạm qua chuỗi SQL trong `JdbcTemplate`.
+
+Hệ quả không nằm ở chỗ "thiếu test": `ddl-auto=validate` — thứ đang canh cho 57 entity còn lại,
+và là thứ đã bắt được lệch schema ở HT-90 — **không canh được gì ở vùng này**. Gõ sai tên cột trong
+chuỗi SQL thì trình biên dịch im lặng, `validate` im lặng, và lỗi chỉ nổ khi có người dùng thật bấm
+vào. Sáu mươi hai endpoint chạy trên vùng không ai canh, nên luồng chưa gọi là khép kín được.
+
+### Lỗi đã bắt được: năm học thứ hai không xếp được lịch
+
+`V202608291000` tạo `uq_program_schedule_chapter on program_schedules(course_id, chapter_id)`.
+`V202608291300` thêm chỉ mục cho tầng khóa học **mà không gỡ chỉ mục cũ**, trong khi
+`ProgramDeliveryController.saveSchedule` ghi cả hai cột — và mọi khóa của cùng một mẫu đều mang
+chung một `course_id`.
+
+Nên khóa 2026/2027 xếp Chương 1 thì qua, khóa 2027/2028 **cùng mẫu** xếp Chương 1 thì vỡ ràng
+buộc. Tức là tách ba tầng ra rồi mà vẫn chỉ dùng được một năm — và lỗi im lặng suốt năm đầu, chạy
+thử bằng tay không bao giờ thấy.
+
+`LichKhoaHocTheoNamTest` dựng một mẫu, mở hai khóa, xếp lịch cho từng khóa. Dự tính viết ra trước
+khi chạy: *hỏng ở lượt xếp lịch thứ hai*. Thực tế khớp:
+
+```text
+PUT /api/admin/courses/2/schedule → 500
+duplicate key value violates unique constraint "uq_program_schedule_chapter"
+Tests run: 1, Failures: 1
+```
+
+Sửa bằng cách thu hẹp chỉ mục cũ về đúng phạm vi nó còn cần — các dòng legacy chưa gắn khóa học
+(`where deleted_at is null and course_instance_id is null`) — rồi chạy lại: `Tests run: 1,
+Failures: 0`. Cặp đỏ-rồi-xanh này chính là bằng chứng mutation, không cần đợt gỡ guard riêng.
+
+Lúc sửa, migration `V202608291300` còn chưa commit và **chưa chạy ở đâu**, kể cả staging, nên sửa được tại chỗ
+mà không cần migration vá.
+
+### Còn nợ, đã ghi thành quyết định trong kế hoạch
+
+- **Đ2 — chồng lịch: đã xuống tầng CSDL, nhưng bằng trigger.** `V202608291500` thêm
+  `program_schedule_no_overlap`, nên cả `ProgramScheduleController` (JPA) lẫn
+  `ProgramDeliveryController` đều phải đi qua. Hai điều còn lại: trigger đọc bằng `SELECT` thường
+  nên **hai giao dịch đồng thời vẫn lọt** (`exclude using gist` thì không có khe đó), và nó so mọi
+  cặp dòng cùng khóa chứ không so theo chương — tức **cấm dạy song song hai chương**. Đó là một
+  quyết định sư phạm đang nằm trong một trigger, chưa ai chốt và chưa có test nào nói là cố ý.
+- **Đ5 — `worksheet_questions` là bảng chết đã đổ sẵn dữ liệu sai.** `V202608291500` tạo bảng rồi
+  backfill từ `worksheet_items` với `question_type` đặt cứng `'FREE_RESPONSE'`, `answer_key` `NULL`,
+  `max_score` `1` — trong khi ngân hàng có cả trắc nghiệm, có đáp án, và `WorksheetScoring` chấm
+  theo trần điểm từng câu. Grep toàn repo ra **0 file đọc bảng này**, nên chưa hại ai; cái hại là
+  người mở CSDL lần sau thấy một bảng đầy dữ liệu trông như đã dùng được. Phải quyết **trước khi
+  commit**: bỏ bảng, hoặc giữ bảng nhưng bỏ backfill.
+- **Đ3 — `documents.content_group not null default 'REFERENCE'`** biến mọi tài liệu đang có (SGK,
+  đề thi, KHBD) thành "Tham khảo". Đó không phải "chưa phân loại", đó là **phân loại sai mà trông
+  như đã phân loại** — bộ lọc sẽ báo "0 tài liệu Lý thuyết" trong khi kho đầy tài liệu lý thuyết.
+- **`program_schedules.course_id` vẫn `not null`** dù suy được qua `course_instance_id`. Hai nguồn
+  sự thật cho cùng một dữ kiện là mời chúng lệch nhau.
+
+Kế hoạch đầy đủ, 20 lát và thứ tự làm, ở [`docs/ke-hoach-admin-chuong-trinh.md`](docs/ke-hoach-admin-chuong-trinh.md).
+
+## Chi tiết HT-97
+
+Module riêng, commit cùng đợt với HT-96 nhưng **không cùng phạm vi**: đây là xưởng soạn
+nội dung của giáo viên (tải file → tách khối → nhận diện câu hỏi → sinh biến thể → dựng phiếu),
+thuộc GĐ2/GĐ3 chứ không thuộc kế hoạch chương trình học.
+
+`TeacherContentPipelineTest` đi trọn một dây thật trên PostgreSQL nhúng: nộp file `.txt`, kiểm
+`document_blocks` và `math_fragments` có sinh ra, giáo viên khác gọi vào nhận **404**, duyệt câu,
+sinh biến thể `PARAMETER_CHANGE` rồi soi `validation_status = 'VALID'`, cuối cùng dựng phiếu và
+xác nhận `worksheet_items.content_snapshot` không rỗng. Một phép thử phủ được nhiều mắt xích là
+tốt cho việc chốt "dây có nối" — nhưng khi nó đỏ thì không chỉ ra được mắt xích nào hỏng, và
+17 endpoint thì còn 16 đường chưa đi.
+
+Chỗ mỏng nhất là **bước tách câu hỏi**: nó đọc `Cau 1.`, `A.`…`D.`, `Answer:`, `Solution:` bằng
+heuristic. Phép thử đang cho nó đúng một file đúng khuôn. Đề thật gõ bằng Word, chia hai cột, đánh
+số `Câu 1:` hay `Bài 1.`, công thức nằm trong ảnh — mỗi cái là một đường sai **âm thầm**: không
+ném lỗi, chỉ tách sai rồi ghi vào CSDL. Cần một bộ file mẫu thật trước khi tin con số
+`confidence`.
+
+`worksheet_versions` cũng nằm trong migration này và **đã nối thật** — `AssignmentController` chốt
+version lúc giao bài, `WorksheetAnswerKeys` nạp đáp án theo version, `StudentLearningController` và
+`AssignmentProgressController` đọc theo `worksheet_version_id`. Đây chính là #28/#45 (bản bất biến
+của phiếu). Nhưng **chưa có test cho điều nó sinh ra để làm**: sửa phiếu sau khi giao thì bài đã
+nộp có còn chấm theo bản gốc không. Một phép thử, chưa viết — nên chưa tính #28/#45 là xong.
+
+### Cổng chặn biến đổi tự động — đúng hướng, còn một lỗ
+
+`V202608291800` cộng `QuestionMathAnalysisService` dựng một **cổng chặn theo danh sách trắng**:
+chỉ cho phép biến đổi tự động khi *dạng toán* và *ý định câu hỏi* đều nhận diện được với độ tin cậy
+≥ 0.85, công thức parse được, cấu trúc câu đủ, **và** cặp (dạng, ý định) nằm trong bảng `compatible`.
+Không đạt thì `transformable=false` kèm lý do bằng tiếng Việt. Đây là thiết kế đúng: **sai thì đóng**,
+chứ không đoán bừa. `QuestionMathAnalysisServiceTest` phủ ba ca, trong đó có một ca bị chặn.
+
+Lỗ nằm ở chỗ `signature()` phân loại bằng khớp chuỗi chứ không parse:
+
+```java
+boolean quadratic = x.matches(".*x(?:\\^2|²).*"), linear = x.matches(".*x.*") && !quadratic;
+```
+
+"Có chữ `x` và không có `x^2`" thì gọi là **biểu thức bậc nhất**. Nên `sin(x)` ra
+`LINEAR_EXPRESSION` với confidence `.88` — chính test đang chốt hành vi này ở ca thứ ba. Ca đó
+không nổ vì ý định là `UNKNOWN` nên cổng chặn lại. Nhưng đổi đề bài một chữ:
+
+| Đề | signature | intent | Cổng |
+|---|---|---|---|
+| `Tính biểu thức sin(x)` | `LINEAR_EXPRESSION` .88 | `UNKNOWN` .20 | **chặn** (đúng) |
+| `Tìm hệ số của sin(x)` | `LINEAR_EXPRESSION` .88 | `IDENTIFY_COEFFICIENT` .90 | **cho qua** |
+
+Dòng thứ hai qua đủ năm điều kiện — `compatible` có cặp `LINEAR_EXPRESSION` × `IDENTIFY_COEFFICIENT`
+— nên câu lượng giác được đánh dấu `transformable=true`, `transform_level='LEVEL_2'`.
+
+**Đã dựng test, đã đỏ đúng chỗ dự đoán**: `QuestionTransformationEdgeCaseTest.trigonometryPassesGateThenEngineRefuses`
+chốt cả bốn bước trên. Nhưng nó cũng cho thấy **thiệt hại nhỏ hơn tôi viết ban đầu**: engine
+`generate()` phân nhánh theo `math_signature`, và `LINEAR_EXPRESSION` không có nhánh nào, nên rơi
+vào `default -> throw new BusinessException("Dạng toán chưa có rule biến đổi")`. Tức là máy **không**
+sinh ra biến thể lượng giác sai — nó ném lỗi. Hại thật sự chỉ là: giao diện báo câu đó "đủ điều
+kiện biến đổi" (sai), giáo viên bấm thì thất bại, và trong biến đổi hàng loạt nó cộng vào cột
+thất bại mà không rõ vì sao. Phiền, không phải hỏng dữ liệu. Tôi đã sửa lại câu này — bản trước
+tôi viết là "an toàn để máy tự sinh biến thể", nói quá mức nguy hiểm.
+
+Cách sửa rẻ nhất vẫn như cũ: bắt `linear` phải là *chỉ* gồm ký tự của biểu thức đa thức, thay vì
+chỉ cần chứa `x`; mọi thứ khác rơi về `UNSUPPORTED`. Cùng lỗ này còn ăn cả `\max`, `\exp`,
+`\text{...}` — bất cứ lệnh LaTeX nào có chữ `x`. **Chưa sửa**: quyết định cái gì được tính là "toán
+hỗ trợ được" là quyết định thiết kế của người sở hữu module, không phải việc vá lén trong lúc đi
+ngang.
+
+### Lỗi phương án nhiễu bịa ra — đã sửa
+
+`QuestionTransformationEdgeCaseTest.zeroAnswerStillGivesFourRealDistractors` và
+`zeroVertexStillGivesFourRealDistractors` chốt lỗi thứ hai, nặng hơn vì nó **tới tận mắt học sinh**.
+Bộ sinh phương án cũ lấy đúng bốn ứng viên rồi khử trùng lặp; hết thì chắp chuỗi cho đủ bốn:
+
+```java
+while(unique.size()<4) unique.add(a+" + "+n++);
+```
+
+Khi đáp án bằng 0 thì `"x = 0"` và `"x = -0"` là một, còn ba, nên phương án thứ tư sinh ra là
+`"x = 0 + 1"`. Đỉnh `(0, 0)` là ca tệ nhất: cả bốn ứng viên rút về một chuỗi, ba phương án còn lại
+đều là rác. Và `validate()` vẫn đóng dấu **VALID**, vì nó chỉ đếm "bốn chuỗi có khác nhau không" —
+nó kiểm *hình dạng*, không kiểm *toán*.
+
+Sửa: mỗi hàm sinh phương án nay đưa 6–7 ứng viên có nghĩa (thêm `correct±1`, `correct±2`, lệch từng
+toạ độ), lấy bốn cái khác nhau đầu tiên; **hết ứng viên thì trả map rỗng** để `validate()` đánh
+INVALID. Thà không sinh được biến thể còn hơn sinh ra phương án bịa rồi đưa cho học sinh chọn.
+
+Ghi lại một giới hạn để khỏi đọc nhầm về sau: `validation_status='VALID'` **không** có nghĩa là đề
+và đáp án đúng toán. Nó chỉ nói: có nội dung, có đáp án, đúng bốn phương án khác nhau, đáp án nằm
+trong đó. Đúng toán là do công thức sinh đảm bảo, không do khâu kiểm này.
+
+Cần đọc thêm một điều về con số "40/40 biến thể VALID": `QuestionTransformationServiceTest` ghi
+thẳng `math_signature`/`transformable` vào CSDL bằng SQL, nên nó **không đi qua** cổng chặn
+`QuestionMathAnalysisService`. 40/40 chứng minh engine sinh đúng khi đã biết dạng toán; nó không
+chứng minh được hệ thống nhận dạng đúng dạng toán. Hai chuyện khác nhau.
 
 ## Việc vận hành còn nợ
 
