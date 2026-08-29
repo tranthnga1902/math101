@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  getCurrentProgramChapter,
+  getProgramChaptersByTime,
   getMyCourses,
   type AuthSession,
   type StudentCourse,
@@ -10,6 +12,7 @@ import { flattenLessons, formatPercent } from "./format";
 type LessonsPageProps = {
   session: AuthSession;
   onOpenLesson: (lessonId: number) => void;
+  onOpenChapter: (course: StudentCourse, chapterId: number) => void;
 };
 
 function ChapterProgress({
@@ -41,7 +44,7 @@ function ChapterProgress({
   );
 }
 
-export function LessonsPage({ session, onOpenLesson }: LessonsPageProps) {
+export function LessonsPage({ session, onOpenLesson, onOpenChapter }: LessonsPageProps) {
   const { data, error } = useQuery({
     queryKey: ["student-courses", session.userId],
     queryFn: () => getMyCourses(session),
@@ -50,6 +53,18 @@ export function LessonsPage({ session, onOpenLesson }: LessonsPageProps) {
   const [activeCourseId, setActiveCourseId] = useState<number | null>(courses[0]?.id ?? null);
 
   const activeCourse = courses.find((course) => course.id === activeCourseId) ?? courses[0];
+  const current = useQuery({
+    queryKey: ["current-program-chapter", activeCourse?.id],
+    queryFn: () => getCurrentProgramChapter(session, activeCourse!.id),
+    enabled: !!activeCourse,
+  });
+  const timedChapters = useQuery({
+    queryKey: ["program-chapters-by-time", activeCourse?.id],
+    queryFn: () => getProgramChaptersByTime(session, activeCourse!.id),
+    enabled: !!activeCourse,
+  });
+  const [timeGroup, setTimeGroup] = useState<"CURRENT" | "UPCOMING" | "PAST" | "ALL">("CURRENT");
+  const visibleChapterIds = useMemo(() => new Set((timedChapters.data ?? []).filter((row) => timeGroup === "ALL" || row.time_group === timeGroup).map((row) => row.chapter_id)), [timedChapters.data, timeGroup]);
 
   if (error) {
     return (
@@ -93,14 +108,41 @@ export function LessonsPage({ session, onOpenLesson }: LessonsPageProps) {
       </aside>
 
       <section className="md:col-span-8 lg:col-span-9 space-y-5">
+        {current.data && (
+          <section className="rounded-xl border border-primary/25 bg-primary-container p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-on-primary-container">Đang học theo chương trình</p>
+                <h2 className="mt-1 text-xl font-bold text-on-primary-container">
+                  Chương {current.data.chapterOrder}: {current.data.chapterTitle}
+                </h2>
+                <p className="mt-1 text-sm text-on-primary-container/80">
+                  {new Date(`${current.data.startsOn}T00:00:00`).toLocaleDateString("vi-VN")} – {new Date(`${current.data.endsOn}T00:00:00`).toLocaleDateString("vi-VN")}
+                </p>
+              </div>
+              <span className="material-symbols-outlined text-4xl text-primary" aria-hidden="true">calendar_month</span>
+            </div>
+          </section>
+        )}
+        {!current.isLoading && !current.data && activeCourse && (
+          <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
+            Chương trình chưa thiết lập chương hiện hành cho hôm nay. Em vẫn có thể xem toàn bộ mục lục bên dưới.
+          </section>
+        )}
         {activeCourse && <ChapterProgress course={activeCourse} onOpenLesson={onOpenLesson} />}
         {activeCourse && (
           <div className="space-y-3">
-            {activeCourse.chapters.map((chapter) => (
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Lọc chương theo thời gian">
+              {([['CURRENT','Đang học'],['UPCOMING','Sắp học'],['PAST','Đã học'],['ALL','Toàn bộ']] as const).map(([key,label]) => (
+                <button key={key} type="button" role="tab" aria-selected={timeGroup===key} onClick={() => setTimeGroup(key)}
+                  className={`h-9 rounded-lg px-4 text-sm font-medium ${timeGroup===key ? "bg-primary text-on-primary" : "border border-outline-variant bg-surface-container-lowest text-on-surface-variant"}`}>{label}</button>
+              ))}
+            </div>
+            {activeCourse.chapters.filter((chapter) => timeGroup === "ALL" || visibleChapterIds.has(chapter.id)).map((chapter) => (
               <details
                 key={chapter.id}
                 className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden"
-                open
+                open={current.data ? chapter.id === current.data.chapterId : chapter.orderIndex === 1}
               >
                 <summary className="cursor-pointer p-4 flex items-center justify-between">
                   <div>
@@ -111,6 +153,7 @@ export function LessonsPage({ session, onOpenLesson }: LessonsPageProps) {
                     expand_more
                   </span>
                 </summary>
+                <div className="border-t border-outline-variant/50 px-4 py-2 text-right"><button type="button" onClick={()=>onOpenChapter(activeCourse,chapter.id)} className="text-sm font-medium text-primary">Xem chi tiết chương →</button></div>
                 <ul className="divide-y divide-outline-variant/50">
                   {chapter.lessons.map((lesson) => {
                     const done = lesson.completionPercent >= 100 || !!lesson.completedAt;
@@ -148,6 +191,9 @@ export function LessonsPage({ session, onOpenLesson }: LessonsPageProps) {
                 </ul>
               </details>
             ))}
+            {timeGroup !== "ALL" && !activeCourse.chapters.some((chapter) => visibleChapterIds.has(chapter.id)) && (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">Chưa có chương trong nhóm này.</div>
+            )}
           </div>
         )}
       </section>

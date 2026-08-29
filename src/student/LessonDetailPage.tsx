@@ -5,6 +5,7 @@ import "katex/dist/katex.min.css";
 import {
   getLessonDocumentQuestions,
   getLessonDocuments,
+  getSharedTeacherResources,
   getMyCourses,
   markLessonProgress,
   openLessonDocumentFile,
@@ -54,6 +55,7 @@ export function LessonDetailPage({
     queryFn: () => getLessonDocuments(session, lessonId),
     enabled: Boolean(ctx),
   });
+  const teacherResources = useQuery({queryKey:["student-teacher-resources",lessonId],queryFn:()=>getSharedTeacherResources(session,lessonId),enabled:Boolean(ctx)});
 
   const [docQuestions, setDocQuestions] = useState<Record<number, LessonDocumentQuestion[]>>({});
   const [docAnswers, setDocAnswers] = useState<Record<number, Record<number, string>>>({});
@@ -304,6 +306,15 @@ export function LessonDetailPage({
                 </article>
               );
             })}
+          </section>
+        )}
+
+        {!!teacherResources.data?.length && (
+          <section className="border-t border-outline-variant pt-6 space-y-3">
+            <div><p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Bổ sung, không thuộc nội dung chuẩn</p><h2 className="mt-1 text-lg font-semibold">Từ giáo viên của em</h2></div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {teacherResources.data.map(resource=><article key={resource.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-4"><p className="text-xs text-on-surface-variant">{resource.teacher_name} · {resource.class_name}</p><h3 className="mt-1 font-semibold">{resource.title}</h3>{resource.description&&<p className="mt-1 text-sm text-on-surface-variant">{resource.description}</p>}{resource.external_url&&<a className="mt-3 inline-flex text-sm font-medium text-primary hover:underline" href={resource.external_url} target="_blank" rel="noreferrer">Mở học liệu</a>}</article>)}
+            </div>
           </section>
         )}
 

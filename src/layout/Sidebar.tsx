@@ -23,6 +23,7 @@ const MAIN_NAV: NavItem[] = [
   { id: "teacher-overview", icon: Home, label: "Trang chủ" },
   { id: "teacher-content", icon: BookOpen, label: "Nội dung học" },
   { id: "teacher-documents", icon: FileText, label: "Tài liệu của tôi" },
+  { id: "teacher-pipeline", icon: Calculator, label: "Tạo phiếu từ file" },
   { id: "teacher-worksheets", icon: FileText, label: "Phiếu và đề" },
   { id: "teacher-tasks", icon: ClipboardList, label: "Nhiệm vụ" },
   { id: "teacher-grading", icon: ClipboardCheck, label: "Chấm bài" },

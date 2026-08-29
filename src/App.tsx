@@ -17,6 +17,7 @@ import { TeacherDocumentLibrary } from "./teacher/TeacherDocumentLibrary";
 import { TaxonomyBrowser } from "./teacher/TaxonomyBrowser";
 import { TeacherSubmissionView } from "./teacher/TeacherSubmissionView";
 import { TeacherWorksheetView } from "./teacher/TeacherWorksheetView";
+import { TeacherContentPipeline } from "./teacher/TeacherContentPipeline";
 import { TeacherTaskView } from "./teacher/TeacherTaskView";
 import { TeacherOperationsView } from "./teacher/TeacherOperationsView";
 import { TeacherClassManager } from "./teacher/TeacherClassManager";
@@ -254,6 +255,7 @@ function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSe
   ["overview","Tổng quan",Home],
   ["users","Tài khoản",UserRound],
   ["classes","Lớp học",CheckCircle],
+  ["programs","Chương trình",BookOpenCheck],
   ["textbooks","Sách giáo khoa",GraduationCap],
   ["documents","Tài liệu",FileText],
   ["topics","Chuyên đề",ClipboardList],
@@ -308,6 +310,7 @@ function AdminDashboard({session,activeSection}:{session:AuthSession;activeSecti
       {activeSection==="documents"&&<DocumentManagement session={session}/>} 
       {activeSection==="topics"&&<TaxonomyManagement session={session}/>} 
       {activeSection==="classes"&&<AdminClasses session={session}/>} 
+      {activeSection==="programs"&&<><PageHeading eyebrow="NỘI DUNG HỆ THỐNG" title="Chương trình học" text="Quản trị cây chương, bài học và thứ tự nội dung dùng chung."/><CurriculumWorkspace session={session} metadata={metadata}/></>}
       {activeSection==="audit"&&<AuditManagement session={session}/>} 
       {activeSection==="settings"&&<AdminSystemSettings session={session} metadata={metadata}/>}
   </div>;
@@ -1070,6 +1073,7 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
         <div id="teacher-worksheets" data-teacher-section data-search="Phiếu bài tập Worksheets" className="section-anchor" />
         <TeacherWorksheetView session={session} classes={classes}/>
       </>}
+      {activeSection === "teacher-pipeline" && <TeacherContentPipeline session={session}/>}
 
       {activeSection === "teacher-textbooks" && <>
         <div id="teacher-textbooks" data-teacher-section data-search="Sách giáo khoa" className="section-anchor" />

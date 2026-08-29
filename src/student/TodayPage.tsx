@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  getCurrentProgramChapter,
   getMyAssignments,
   getMyCourses,
   getStudentProgress,
@@ -171,6 +172,12 @@ export function TodayPage({
     queryKey: ["student-progress", session.userId],
     queryFn: () => getStudentProgress(session),
   });
+  const firstCourse = courses.data?.[0];
+  const currentChapter = useQuery({
+    queryKey: ["current-program-chapter", firstCourse?.id],
+    queryFn: () => getCurrentProgramChapter(session, firstCourse!.id),
+    enabled: !!firstCourse,
+  });
 
   const pending = (assignments.data ?? []).filter((item) => item.progressStatus !== "COMPLETED").slice(0, 3);
   const recent = (assignments.data ?? []).filter((item) => item.gradingStatus === "RETURNED" && item.score!=null).slice(0, 2);
@@ -179,11 +186,31 @@ export function TodayPage({
     <div className="space-y-6">
       {courses.error && <ErrorBox message={(courses.error as Error).message} />}
       {assignments.error && <ErrorBox message={(assignments.error as Error).message} />}
-      <ContinueBanner
+      {currentChapter.data && (
+        <section className="rounded-xl border border-primary/25 bg-primary-container p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-on-primary-container">Chương trình hiện tại</p>
+            <h2 className="mt-1 text-xl font-bold text-on-primary-container">Chương {currentChapter.data.chapterOrder}: {currentChapter.data.chapterTitle}</h2>
+            <p className="mt-1 text-sm text-on-primary-container/80">Tất cả học sinh học theo cùng lịch chương trình này.</p>
+          </div>
+          <button type="button" onClick={() => {
+            const chapter = courses.data?.flatMap((course) => course.chapters).find((item) => item.id === currentChapter.data?.chapterId);
+            const lesson = chapter?.lessons.find((item) => !item.locked) ?? chapter?.lessons[0];
+            if (lesson) onOpenLesson(lesson.id);
+          }} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary disabled:opacity-50"
+            disabled={!courses.data?.flatMap((course) => course.chapters).find((item) => item.id === currentChapter.data?.chapterId)?.lessons.length}>
+            Vào chương đang học
+          </button>
+        </section>
+      )}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-on-surface-variant">Tiến độ cá nhân</p>
+        <ContinueBanner
         courses={courses.data ?? []}
         progress={progress.data ?? []}
         onOpenLesson={onOpenLesson}
-      />
+        />
+      </div>
 
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-4">

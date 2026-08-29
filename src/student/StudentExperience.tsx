@@ -18,6 +18,7 @@ import {
   type AuthSession,
   type Chapter,
   type Course,
+  type StudentCourse,
   type DocumentItem,
   type LastPosition,
   type TaxonomyNode,
@@ -34,6 +35,8 @@ import { AssignmentsPage } from "./AssignmentsPage";
 import { WorksheetRunner } from "./WorksheetRunner";
 import { avatarInitials, buildGreeting, formatPercent } from "./format";
 import { AuthedImage } from "../lib/authedImage";
+import { ProgramResourcePage } from "./ProgramResourcePage";
+import { ChapterDetailPage } from "./ChapterDetailPage";
 
 type StudentExperienceProps = {
   session: AuthSession;
@@ -43,6 +46,7 @@ type StudentExperienceProps = {
 type Route =
   | { kind: "tab"; tab: StudentTab }
   | { kind: "lesson"; lessonId: number }
+  | { kind: "chapter"; course: StudentCourse; chapterId: number }
   | { kind: "worksheet"; assignmentId: number };
 
 // App không dùng react-router nên "vị trí" là chính state Route này, không phải URL. Khóa logic
@@ -52,6 +56,7 @@ const routeKey = (route: Route) => `student/${route.kind}`;
 const routeContext = (route: Route): Record<string, unknown> =>
   route.kind === "tab" ? { tab: route.tab }
     : route.kind === "lesson" ? { lessonId: route.lessonId }
+      : route.kind === "chapter" ? { courseId: route.course.id, chapterId: route.chapterId }
       : { assignmentId: route.assignmentId };
 
 /** Chỉ dựng lại bài học và phiếu đang dở; quay về một cái tab thì chẳng đáng gọi là "học tiếp". */
@@ -451,7 +456,7 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [resume, setResume] = useState<Route | null>(null);
 
-  const tab: StudentTab = route.kind === "tab" ? route.tab : route.kind === "lesson" ? "lessons" : "assignments";
+  const tab: StudentTab = route.kind === "tab" ? route.tab : route.kind === "lesson" || route.kind === "chapter" ? "lessons" : "assignments";
 
   const openLesson = (lessonId: number) => setRoute({ kind: "lesson", lessonId });
   const openWorksheet = (assignmentId: number) => setRoute({ kind: "worksheet", assignmentId });
@@ -502,6 +507,8 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
       )}
       {route.kind === "lesson" ? (
         <LessonDetailPage session={session} lessonId={route.lessonId} onBack={() => goTab("lessons")} onOpenLesson={openLesson} />
+      ) : route.kind === "chapter" ? (
+        <ChapterDetailPage session={session} course={route.course} chapterId={route.chapterId} onBack={() => goTab("lessons")} onOpenLesson={openLesson} />
       ) : route.kind === "worksheet" ? (
         <WorksheetRunner session={session} assignmentId={route.assignmentId} onBack={() => goTab("assignments")} />
       ) : route.tab === "today" ? (
@@ -509,17 +516,19 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
       ) : route.tab === "classes" ? (
         <MyClassesPage session={session} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} />
       ) : route.tab === "lessons" ? (
-        <LessonsPage session={session} onOpenLesson={openLesson} />
+        <LessonsPage session={session} onOpenLesson={openLesson} onOpenChapter={(course,chapterId)=>setRoute({kind:"chapter",course,chapterId})} />
       ) : route.tab === "videos" ? (
-        <VideosTab session={session} />
+        <ProgramResourcePage session={session} type="VIDEO" />
       ) : route.tab === "assignments" ? (
         <AssignmentsPage session={session} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} />
       ) : route.tab === "textbooks" ? (
         <TextbooksTab session={session} />
       ) : route.tab === "materials" ? (
-        <MaterialsTab session={session} mode="materials" />
+        <ProgramResourcePage session={session} type="DOCUMENT" />
+      ) : route.tab === "exercises" ? (
+        <ProgramResourcePage session={session} type="EXERCISE" />
       ) : route.tab === "topics" ? (
-        <StudentTopicsTab session={session} />
+        <ProgramResourcePage session={session} type="SPECIAL_TOPIC" />
       ) : (
         <ProfileTab session={session} onChangePassword={() => setPasswordOpen(true)} onLogout={onLogout} />
       )}
