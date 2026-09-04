@@ -124,7 +124,11 @@ class PermissionMatrixTest {
             O.chiQuanTri(HttpMethod.GET, "/api/admin/program-templates"),
             O.chiQuanTri(HttpMethod.GET, "/api/admin/course-instances"),
             O.chiQuanTri(HttpMethod.GET, "/api/admin/videos"),
-            O.chiQuanTri(HttpMethod.GET, "/api/admin/special-topics"),
+            O.chiQuanTri(HttpMethod.POST, "/api/admin/videos"),
+            O.chiQuanTri(HttpMethod.PUT, "/api/admin/videos/999999"),
+            O.chiQuanTri(HttpMethod.DELETE, "/api/admin/videos/999999"),
+            // /api/admin/special-topics đã gỡ cùng bảng của nó; chuyên đề nay đi qua
+            // /api/admin/taxonomy, đã có hai hàng ở trên canh.
             O.chiQuanTri(HttpMethod.GET, "/api/users"),
             O.chiQuanTri(HttpMethod.DELETE, "/api/users/999999"),
 
@@ -162,6 +166,7 @@ class PermissionMatrixTest {
             O.daDangNhap(HttpMethod.GET, "/api/program-schedules/current?courseId=999999"),
             O.daDangNhap(HttpMethod.GET, "/api/programs"),
             O.daDangNhap(HttpMethod.GET, "/api/programs/999999/resources"),
+            O.daDangNhap(HttpMethod.GET, "/api/lessons/999999/program-resources"),
             // Không có @PreAuthorize; chỉ dựa vào anyRequest().authenticated() của chuỗi lọc.
             O.daDangNhap(HttpMethod.POST, "/api/auth/change-password"),
 

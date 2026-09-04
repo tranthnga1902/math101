@@ -18,6 +18,7 @@ public class ClassCourse extends BaseEntity {
     @Column(name = "class_id", nullable = false)
     private Long classId;
 
-    @Column(name = "course_id", nullable = false)
-    private Long courseId;
+    /** Khóa (course_instances), không phải chương trình: lịch dạy của lớp nằm ở khóa. */
+    @Column(name = "course_instance_id", nullable = false)
+    private Long courseInstanceId;
 }

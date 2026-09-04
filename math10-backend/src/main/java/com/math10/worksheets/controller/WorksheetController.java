@@ -29,6 +29,7 @@ import java.util.*;
 public class WorksheetController {
  private final WorksheetRepository worksheets; private final WorksheetItemRepository items; private final ProblemRepository problems; private final ProblemTypeRepository problemTypes; private final CurrentUserService current;
  private final LessonRepository lessons; private final ChapterRepository chapters; private final SecurityService security;
+ private final org.springframework.jdbc.core.JdbcTemplate jdbc;
  private final DocxWorksheetParser docxParser;
  private final PdfWorksheetParser pdfParser;
  @GetMapping public ApiResponse<List<Response>> list(){List<Worksheet> rows="ADMIN".equals(current.requireRoleCode())?worksheets.findAll():worksheets.findByCreatedByOrderByCreatedAtDesc(current.requireUserId());return ApiResponse.ok("Danh sách phiếu bài tập",rows.stream().map(this::map).toList());}
@@ -46,10 +47,68 @@ public class WorksheetController {
  @DeleteMapping("/{id}") @Transactional public ApiResponse<Void> delete(@PathVariable Long id){owned(id).markDeleted();items.findByWorksheetIdOrderByOrderIndex(id).forEach(WorksheetItem::markDeleted);return ApiResponse.noContent("Xóa phiếu bài tập");}
  @PatchMapping("/{id}/lesson") @Transactional public ApiResponse<Response> attachLesson(@PathVariable Long id,@RequestBody LessonAttachmentRequest request){Worksheet worksheet=owned(id);if(request.lessonId()!=null){Lesson lesson=lessons.findById(request.lessonId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài học"));var chapter=chapters.findById(lesson.getChapterId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy chương"));security.checkCourseOwnership(chapter.getCourseId());}worksheet.setLessonId(request.lessonId());return ApiResponse.ok(request.lessonId()==null?"Đã gỡ phiếu khỏi bài học":"Đã gắn phiếu vào bài học",map(worksheet));}
  private Worksheet owned(Long id){Worksheet w=worksheets.findById(id).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy phiếu bài tập"));if(!"ADMIN".equals(current.requireRoleCode())&&!w.getCreatedBy().equals(current.requireUserId()))throw new AccessDeniedException("Không có quyền truy cập phiếu bài tập");return w;}
- private Worksheet editable(Long id){Worksheet w=owned(id);if(!"DRAFT".equals(w.getStatus()))throw new BusinessException("Phiếu đã phát hành; hãy nhân bản để tạo phiên bản mới");return w;}
+ /**
+  * Chỉ bản nháp mới sửa được — và câu từ chối phải nói ra hậu quả, không chỉ nói "không được".
+  *
+  * <p>Phiếu đã phát hành là phiếu có thể đang nằm trong bài của ai đó. Sửa nó không hỏng dữ liệu,
+  * nó làm một việc tệ hơn: đề của bài đã nộp đổi sau lưng, và bảng chấm so bài cũ với đáp án mới.
+  * Nên chỗ này đếm luôn số bài giao đang dùng phiếu, để người đọc biết mình đang suýt đụng vào gì.
+  */
+ private Worksheet editable(Long id){Worksheet w=owned(id);
+  if("DRAFT".equals(w.getStatus()))return w;
+  long soBai=jdbc.queryForObject("select count(*) from assignments where worksheet_id=? and deleted_at is null",Long.class,id);
+  throw new BusinessException(soBai==0
+   ?"Phiếu đã phát hành; hãy nhân bản để tạo phiên bản mới"
+   :"Phiếu đã phát hành và đang dùng ở "+soBai+" bài giao; hãy nhân bản để tạo phiên bản mới");}
+ /**
+  * Sửa phiếu này thì đụng tới ai: danh sách bài giao, số học sinh đã nộp ở mỗi bài.
+  *
+  * <p>Có cửa này thì câu từ chối ở trên không phải ngõ cụt — giáo viên xem được cái giá trước khi
+  * chọn giữa nhân bản và sửa hẹp một câu.
+  */
+ @GetMapping("/{id}/anh-huong") public ApiResponse<List<Map<String,Object>>> anhHuong(@PathVariable Long id){
+  owned(id);
+  return ApiResponse.ok("Ảnh hưởng của phiếu",jdbc.queryForList("""
+    select a.id assignment_id,a.title,a.class_id,c.name class_name,a.status,a.open_at,a.due_at,
+           (select count(*) from assignment_progress ap
+             where ap.assignment_id=a.id and ap.submitted_at is not null and ap.deleted_at is null) so_da_nop
+    from assignments a left join classes c on c.id=a.class_id and c.deleted_at is null
+    where a.worksheet_id=? and a.deleted_at is null order by a.created_at desc""",id));}
+ /**
+  * Ngoại lệ hẹp: sửa chữ và đáp án của <b>một câu</b> trên phiếu đã phát hành.
+  *
+  * <p>Lỗi chính tả trong đề hay đáp án gõ nhầm là chuyện có thật, và bắt nhân bản cả phiếu chỉ vì
+  * một dấu hỏi là cách để không ai sửa gì cả. Nhưng cửa này cố tình <em>không</em> cho thêm, bớt
+  * hay đổi thứ tự câu: bài đã nộp đối chiếu theo vị trí câu, nên đổi cấu trúc là làm hỏng mọi bài
+  * nộp cũ, còn sửa chữ của một câu thì chỉ cần chấm lại.
+  *
+  * <p>Trả về {@code soBaiCanChamLai} chứ không tự chấm lại: chấm lại là thao tác thấy được của
+  * giáo viên, làm lén thì điểm đổi mà không ai biết vì sao.
+  */
+ @PatchMapping("/items/{itemId}") @Transactional
+ public ApiResponse<Map<String,Object>> suaCauHep(@PathVariable Long itemId,@RequestBody SuaCauRequest r){
+  WorksheetItem item=items.findById(itemId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy câu trong phiếu"));
+  owned(item.getWorksheetId());
+  if(item.getContentSnapshot()==null)throw new BusinessException("Câu này lấy thẳng từ ngân hàng bài; sửa ở ngân hàng hoặc nhân bản phiếu");
+  if(r.contentSnapshot()!=null)item.setContentSnapshot(r.contentSnapshot());
+  if(r.optionASnapshot()!=null)item.setOptionASnapshot(r.optionASnapshot());
+  if(r.optionBSnapshot()!=null)item.setOptionBSnapshot(r.optionBSnapshot());
+  if(r.optionCSnapshot()!=null)item.setOptionCSnapshot(r.optionCSnapshot());
+  if(r.optionDSnapshot()!=null)item.setOptionDSnapshot(r.optionDSnapshot());
+  boolean doiDapAn=r.answerSnapshot()!=null&&!r.answerSnapshot().equals(item.getAnswerSnapshot());
+  if(r.answerSnapshot()!=null)item.setAnswerSnapshot(r.answerSnapshot());
+  if(r.solutionSnapshot()!=null)item.setSolutionSnapshot(r.solutionSnapshot());
+  // Sửa chữ thì bài cũ vẫn chấm đúng; đổi đáp án mới là lúc điểm cũ thành sai.
+  long canChamLai=!doiDapAn?0L:jdbc.queryForObject("""
+    select count(*) from assignment_progress ap join assignments a on a.id=ap.assignment_id and a.deleted_at is null
+    where a.worksheet_id=? and ap.submitted_at is not null and ap.deleted_at is null""",Long.class,item.getWorksheetId());
+  return ApiResponse.ok("Đã sửa câu",Map.of("worksheetId",item.getWorksheetId(),"soBaiCanChamLai",canChamLai));}
+ /** Chỉ nội dung một câu; rỗng nghĩa là giữ nguyên. Không có trường nào đổi được cấu trúc phiếu. */
+ public record SuaCauRequest(String contentSnapshot,String optionASnapshot,String optionBSnapshot,
+   String optionCSnapshot,String optionDSnapshot,String answerSnapshot,String solutionSnapshot){}
  private void apply(Worksheet w,Request r){w.setName(r.name());w.setColumnsCount(r.columnsCount());w.setShowQr(r.showQr());w.setShowStudentFields(r.showStudentFields());}
  private void replaceItems(Long id,List<Long> problemIds){items.findByWorksheetIdOrderByOrderIndex(id).forEach(WorksheetItem::markDeleted);items.flush();int order=1;for(Long problemId:problemIds){Problem problem=problems.findById(problemId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài toán #"+problemId));if(!"PRACTICE".equals(problem.getProblemKind()))throw new BusinessException("Phiếu bài tập chỉ được chứa bài PRACTICE");WorksheetItem x=new WorksheetItem();x.setWorksheetId(id);x.setProblemId(problemId);x.setOrderIndex(order++);items.save(x);}}
  private String nextImportCode(int index){String base="IMP"+System.currentTimeMillis()+"-"+index;String code=base.length()>30?base.substring(0,30):base;while(problems.existsByPublicCode(code))code=("IMP"+UUID.randomUUID().toString().replace("-","")).substring(0,30);return code;}
- private Response map(Worksheet w){List<Item> rows=items.findByWorksheetIdOrderByOrderIndex(w.getId()).stream().map(x->{Problem p=problems.findById(x.getProblemId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài toán"));return new Item(x.getId(),p.getId(),x.getOrderIndex(),p.getPublicCode(),p.getQrSlug(),p.getStatementLatex(),p.getDifficulty());}).toList();return new Response(w.getId(),w.getName(),w.getColumnsCount(),w.getShowQr(),w.getShowStudentFields(),w.getCreatedBy(),w.getLessonId(),rows);}
+ private Response map(Worksheet w){List<Item> rows=items.findByWorksheetIdOrderByOrderIndex(w.getId()).stream().map(x->{Problem p=problems.findById(x.getProblemId()).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy bài toán"));return new Item(x.getId(),p.getId(),x.getOrderIndex(),p.getPublicCode(),p.getQrSlug(),p.getStatementLatex(),p.getDifficulty(),x.getContentSnapshot(),x.getAnswerSnapshot());}).toList();return new Response(w.getId(),w.getName(),w.getColumnsCount(),w.getShowQr(),w.getShowStudentFields(),w.getCreatedBy(),w.getLessonId(),w.getStatus(),rows);}
  public record LessonAttachmentRequest(Long lessonId){}
 }

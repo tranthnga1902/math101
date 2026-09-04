@@ -10,7 +10,7 @@ import {
   type StudentAssignment,
   type StudentCourse,
 } from "../api";
-import { assignmentKind, dueDateLabel, flattenLessons, formatPercent } from "./format";
+import { assignmentKind, dueDateLabel, flattenLessons, formatPercent, ngayDiHocLai } from "./format";
 
 type TodayPageProps = {
   session: AuthSession;
@@ -187,11 +187,25 @@ export function TodayPage({
       {courses.error && <ErrorBox message={(courses.error as Error).message} />}
       {assignments.error && <ErrorBox message={(assignments.error as Error).message} />}
       {currentChapter.data && (
-        <section className="rounded-xl border border-primary/25 bg-primary-container p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-on-primary-container">Chương trình hiện tại</p>
-            <h2 className="mt-1 text-xl font-bold text-on-primary-container">Chương {currentChapter.data.chapterOrder}: {currentChapter.data.chapterTitle}</h2>
-            <p className="mt-1 text-sm text-on-primary-container/80">Tất cả học sinh học theo cùng lịch chương trình này.</p>
+        /* Ngày nghỉ phải nhìn ra ngay là ngày nghỉ. Vẫn tô màu "đang học" và vẫn chỉ vào Chương 5
+           thì học sinh mở sách ra học mùng ba Tết — đúng cái mà bảng kỳ nghỉ sinh ra để chặn. */
+        <section className={`rounded-xl border p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${currentChapter.data.onBreak ? "border-outline-variant bg-surface-container-lowest" : "border-primary/25 bg-primary-container"}`}>
+          <div className={currentChapter.data.onBreak ? "text-on-surface" : "text-on-primary-container"}>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em]">{currentChapter.data.onBreak ? "Đang nghỉ" : "Chương trình hiện tại"}</p>
+            {currentChapter.data.onBreak ? (
+              <>
+                <h2 className="mt-1 text-xl font-bold">{currentChapter.data.breakReason ?? "Kỳ nghỉ"}</h2>
+                <p className="mt-1 text-sm opacity-80">
+                  {currentChapter.data.breakEndsOn && <>Học lại từ {ngayDiHocLai(currentChapter.data.breakEndsOn)}. </>}
+                  {currentChapter.data.chapterTitle && <>Học tiếp Chương {currentChapter.data.chapterOrder}: {currentChapter.data.chapterTitle}.</>}
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="mt-1 text-xl font-bold">Chương {currentChapter.data.chapterOrder}: {currentChapter.data.chapterTitle}</h2>
+                <p className="mt-1 text-sm opacity-80">Tất cả học sinh học theo cùng lịch chương trình này.</p>
+              </>
+            )}
           </div>
           <button type="button" onClick={() => {
             const chapter = courses.data?.flatMap((course) => course.chapters).find((item) => item.id === currentChapter.data?.chapterId);
@@ -199,7 +213,7 @@ export function TodayPage({
             if (lesson) onOpenLesson(lesson.id);
           }} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-on-primary disabled:opacity-50"
             disabled={!courses.data?.flatMap((course) => course.chapters).find((item) => item.id === currentChapter.data?.chapterId)?.lessons.length}>
-            Vào chương đang học
+            {currentChapter.data.onBreak ? "Xem trước bài" : "Vào chương đang học"}
           </button>
         </section>
       )}

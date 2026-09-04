@@ -28,11 +28,20 @@ public final class AssignmentWindow {
         // Mọi trạng thái không phải PUBLISHED (COMPLETED, ARCHIVED, …) đều coi là đã đóng:
         // thà chặn nhầm một trạng thái lạ còn hơn mở nhầm.
         if (!"PUBLISHED".equalsIgnoreCase(assignment.getStatus())) return AssignmentState.CLOSED;
+        // Bài neo vào buổi chưa được chốt thì chưa có giờ mở. Không có nhánh này, open_at rỗng
+        // nghĩa là "mở ngay" (xem javadoc của Assignment.openAt) và mọi bài neo sẽ hở ra trước
+        // khi buổi diễn ra — đúng thứ mà neo buổi sinh ra để tránh.
+        if (waitingForAnchor(assignment)) return AssignmentState.SCHEDULED;
         if (assignment.getOpenAt() != null && now.isBefore(assignment.getOpenAt())) return AssignmentState.SCHEDULED;
         if (!isLate(assignment, now)) return AssignmentState.OPEN;
         return LatePolicy.of(assignment.getLatePolicy()) == LatePolicy.REJECT
                 ? AssignmentState.CLOSED
                 : AssignmentState.LATE_OPEN;
+    }
+
+    /** Neo vào buổi mà lớp chưa chốt buổi ấy: đã giao rồi nhưng chưa tới lúc mở. */
+    public static boolean waitingForAnchor(Assignment assignment) {
+        return assignment.getAnchorPeriodId() != null && assignment.getOpenAt() == null;
     }
 
     public static boolean isLate(Assignment assignment, LocalDateTime now) {
@@ -55,7 +64,9 @@ public final class AssignmentWindow {
         AssignmentState state = stateOf(assignment, now);
         switch (state) {
             case DRAFT -> throw new BusinessException("Bài giao chưa được mở");
-            case SCHEDULED -> throw new BusinessException("Bài chưa tới giờ mở (" + assignment.getOpenAt() + ")");
+            case SCHEDULED -> throw new BusinessException(waitingForAnchor(assignment)
+                    ? "Bài mở sau khi lớp hoàn thành buổi học"
+                    : "Bài chưa tới giờ mở (" + assignment.getOpenAt() + ")");
             case CLOSED -> throw new BusinessException(isLate(assignment, now)
                     ? "Đã quá hạn nộp, bài không nhận nộp muộn"
                     : "Bài giao đã đóng");
@@ -86,11 +97,21 @@ public final class AssignmentWindow {
     }
 
     /**
-     * Học sinh có được thấy điểm chưa. Hai đường: giáo viên bấm trả từng bài, hoặc tới giờ
-     * công bố đã hẹn trước. Chưa chấm thì giờ công bố cũng không hiện ra được cái gì.
+     * Học sinh có được thấy điểm và bài chữa chưa.
+     *
+     * <p>{@code answer_reveal} quyết định mức, và AFTER_RETURN là luật cũ nguyên vẹn: giáo viên
+     * bấm trả từng bài, hoặc tới giờ công bố đã hẹn trước (chưa chấm thì giờ công bố cũng không
+     * hiện ra được cái gì). Cột rỗng — dòng cũ, hoặc dòng dựng lại từ SQL viết tay không chọn cột
+     * ấy — rơi về đúng mức đó, nên thêm cột không đổi hành vi của bài giao nào đang chạy.
+     *
+     * <p>Ba mức nằm ở đây chứ không ở màn hình vì cùng câu hỏi này được hỏi ở đường kết quả, đường
+     * nộp bài và bảng chữa từng câu.
      */
     public static boolean scoreVisible(Assignment assignment, AssignmentProgress progress, LocalDateTime now) {
         if (progress == null) return false;
+        String reveal = assignment.getAnswerReveal() == null ? "AFTER_RETURN" : assignment.getAnswerReveal();
+        if ("IMMEDIATE".equalsIgnoreCase(reveal)) return true;
+        if ("AFTER_SUBMIT".equalsIgnoreCase(reveal)) return progress.getSubmittedAt() != null;
         if (progress.getReturnedAt() != null) return true;
         LocalDateTime publishAt = assignment.getPublishScoreAt();
         return publishAt != null && progress.getGradedAt() != null && !now.isBefore(publishAt);

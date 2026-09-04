@@ -15,13 +15,25 @@ export type Course = { id: number; code: string; name: string; description: stri
 export type CourseInput = Omit<Course, "id">;
 export type Chapter = { id: number; courseId: number; title: string; orderIndex: number; status: string };
 export type ChapterInput = Omit<Chapter, "id">;
+/**
+ * Khung "đang học" có hai hình dạng: có chương, hoặc chỉ có kỳ nghỉ — khóa đang nghỉ mà lịch không
+ * xếp chương nào cho khoảng đó. Nên các trường chương phải là nullable: khai chúng là number thì
+ * mùng ba Tết màn hình in "Chương null" mà TypeScript không hé răng câu nào.
+ *
+ * `current` là "hôm nay đang học chương này" nên trong kỳ nghỉ luôn false; `onBreak` nói vì sao
+ * false, để màn hình phân biệt được ngày nghỉ với khóa chưa xếp lịch.
+ */
 export type ProgramSchedule = {
-  id: number; courseId: number; courseCode: string; courseName: string;
-  chapterId: number; chapterTitle: string; chapterOrder: number;
-  startsOn: string; endsOn: string; status: "ACTIVE" | "INACTIVE"; current: boolean;
+  id: number | null; courseId: number | null; courseCode: string | null; courseName: string | null;
+  chapterId: number | null; chapterTitle: string | null; chapterOrder: number | null;
+  startsOn: string | null; endsOn: string | null; status: "ACTIVE" | "INACTIVE" | null; current: boolean;
+  onBreak: boolean; breakReason: string | null; breakEndsOn: string | null;
 };
 export type ProgramChapterTime = { chapter_id:number; title:string; order_index:number; starts_on:string|null; ends_on:string|null; time_group:"CURRENT"|"UPCOMING"|"PAST" };
-export type ProgramResource = { id:number; lesson_id:number; exercise_type_id:number|null; resource_type:"VIDEO"|"DOCUMENT"|"EXERCISE"|"SPECIAL_TOPIC"; resource_ref_id:number; title:string; order_index:number; status:string; chapter_id:number; chapter_order:number; starts_on:string|null; ends_on:string|null; time_group:"CURRENT"|"UPCOMING"|"PAST"; video_url?:string|null; thumbnail_url?:string|null; duration_seconds?:number|null };
+// Tên dải do câu truy vấn đặt, không phải do màn hình suy ra: thứ tự hiển thị và tên dải phải
+// cùng một nguồn, không thì hai bên trôi khỏi nhau mà chẳng ai báo.
+export type ProgramBand = "TUAN_NAY"|"SAP_TOI"|"TUONG_LAI"|"LUON_HIEN"|"DA_HOC";
+export type ProgramResource = { id:number; lesson_id:number|null; noi_den_loai:"HE_THONG"|"MACH"|"BAI"|"TIET"|"CHUYEN_DE"; neo:number|null; lop_id:number|null; exercise_type_id:number|null; resource_type:"VIDEO"|"DOCUMENT"|"EXERCISE"|"SPECIAL_TOPIC"; resource_ref_id:number; title:string; order_index:number; status:string; audience:string; tuan:number|null; dai:ProgramBand; chapter_id:number|null; chapter_title:string|null; chapter_order:number|null; video_url?:string|null; thumbnail_url?:string|null; duration_seconds?:number|null };
 export type SharedTeacherResource={id:number;owner_teacher_id:number;lesson_id:number|null;exercise_type_id:number|null;resource_type:string;title:string;description:string|null;external_url:string|null;teacher_name:string;class_name:string;available_from:string|null;available_until:string|null};
 export type SourceDocument={id:number;title:string;file_type:"PDF"|"DOCX"|"TEX"|"TXT";original_filename:string;status:string;failure_reason:string|null;question_count:number;page_count:number;quality_label:string;warning_count:number;pipeline_stage:string;created_at:string};
 export type MathFragment={id:number;raw_value:string;latex_value:string;ast_json:unknown;order_index:number;status:string;confidence:number;review_decision:string};
@@ -39,7 +51,9 @@ export type UserAccountInput = components["schemas"]["UserRequest"];
 export type UserPage = components["schemas"]["PageUserResponse"];
 export type UserImportPreview = components["schemas"]["UserImportPreviewResponse"];
 export type UserImportResult = components["schemas"]["UserImportResult"];
+export type MyProfile={id:number;code:string;username:string;email:string;fullName:string;phone:string|null;roleCode:string;status:string;createdAt:string|null;lastLoginAt:string|null;dateOfBirth:string|null;gender:string|null;address:string|null;avatarUrl:string|null;grade:number|null;classes:string[];academicYear:string|null;subject:string|null;permissionGroup:string|null;department:string|null};
 export type AdminStats = { totalUsers: number; teachers: number; students: number; classes: number; courses: number; publishedCourses: number; publishedProblems: number };
+export type AdminCalendarEvent={kind:"EXAM"|"ASSIGNMENT_DUE"|"COURSE_START"|"COURSE_END";source_id:number;event_date:string;event_at:string;title:string;class_name:string|null;priority:number};
 export type AuditLog = { id: number; actorUserId: number | null; action: string; targetType: string; targetId: number | null; ipAddress: string | null; oldData: string | null; newData: string | null; createdAt: string };
 export type Subject = { id:number; code:string; name:string };
 export type Grade = { id:number; code:string; gradeNumber:number; name:string };
@@ -67,7 +81,12 @@ export type TaxonomyArchiveResult = { node: TaxonomyNode; nodesArchivedCount: nu
 export type Problem = { id:number; problemTypeId:number; publicCode:string; qrSlug:string|null; statementLatex:string; contentHtml:string; difficulty:string; status:string; problemKind:"PRACTICE"|"EXAM"; examPart:string|null; easierProblemId:number|null; equivalentProblemId:number|null; harderProblemId:number|null;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null;correctOption:string|null };
 export type Hint = { id:number; problemId:number; contentLatex:string; orderIndex:number };
 export type SolutionStep = { id:number; problemId:number; title:string; contentLatex:string; orderIndex:number };
-export type Worksheet = { id:number; name:string; columnsCount:number; showQr:boolean; showStudentFields:boolean; createdBy:number; lessonId:number|null; items:{id:number;problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string}[] };
+/**
+ * `status` là DRAFT hay PUBLISHED: chỉ phiếu đã phát hành mới giao được. `contentSnapshot` khác
+ * rỗng nghĩa là câu do xưởng nội dung dựng nên và sửa hẹp được ngay trên phiếu đã phát hành.
+ */
+export type WorksheetItem = { id:number; problemId:number; orderIndex:number; publicCode:string; qrSlug:string; statementLatex:string; difficulty:string; contentSnapshot:string|null; answerSnapshot:string|null };
+export type Worksheet = { id:number; name:string; columnsCount:number; showQr:boolean; showStudentFields:boolean; createdBy:number; lessonId:number|null; status:string; items:WorksheetItem[] };
 export type WorksheetImportIssue={severity:"ERROR"|"WARNING";message:string};
 export type WorksheetImportQuestion={questionNo:number;statement:string;optionA:string;optionB:string;optionC:string;optionD:string;correctOption:string|null;answerSource:"BOLD_UNDERLINE"|"ANSWER_TABLE"|"INLINE_MARKER"|"NONE";confidence:number;issues:WorksheetImportIssue[]};
 export type WorksheetImportPreview={fileName:string;totalQuestions:number;errorCount:number;warningCount:number;questions:WorksheetImportQuestion[]};
@@ -81,8 +100,11 @@ export type ClassroomPage=components["schemas"]["PageClassroomResponse"];
 export type TeacherStats={classes:number;studentsBelow50:number;worksheets:number};
 export type ClassResult={classId:number;className:string;classCode:string;teacherName:string|null;status:string;diemTb:number;hoanThanh:number;tiLe:number};
 export type GradebookRow={student_id:number;full_name:string;username:string;assignment_id:number;title:string;assignment_status:string;due_at:string|null;progress_id:number|null;status:string;completion_percent:number;score:number|null;max_score:number|null;grading_status:string;submitted_at:string|null;returned_at:string|null;graded_items:number};
-export type LessonResource={id:number;lessonId:number;type:string;title:string;externalUrl:string;fileAssetId:number|null;textContent:string;orderIndex:number};
-export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;chapterId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null;folderId:number|null;contentMarkdown:string|null;taxonomyNodeId:number|null};
+/** Bốn nhóm nội dung — trùng đúng danh sách trong ràng buộc CHECK của CSDL. */
+export type ContentGroup="THEORY"|"PRACTICE"|"ASSESSMENT"|"REFERENCE";
+/** null nghĩa là chưa ai phân loại, không phải "Tham khảo" — đừng hiển thị thay bằng nhóm mặc định. */
+export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;chapterId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null;folderId:number|null;contentMarkdown:string|null;taxonomyNodeId:number|null;contentGroup:ContentGroup|null};
+export type ContentGroupCounts={theoNhom:Record<ContentGroup,number>;chuaPhanLoai:number};
 export type DocumentFolder={id:number;name:string;documentCount:number;createdAt:string};
 export type TextbookItem={id:number;title:string;docType:string;audience:string;gradeId:number|null;subjectId:number|null;status:string;totalPages:number|null;basePageOffset:number;fileUrl:string;thumbnailUrl:string|null;createdAt:string};
 export type TextbookDetail={id:number;title:string;docType:string;audience:string;gradeId:number|null;subjectId:number|null;status:string;totalPages:number|null;basePageOffset:number;fileUrl:string;pageMappings:{pdfPage:number;bookPageLabel:string|null;pageType:string;chapterTitle:string|null;lessonTitle:string|null}[]};
@@ -92,12 +114,20 @@ export type DocumentOpen={lessonDocumentId:number;title:string;fileUrl:string;st
 export type LessonDocumentQuestion={id:number;lessonDocumentId:number;questionText:string;optionA:string;optionB:string;optionC:string;optionD:string;correctOption:string|null;explanation:string|null;displayOrder:number};
 export type LessonDocumentProgress={id:number;lessonDocumentId:number;studentId:number;status:string;openedAt:string|null;lastOpenedAt:string|null;openCount:number;totalSeconds:number;quizScore:number|null;completedAt:string|null};
 export type FileAsset={id:number;fileName:string;fileUrl:string;mimeType:string;fileSize:number};
-export type Enrollment={id:number;classId:number;userId:number|null;courseId:number|null;label:string};
+export type Enrollment={id:number;classId:number;userId:number|null;courseInstanceId:number|null;label:string};
+/** Khóa: lần triển khai một chương trình trong một năm học. Lịch dạy nằm ở đây, lớp gắn vào đây. */
+export type CourseInstance={id:number;template_id:number;name:string;school_year:string;starts_on:string;ends_on:string;status:string;template_name:string};
 /** Trạng thái vòng đời do server tính từ giờ mở / hạn nộp / chính sách muộn — client không tự suy ra. */
 export type AssignmentState="DRAFT"|"SCHEDULED"|"OPEN"|"LATE_OPEN"|"CLOSED";
 /** REJECT: quá hạn là đóng. ACCEPT: nhận muộn nguyên điểm. PENALTY: nhận muộn nhưng trừ phần trăm. */
 export type LatePolicy="REJECT"|"ACCEPT"|"PENALTY";
-export type Assignment={id:number;classId:number;lessonId:number|null;worksheetId:number|null;documentId:number|null;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;requirement:ClassRequirement;maxAttempts:number;latePolicy:LatePolicy;latePenaltyPercent:number;publishScoreAt:string|null;createdBy:number};
+export type TaskKind="BAI_TAP"|"BAI_KIEM_TRA"|"LUYEN_TU_DO";
+export type AnswerReveal="AFTER_SUBMIT"|"AFTER_RETURN"|"IMMEDIATE";
+/**
+ * `dueAt` rỗng mà `anchorPeriodId` có nghĩa là chưa suy ra được hạn — khi đó `dueReason` nói vì sao,
+ * và màn hình phải in đúng câu ấy chứ không được đoán một ngày.
+ */
+export type Assignment={id:number;classId:number;lessonId:number|null;worksheetId:number|null;documentId:number|null;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;requirement:ClassRequirement;maxAttempts:number;latePolicy:LatePolicy;latePenaltyPercent:number;publishScoreAt:string|null;createdBy:number;anchorPeriodId:number|null;anchorPeriodLabel:string|null;dueBufferMinutes:number|null;dueReason:string|null;taskKind:TaskKind;answerReveal:AnswerReveal;countsInGradebook:boolean;targetScope:"CLASS"|"SELECTED";studentIds:number[]};
 /** Bắt buộc thì vào sổ điểm; tự chọn chỉ tính mức độ tự giác, không trộn vào điểm. */
 export type ClassRequirement="BAT_BUOC"|"TU_CHON";
 export type ClassCurriculumItem={id:number;taxonomy_node_id:number;order_no:number;note:string|null;created_at:string;title:string;depth:number;slug:string;parent_title:string|null;document_count:number};
@@ -105,7 +135,7 @@ export type ClassDocumentItem={id:number;document_id:number;requirement:ClassReq
 export type ClassLibraryDocument={id:number;title:string;doc_type:string;file_url:string;thumbnail_url:string|null;total_pages:number|null;owner_id:number|null;taxonomy_node_id:number|null;created_at:string;source:"KHO_CHUNG"|"RIENG";taxonomy_title:string|null;attached:boolean};
 export type ClassProgressRow={student_id:number;full_name:string;username:string|null;required_total:number;required_submitted:number;required_avg_score:number|null;optional_total:number;optional_submitted:number;last_submitted_at:string|null};
 export type SubmissionLogRow={id:number;assignment_id:number;title:string;student_id:number;full_name:string;username:string|null;action:"SUBMITTED"|"GRADED"|"RETURNED";requirement:ClassRequirement;score:number|null;note:string|null;created_at:string;actor_id:number|null;actor_name:string|null};
-export type RosterStudent={id:number;student_id:number;joined_at:string;full_name:string;username:string|null;email:string;phone:string|null;status:string};
+export type RosterStudent={id:number;student_id:number;joined_at:string;full_name:string;username:string|null;email:string;phone:string|null;status:string;date_of_birth:string|null;gender:string|null};
 export type RosterCandidate={id:number;full_name:string;username:string|null;email:string};
 export type RosterRowStatus="TAO_MOI"|"CO_SAN"|"DA_TRONG_LOP"|"LOI";
 export type RosterImportRow={rowNumber:number;username:string;email:string;fullName:string;phone:string;matchedUserId:number|null;status:RosterRowStatus;errors:string[]};
@@ -203,10 +233,13 @@ export function normalizeRole(value: string | undefined | null): AuthSession["ro
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   return withTimeout(DEFAULT_TIMEOUT_MS, async signal => {
+    const headers = new Headers(options.headers);
+    if (!(options.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (token) headers.set("Authorization", `Bearer ${token}`);
     const response = await fetch(`${API_BASE_URL}/api${path}`, {
       ...options,
       signal,
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+      headers,
     });
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!response.ok || !payload?.success) throw new Error(payload?.message || `API trả về lỗi ${response.status}`);
@@ -329,6 +362,10 @@ export const reorderLessons=(s:AuthSession,ids:number[])=>request<void>("/lesson
 export function getAdminStats(session: AuthSession) {
   return request<AdminStats>("/admin/dashboard", {}, session.accessToken);
 }
+export function getAdminCalendarEvents(session:AuthSession,from:string,to:string){
+  const params=new URLSearchParams({from,to});
+  return request<AdminCalendarEvent[]>(`/admin/calendar-events?${params}`,{},session.accessToken);
+}
 
 export async function getUsers(session: AuthSession, search = "", roleCode = "", status = "") {
   const page = await getUsersPage(session, {search, roleCode, status, page: 0, size: 100});
@@ -358,6 +395,8 @@ export function setUserLocked(session: AuthSession, id: number, locked: boolean)
 export const deleteUser=(s:AuthSession,id:number)=>request<void>(`/users/${id}`,{method:"DELETE"},s.accessToken);
 export const disableUser=(s:AuthSession,id:number)=>request<void>(`/users/${id}/disable`,{method:"PATCH"},s.accessToken);
 export const resetUserPassword=(s:AuthSession,id:number,newPassword:string)=>request<void>(`/users/${id}/reset-password`,{method:"PATCH",body:JSON.stringify({newPassword,confirmPassword:newPassword})},s.accessToken);
+export const getMyProfile=(s:AuthSession)=>request<MyProfile>("/me/profile",{},s.accessToken);
+export const updateMyProfile=(s:AuthSession,input:{fullName:string;email:string;phone:string;dateOfBirth:string|null;gender:string;avatarUrl:string|null})=>request<MyProfile>("/me/profile",{method:"PUT",body:JSON.stringify(input)},s.accessToken);
 
 export async function uploadUserImport(session: AuthSession, file: File) {
   const form = new FormData();
@@ -504,19 +543,163 @@ export const regradeAssignment=(s:AuthSession,assignmentId:number)=>request<{upd
 export const getSubmissionItems=(s:AuthSession,id:number)=>request<SubmissionGradingSheet>(`/teacher/submissions/${id}/items`,{},s.accessToken);
 /** Gửi được từng phần: chỉ mang những câu vừa chấm, server tự biết còn thiếu bao nhiêu câu. */
 export const gradeSubmissionItems=(s:AuthSession,id:number,items:ItemScoreInput[],feedback:string|null)=>request<SubmissionGradingSheet>(`/teacher/submissions/${id}/grade-items`,{method:"PUT",body:JSON.stringify({items,feedback})},s.accessToken);
-export const getResources=(s:AuthSession,lessonId:number)=>request<LessonResource[]>(`/resources?lessonId=${lessonId}`,{},s.accessToken);
-export const saveResource=(s:AuthSession,x:Omit<LessonResource,"id">,id?:number)=>request<LessonResource>(`/resources${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
-export const deleteResource=(s:AuthSession,id:number)=>request<void>(`/resources/${id}`,{method:"DELETE"},s.accessToken);
-export const reorderResources=(s:AuthSession,ids:number[])=>request<void>("/resources/reorder",{method:"PATCH",body:JSON.stringify({ids})},s.accessToken);
+/**
+ * Học liệu của một bài, đi qua luồng nội dung.
+ *
+ * Năm hàm dưới thay cho `/resources` cũ. Bảng cũ giữ nội dung nằm ngay trong dòng gắn và không có
+ * cột trạng thái lẫn cột đối tượng, nên mọi thứ ghi vào đó vừa mất cửa đọc cuối cùng: gọi nhầm
+ * đường thì admin bấm lưu, thấy học liệu trong danh sách của mình, và học sinh không bao giờ thấy.
+ */
+// Kiểu riêng chứ không dùng lại ProgramResource: đường theo bài trả về `pr.*` thuần, không có
+// chapter_id/starts_on/time_group mà đường theo chương trình ghép thêm. Khai thừa ở đây là mời
+// người sau đọc một cột luôn undefined mà trình biên dịch vẫn gật.
+export type LessonProgramResource={id:number;lesson_id:number;resource_type:"VIDEO"|"DOCUMENT"|"EXERCISE"|"SPECIAL_TOPIC";resource_ref_id:number;title:string;order_index:number;status:string;audience:string};
+export const getLessonResources=(s:AuthSession,lessonId:number)=>request<LessonProgramResource[]>(`/lessons/${lessonId}/program-resources`,{},s.accessToken);
+export type NewResourceInput={resourceType:"VIDEO"|"DOCUMENT";title:string;videoUrl?:string;fileAssetId?:number|null;textContent?:string;orderIndex:number;status:string;audience:string};
+export const addLessonResource=(s:AuthSession,lessonId:number,x:NewResourceInput)=>request<LessonProgramResource>(`/admin/lessons/${lessonId}/resources/new`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+/** Chỉ sửa được tên, trạng thái và đối tượng: tệp và đường dẫn nằm trong kho, sửa ở màn kho. */
+export const updateLessonResource=(s:AuthSession,id:number,x:{title:string;status:string;audience:string})=>request<LessonProgramResource>(`/admin/program-resources/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const deleteLessonResource=(s:AuthSession,id:number)=>request<void>(`/admin/program-resources/${id}`,{method:"DELETE"},s.accessToken);
+export const reorderLessonResources=(s:AuthSession,lessonId:number,rows:{id:number;orderIndex:number}[])=>request<void>(`/admin/lessons/${lessonId}/resources/reorder`,{method:"PUT",body:JSON.stringify(rows)},s.accessToken);
 export async function uploadFile(s:AuthSession,file:File){const form=new FormData();form.append("file",file);const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/files`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal}));const payload=await response.json() as ApiEnvelope<FileAsset>;if(!response.ok||!payload.success)throw new Error(payload.message||"Tải file thất bại");return payload.data}
 export async function downloadFile(s:AuthSession,id:number,title:string){const response=await withTimeout(FILE_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/files/${id}/download`,{headers:{Authorization:`Bearer ${s.accessToken}`},signal}));if(!response.ok)throw new Error(`Không thể tải file (${response.status})`);const blob=await response.blob();if(!blob.size)return;const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=title;a.click();URL.revokeObjectURL(url)}
 export const getEnrollments=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",classId:number)=>request<Enrollment[]>(`/enrollments/${type}?classId=${classId}`,{},s.accessToken);
-export const addEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",x:{classId:number;userId?:number;courseId?:number})=>request<void>(`/enrollments/${type}`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const addEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",x:{classId:number;userId?:number;courseInstanceId?:number})=>request<void>(`/enrollments/${type}`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const getCourseInstances=(s:AuthSession)=>request<CourseInstance[]>("/admin/course-instances",{},s.accessToken);
+export type AcademicBreak={id:number;course_instance_id:number;starts_on:string;ends_on:string;reason:string};
+export const getAcademicBreaks=(s:AuthSession,courseInstanceId:number)=>request<AcademicBreak[]>(`/admin/course-instances/${courseInstanceId}/breaks`,{},s.accessToken);
+export const addAcademicBreak=(s:AuthSession,courseInstanceId:number,x:{startsOn:string;endsOn:string;reason:string})=>request<AcademicBreak>(`/admin/course-instances/${courseInstanceId}/breaks`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const removeAcademicBreak=(s:AuthSession,id:number)=>request<void>(`/admin/academic-breaks/${id}`,{method:"DELETE"},s.accessToken);
+export type ProgramTemplate={id:number;program_id:number;name:string;description:string|null;status:string};
+export const getProgramTemplates=(s:AuthSession)=>request<ProgramTemplate[]>("/admin/program-templates",{},s.accessToken);
+export const createProgramTemplate=(s:AuthSession,x:{programId:number;name:string;description:string;status:string})=>request<ProgramTemplate>("/admin/program-templates",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const createCourseInstance=(s:AuthSession,x:{templateId:number;name:string;schoolYear:string;startsOn:string;endsOn:string;status:string})=>request<CourseInstance>("/admin/course-instances",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export type CourseScheduleRow={id:number;course_instance_id:number;chapter_id:number;starts_on:string;ends_on:string;status:string;chapter_title:string;chapter_order:number;time_group:"CURRENT"|"UPCOMING"|"PAST"};
+export const getCourseSchedule=(s:AuthSession,courseId:number)=>request<CourseScheduleRow[]>(`/admin/courses/${courseId}/schedule`,{},s.accessToken);
+export const saveCourseSchedule=(s:AuthSession,courseId:number,rows:{chapterId:number;startsOn:string;endsOn:string}[])=>request<CourseScheduleRow[]>(`/admin/courses/${courseId}/schedule`,{method:"PUT",body:JSON.stringify(rows)},s.accessToken);
+
+// ====================== PPCT Config API ======================
+export type PpctThamSo={so_tuan:number;tuan_ky_1:number;tiet_mot_tuan:number};
+export type PpctMachConfig={id:number;ma_mach:string;ten_mach:string;thu_tu:number;bat_dau_tuan:number|null;ket_thuc_tuan:number|null;so_tiet_mot_tuan:number};
+export type PpctTuanDacBiet={id:number;tuan_so:number;loai:"HDTN"|"ON_TAP"|"KIEM_TRA";ma_mach:string|null;nhan:string|null};
+export type PpctTuKhoa={id:number;ma_mach:string;tu_khoa:string};
+export const getPpctConfig=(s:AuthSession,programId:number)=>request<PpctThamSo|null>(`/admin/programs/${programId}/ppct-config`,{},s.accessToken);
+export const savePpctConfig=(s:AuthSession,programId:number,x:PpctThamSo)=>request<PpctThamSo>(`/admin/programs/${programId}/ppct-config`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const getPpctMachConfig=(s:AuthSession,programId:number)=>request<PpctMachConfig[]>(`/admin/programs/${programId}/mach-config`,{},s.accessToken);
+export const savePpctMachConfig=(s:AuthSession,programId:number,ds:{maMach:string;tenMach:string;batDauTuan:number;ketThucTuan:number;soTietMotTuan:number}[])=>request<PpctMachConfig[]>(`/admin/programs/${programId}/mach-config`,{method:"PUT",body:JSON.stringify(ds)},s.accessToken);
+export const getPpctTuanDacBiet=(s:AuthSession,programId:number)=>request<PpctTuanDacBiet[]>(`/admin/programs/${programId}/tuan-dac-biet`,{},s.accessToken);
+export const savePpctTuanDacBiet=(s:AuthSession,programId:number,ds:{tuanSo:number;loai:string;maMach:string|null;nhan:string|null}[])=>request<PpctTuanDacBiet[]>(`/admin/programs/${programId}/tuan-dac-biet`,{method:"PUT",body:JSON.stringify(ds)},s.accessToken);
+export const getPpctTuKhoa=(s:AuthSession,programId:number)=>request<PpctTuKhoa[]>(`/admin/programs/${programId}/tu-khoa`,{},s.accessToken);
+export const savePpctTuKhoa=(s:AuthSession,programId:number,maMach:string,tuKhoa:string[])=>request<PpctTuKhoa[]>(`/admin/programs/${programId}/tu-khoa/${maMach}`,{method:"PUT",body:JSON.stringify(tuKhoa)},s.accessToken);
+export const seedProgramStrands=(s:AuthSession,programId:number)=>request<{soMach:number;soTiet:number;soTuan:number}>(`/admin/programs/${programId}/strands/seed`,{method:"POST"},s.accessToken);
+// ====================== Nhập PPCT thật (PP-7) — PDF hoặc Excel, một đường ======================
+// Mạch + tiết hiện có của chương trình. Khóa snake_case y như câu select ở ProgramStrandController
+// (envelope không camelCase hoá) — `tuan_dau`/`tuan_cuoi` rỗng khi mạch chưa có tiết nào.
+export type ProgramStrandInfo={id:number;code:string;name:string;order_index:number;so_tiet:number;tuan_dau:number|null;tuan_cuoi:number|null};
+export type PpctRow={chiSo:number;maMach:string;tenMach:string;soTiet:number;tuan:number;hocKy:number;phanLoai:string;tieuDe:string;lessonId:number|null;lessonTitle:string|null;doTinCay:"CAO"|"VUA"|"THAP";canhBao:string[]};
+export type PpctPreview={objectKey:string;trangThai:"SAN_SANG"|"UNSUPPORTED_SCAN";soTuan:number;soTiet:number;soMach:number;dong:PpctRow[];soHopLe:number;soLoi:number;thongDiep:string};
+export const getProgramStrands=(s:AuthSession,programId:number)=>request<ProgramStrandInfo[]>(`/programs/${programId}/strands`,{},s.accessToken);
+// Multipart theo khuôn raw-fetch (không set Content-Type), UPLOAD_TIMEOUT_MS vì backend còn tách PDF.
+export async function uploadPpctPreview(s:AuthSession,programId:number,file:File){
+  const form=new FormData();form.append("file",file);
+  const response=await withTimeout(UPLOAD_TIMEOUT_MS,signal=>fetch(`${API_BASE_URL}/api/admin/programs/${programId}/ppct/preview`,{
+    method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form,signal,
+  }));
+  const payload=await response.json().catch(()=>null) as ApiEnvelope<PpctPreview>|null;
+  if(!response.ok||!payload?.success)throw new Error(payload?.message||`Không đọc được tệp PPCT (${response.status})`);
+  return payload.data;
+}
+// `dong` gửi cả bản đã sửa; server chỉ đọc chiSo/maMach/tenMach/soTiet/tuan/hocKy/phanLoai/tieuDe/lessonId.
+export const confirmPpct=(s:AuthSession,programId:number,x:{objectKey:string;dong:PpctRow[]})=>request<{soMach:number;soTiet:number;soTuan:number}>(`/admin/programs/${programId}/ppct/confirm`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+// ====================== Lịch tuần của khóa — nhịp dạy & tự tính ngày học xong (PP-7 TẦNG 3) ======================
+export type LichTuanDong={id:number|null;soTuan:number|null;batDau:string;ketThuc:string;nghi:boolean;nhanNghi:string|null;suaTay:boolean};
+export type LichTuanKetQua={
+  tuan:LichTuanDong[];soTuan:number;soTuanNghi:number;soTuanBoQua:number;ngayDau:string|null;ngayCuoi:string|null;
+  nhipMoiTuan:number|null;soTuanCanThiet:number;soTuanKhaDung:number|null;ngayHoanThanhDuKien:string|null;canhBao:string|null;
+  ngayKetThucKhoaDaCapNhat?:string;baiGiaoDaDoi?:number;
+};
+export type LichTuanYeuCau={ngayBatDau?:string;tuTuan?:number;tietMoiTuan?:number};
+export function xemTruocLichTuan(s:AuthSession,khoaId:number,x:LichTuanYeuCau={}){
+  const q=new URLSearchParams();
+  if(x.ngayBatDau)q.set("ngayBatDau",x.ngayBatDau);
+  if(x.tuTuan!=null)q.set("tuTuan",String(x.tuTuan));
+  if(x.tietMoiTuan!=null)q.set("tietMoiTuan",String(x.tietMoiTuan));
+  const qs=q.toString();
+  return request<LichTuanKetQua>(`/admin/course-instances/${khoaId}/weeks/preview${qs?`?${qs}`:""}`,{},s.accessToken);
+}
+export const sinhLichTuan=(s:AuthSession,khoaId:number,x:LichTuanYeuCau)=>request<LichTuanKetQua>(`/admin/course-instances/${khoaId}/weeks`,{method:"POST",body:JSON.stringify({ngayBatDau:x.ngayBatDau||undefined,tuTuan:x.tuTuan,tietMoiTuan:x.tietMoiTuan})},s.accessToken);
+// ====================== PPCT Cấu trúc (auto-import) ======================
+export type CauTrucBai={tenBai:string;thuTu:number;tuanBatDau:number;soTiet:number;maMach:string};
+export type CauTrucChuong={tenChuong:string;thuTu:number;bai:CauTrucBai[]};
+export type ImportResult={soTaoMoiChuong:number;soCapNhatChuong:number;soTaoMoiBai:number;soCapNhatBai:number;tongChuong:number;tongBai:number};
+export const previewCauTruc=(s:AuthSession,programId:number,file:File):Promise<{success:boolean;data:CauTrucChuong[];message:string}>=> {
+  const fd=new FormData();fd.append("file",file);
+  return fetch(`${API_BASE_URL}/api/admin/programs/${programId}/cau-truc/preview`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:fd}).then(r=>r.json());
+};
+export const confirmCauTruc=(s:AuthSession,programId:number,ds:CauTrucChuong[])=>request<ImportResult>(`/admin/programs/${programId}/cau-truc/confirm`,{method:"POST",body:JSON.stringify(ds)},s.accessToken);
+export type ProgramImportIssue={row:number;column:string;code:string;message:string};
+export type ProgramImportRow={row:number;namespace?:string;strandCode:string;strandName:string;semester:number;periodNo:number;weekNo:number;chapterNumeral:string;chapterName:string;lessonName:string;kind:string;inferredBy?:string};
+export type ProgramImportLesson={name:string;normalizedName:string;kind:string;totalPeriods:number;firstWeek:number;lastWeek:number;periods:ProgramImportRow[];inferredBy?:string};
+export type ProgramImportChapter={numeral:string;name:string;totalPeriods:number;lessons:ProgramImportLesson[]};
+export type ProgramImportStrand={code:string;name:string;totalPeriods:number;chapters:ProgramImportChapter[]};
+export type ProgramImportPreview={previewToken:string;info:{code:string;name:string;subject:string;grade:number;totalPeriods:number;totalWeeks:number;version:number};derived:{strands:ProgramImportStrand[];chapterCount:number;lessonCount:number;periodCount:number};errors:ProgramImportIssue[];warnings:ProgramImportIssue[]};
+export type ProgramImportConfirm={courseId:number;created:{strands:number;chapters:number;lessons:number;periods:number}};
+export type ProgramImportColumnSample={index:number;header:string;samples:string[];suggestedField:string};
+export type ProgramImportParseResult={parseToken:string;format:string;columns:ProgramImportColumnSample[];suggestedMapping:Record<number,string>;rowCount:number};
+
+export const parseProgramCourse=(s:AuthSession,file?:File|null,pasted?:string)=>{const fd=new FormData();if(file)fd.append("file",file);if(pasted)fd.append("pasted",pasted);return request<ProgramImportParseResult>("/admin/program-courses/import/parse",{method:"POST",body:fd},s.accessToken);};
+export const previewProgramCourse=(s:AuthSession,file:File,sourceCourseId?:number)=>{const fd=new FormData();fd.append("file",file);if(sourceCourseId)fd.append("sourceCourseId",String(sourceCourseId));return request<ProgramImportPreview>("/admin/program-courses/import/preview",{method:"POST",body:fd},s.accessToken);};
+export const confirmProgramCourse=(s:AuthSession,previewToken:string)=>request<ProgramImportConfirm>("/admin/program-courses/import/confirm",{method:"POST",body:JSON.stringify({previewToken})},s.accessToken);
+export const getProgramCourseTree=(s:AuthSession,courseId:number)=>request<ProgramImportPreview["derived"]>(`/admin/program-courses/${courseId}/tree`,{},s.accessToken);
+export async function downloadProgramCourseTemplate(s:AuthSession){const response=await fetch(`${API_BASE_URL}/api/admin/program-courses/import/template`,{headers:{Authorization:`Bearer ${s.accessToken}`}});if(!response.ok)throw new Error("Không tải được file mẫu PPCT");const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="program-course-import.xlsx";a.click();URL.revokeObjectURL(url);}
+
+// ==================== Lịch học & Mẫu lịch tuần (G7-G11) ====================
+export type ScheduleSlot={id?:number;dayOfWeek:number;startTime:string;durationMin:number;periods:number};
+export type ScheduleBreakPeriod={from:string;to:string;note?:string};
+export type ScheduleCalculateRequest={startDate:string;totalPeriods:number;breaks?:ScheduleBreakPeriod[]};
+export type ScheduleHolidayHit={date:string;name:string;sessionNo:number};
+export type ScheduleCalculateResult={weeks:number;sessions:number;endDate:string;lastSessionPeriods:number;holidayHits:ScheduleHolidayHit[];explanation:string};
+export type ScheduleReverseRequest={startDate:string;endDate:string;totalPeriods:number};
+export type ScheduleReverseResult={requiredSessionsPerWeek:number;explanation:string};
+export type ScheduleHoliday={id:number;holidayDate:string;name:string;isDayOff:boolean;year:number;note?:string};
+
+export const getScheduleSlots=(s:AuthSession,classId:number)=>request<ScheduleSlot[]>(`/admin/classes/${classId}/schedule-slots`,{},s.accessToken);
+export const updateScheduleSlots=(s:AuthSession,classId:number,slots:ScheduleSlot[])=>request<ScheduleSlot[]>(`/admin/classes/${classId}/schedule-slots`,{method:"PUT",body:JSON.stringify(slots)},s.accessToken);
+export const calculateSchedule=(s:AuthSession,classId:number,req:ScheduleCalculateRequest)=>request<ScheduleCalculateResult>(`/admin/classes/${classId}/schedule/calculate`,{method:"POST",body:JSON.stringify(req)},s.accessToken);
+export const calculateReverseSchedule=(s:AuthSession,classId:number,req:ScheduleReverseRequest)=>request<ScheduleReverseResult>(`/admin/classes/${classId}/schedule/calculate-reverse`,{method:"POST",body:JSON.stringify(req)},s.accessToken);
+export const getHolidays=(s:AuthSession,year?:number)=>request<ScheduleHoliday[]>(`/admin/holidays${year?`?year=${year}`:""}`,{},s.accessToken);
+
+// =============================================================
 export const removeEnrollment=(s:AuthSession,type:"class-teachers"|"class-students"|"class-courses",id:number)=>request<void>(`/enrollments/${type}/${id}`,{method:"DELETE"},s.accessToken);
 export const getAssignments=(s:AuthSession,classId:number)=>request<Assignment[]>(`/assignments?classId=${classId}`,{},s.accessToken);
-export type AssignmentInput={classId:number;lessonId:number|null;worksheetId:number|null;documentId?:number|null;title:string;openAt?:string|null;dueAt:string|null;status:string;requirement?:ClassRequirement;maxAttempts?:number;latePolicy?:LatePolicy;latePenaltyPercent?:number;publishScoreAt?:string|null};
+export type AssignmentCommon={lessonId:number|null;worksheetId:number|null;documentId?:number|null;title:string;openAt?:string|null;dueAt:string|null;status:string;requirement?:ClassRequirement;maxAttempts?:number;latePolicy?:LatePolicy;latePenaltyPercent?:number;publishScoreAt?:string|null;anchorPeriodId?:number|null;dueBufferMinutes?:number|null;taskKind?:TaskKind;answerReveal?:AnswerReveal;countsInGradebook?:boolean;studentIds?:number[]};
+export type AssignmentInput=AssignmentCommon&{classId:number};
+/** Nhiều lớp = N bài giao riêng biệt. Nhiều lớp thì `studentIds` phải rỗng — server từ chối. */
+export type AssignmentBatchInput=AssignmentCommon&{classIds:number[]};
 export const saveAssignment=(s:AuthSession,x:AssignmentInput,id?:number)=>request<Assignment>(`/assignments${id?`/${id}`:""}`,{method:id?"PUT":"POST",body:JSON.stringify(x)},s.accessToken);
 export const deleteAssignment=(s:AuthSession,id:number)=>request<void>(`/assignments/${id}`,{method:"DELETE"},s.accessToken);
+export const createAssignmentBatch=(s:AuthSession,x:AssignmentBatchInput)=>request<Assignment[]>("/assignments/batch",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+/**
+ * Một tiết của chương trình lớp đang chạy. `week_starts_on`/`week_ends_on` là ngày của khóa
+ * (`course_weeks`) chứ không phải ngày của tiết — buổi vẫn không mang ngày. `closed_at` rỗng
+ * nghĩa là lớp chưa học xong tiết này.
+ */
+export type ClassPeriod={id:number;period_no:number;week_no:number|null;term:string|null;title:string|null;period_kind:string|null;lesson_id:number|null;strand_id:number;strand_name:string;strand_order:number;week_starts_on:string|null;week_ends_on:string|null;closed_at:string|null;note:string|null;so_bai_neo:number};
+export type PeriodSuggestion={worksheet_id:number;name:string;resource_id:number;lesson_id:number;lesson_name:string};
+export type ClosePeriodResult={closedAt:string;assignmentsOpened:number;suggestions:PeriodSuggestion[]};
+export const getClassPeriods=(s:AuthSession,classId:number)=>request<ClassPeriod[]>(`/classes/${classId}/periods`,{},s.accessToken);
+export const closeClassPeriod=(s:AuthSession,classId:number,periodId:number,x:{closedAt?:string|null;note?:string|null}={})=>request<ClosePeriodResult>(`/classes/${classId}/periods/${periodId}/close`,{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const reopenClassPeriod=(s:AuthSession,classId:number,periodId:number)=>request<void>(`/classes/${classId}/periods/${periodId}/close`,{method:"DELETE"},s.accessToken);
+/** `hanNop` rỗng kèm `lyDoTrong` là câu trả lời hợp lệ — in đúng lý do ấy, không đoán một ngày. */
+export type HanTheoBuoi={moLuc:string|null;hanNop:string|null;lyDoTrong:string|null};
+export const getPeriodDeadline=(s:AuthSession,classId:number,periodId:number,demPhut?:number|null)=>request<HanTheoBuoi>(`/classes/${classId}/periods/${periodId}/han${demPhut==null?"":`?demPhut=${demPhut}`}`,{},s.accessToken);
+
+// ==================== Phiếu đã giao: xem ảnh hưởng, sửa hẹp một câu ====================
+export type WorksheetImpactRow={assignment_id:number;title:string;class_id:number;class_name:string|null;status:string;open_at:string|null;due_at:string|null;so_da_nop:number};
+export const publishWorksheet=(s:AuthSession,id:number)=>request<Worksheet>(`/worksheets/${id}/publish`,{method:"POST"},s.accessToken);
+export const cloneWorksheet=(s:AuthSession,id:number)=>request<Worksheet>(`/worksheets/${id}/clone`,{method:"POST"},s.accessToken);
+export const getWorksheetImpact=(s:AuthSession,id:number)=>request<WorksheetImpactRow[]>(`/worksheets/${id}/anh-huong`,{},s.accessToken);
+export const patchWorksheetItem=(s:AuthSession,itemId:number,x:{contentSnapshot?:string;optionASnapshot?:string;optionBSnapshot?:string;optionCSnapshot?:string;optionDSnapshot?:string;answerSnapshot?:string;solutionSnapshot?:string})=>request<{worksheetId:number;soBaiCanChamLai:number}>(`/worksheets/items/${itemId}`,{method:"PATCH",body:JSON.stringify(x)},s.accessToken);
 
 // ==================== Lớp học: chương trình, tài liệu, theo dõi ====================
 export const getClassCurriculum=(s:AuthSession,classId:number)=>request<ClassCurriculumItem[]>(`/classes/${classId}/curriculum`,{},s.accessToken);
@@ -580,6 +763,9 @@ export const convertDocumentToMarkdown=(s:AuthSession,id:number)=>request<Docume
 export const saveDocumentMarkdown=(s:AuthSession,id:number,contentMarkdown:string)=>request<DocumentItem>(`/admin/documents/${id}/markdown`,{method:"PATCH",body:JSON.stringify({contentMarkdown})},s.accessToken);
 export const getDocumentsByNode=(s:AuthSession,nodeId:number)=>request<DocumentItem[]>(`/admin/documents/by-node/${nodeId}`,{},s.accessToken);
 export const setDocumentTaxonomyNode=(s:AuthSession,id:number,taxonomyNodeId:number|null)=>request<DocumentItem>(`/admin/documents/${id}/taxonomy-node`,{method:"PATCH",body:JSON.stringify({taxonomyNodeId})},s.accessToken);
+/** Gửi null là gỡ phân loại. Đường riêng chứ không gộp vào updateDocument, vì thân PUT không mang trường này. */
+export const setDocumentContentGroup=(s:AuthSession,id:number,contentGroup:ContentGroup|null)=>request<DocumentItem>(`/admin/documents/${id}/content-group`,{method:"PATCH",body:JSON.stringify({contentGroup})},s.accessToken);
+export const getContentGroupCounts=(s:AuthSession)=>request<ContentGroupCounts>("/admin/documents/content-groups",{},s.accessToken);
 export const getTeacherDocuments=(s:AuthSession)=>request<DocumentItem[]>("/teacher/documents",{},s.accessToken);
 /**
  * Mở file tài liệu. fileUrl từ API luôn là đường dẫn tương đối tới endpoint có xác thực

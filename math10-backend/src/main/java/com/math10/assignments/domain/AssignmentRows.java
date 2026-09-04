@@ -35,6 +35,8 @@ public final class AssignmentRows {
         assignment.setLatePolicy(text(row.get("late_policy")));
         assignment.setLatePenaltyPercent(integer(row.get("late_penalty_percent")));
         assignment.setPublishScoreAt(dateTime(row.get("publish_score_at")));
+        assignment.setAnchorPeriodId(number(row.get("anchor_period_id")));
+        assignment.setAnswerReveal(text(row.get("answer_reveal")));
         return assignment;
     }
 

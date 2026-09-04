@@ -27,6 +27,7 @@ import { MarkdownViewer } from "../components/MarkdownViewer";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
 import { StudentShell, type StudentTab } from "./StudentShell";
+import { ProfileSettings } from "../settings/ProfileSettings";
 import { TodayPage } from "./TodayPage";
 import { LessonsPage } from "./LessonsPage";
 import { MyClassesPage } from "./MyClassesPage";
@@ -529,6 +530,8 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
         <ProgramResourcePage session={session} type="EXERCISE" />
       ) : route.tab === "topics" ? (
         <ProgramResourcePage session={session} type="SPECIAL_TOPIC" />
+      ) : route.tab === "settings" ? (
+        <ProfileSettings session={session}/>
       ) : (
         <ProfileTab session={session} onChangePassword={() => setPasswordOpen(true)} onLogout={onLogout} />
       )}

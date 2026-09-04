@@ -5,16 +5,18 @@ import { GradebookMatrix } from "../GradebookMatrix";
 import { ClassRosterPanel } from "./ClassRosterPanel";
 import { ClassCurriculumPanel } from "./ClassCurriculumPanel";
 import { ClassDocumentPanel } from "./ClassDocumentPanel";
+import { ClassSessionPanel } from "./ClassSessionPanel";
 import { ClassTaskPanel } from "./ClassTaskPanel";
 import { ClassProgressPanel } from "./ClassProgressPanel";
 import { ClassGradingPanel } from "./ClassGradingPanel";
 import { ClassSubmissionLogPanel } from "./ClassSubmissionLogPanel";
 
-type Tab = "roster" | "curriculum" | "documents" | "tasks" | "grading" | "gradebook" | "log";
+type Tab = "roster" | "curriculum" | "sessions" | "documents" | "tasks" | "grading" | "gradebook" | "log";
 
 const tabs: [Tab, string][] = [
   ["roster", "Học sinh"],
   ["curriculum", "Chương trình học"],
+  ["sessions", "Buổi học"],
   ["documents", "Tài liệu"],
   ["tasks", "Nhiệm vụ & đề thi"],
   ["grading", "Chấm bài"],
@@ -23,7 +25,7 @@ const tabs: [Tab, string][] = [
 ];
 
 /**
- * Toàn bộ chi tiết một lớp cho giáo viên: danh sách học sinh, chương trình học,
+ * Toàn bộ chi tiết một lớp cho giáo viên: danh sách học sinh, chương trình học, buổi đã dạy,
  * tài liệu đi kèm, đề thi được giao, chấm bài, sổ điểm và nhật ký nộp bài.
  */
 export function ClassDetail({ session, classroom, onClose }: { session: AuthSession; classroom: Classroom; onClose: () => void }) {
@@ -76,6 +78,7 @@ export function ClassDetail({ session, classroom, onClose }: { session: AuthSess
 
       {tab === "roster" && <ClassRosterPanel session={session} classId={classroom.id} />}
       {tab === "curriculum" && <ClassCurriculumPanel session={session} classId={classroom.id} />}
+      {tab === "sessions" && <ClassSessionPanel session={session} classId={classroom.id} />}
       {tab === "documents" && <ClassDocumentPanel session={session} classId={classroom.id} />}
       {tab === "tasks" && <ClassTaskPanel session={session} classId={classroom.id} />}
       {tab === "grading" && <ClassGradingPanel session={session} classId={classroom.id} />}

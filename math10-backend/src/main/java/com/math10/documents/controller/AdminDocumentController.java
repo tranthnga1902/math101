@@ -1,6 +1,8 @@
 package com.math10.documents.controller;
 
 import com.math10.common.dto.ApiResponse;
+import com.math10.common.entity.ContentGroup;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.documents.dto.DocumentResponse;
 import com.math10.documents.dto.DocumentUpdateRequest;
 import com.math10.documents.dto.TextbookListResponse;
@@ -72,6 +74,28 @@ public class AdminDocumentController {
     }
 
     public record TaxonomyNodeAssignRequest(Long taxonomyNodeId) {
+    }
+
+    /**
+     * Xếp tài liệu vào nhóm nội dung, hoặc gỡ ra khi {@code contentGroup} là null.
+     *
+     * <p>Đường riêng chứ không gộp vào PUT: xem {@code DocumentService#setContentGroup}.
+     */
+    @PatchMapping("/{id}/content-group")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DocumentResponse> setContentGroup(@PathVariable Long id, @RequestBody ContentGroupAssignRequest request) {
+        return ApiResponse.ok(request.contentGroup() == null ? "Đã gỡ phân loại tài liệu" : "Đã phân loại tài liệu",
+                documentService.setContentGroup(id, request.contentGroup()));
+    }
+
+    public record ContentGroupAssignRequest(ContentGroup contentGroup) {
+    }
+
+    /** Còn bao nhiêu tài liệu chưa ai phân loại — con số này là lý do bộ lọc có mặt. */
+    @GetMapping("/content-groups")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public ApiResponse<ContentGroupCounts> contentGroupCounts() {
+        return ApiResponse.ok("Bộ đếm nhóm nội dung", documentService.countsByContentGroup());
     }
 
     @PutMapping("/{id}")

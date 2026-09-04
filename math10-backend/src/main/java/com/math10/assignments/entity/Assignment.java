@@ -25,5 +25,16 @@ public class Assignment extends BaseEntity {
  @Column(name="late_penalty_percent",nullable=false) private Integer latePenaltyPercent=0;
  /** Tới giờ này thì điểm tự hiện cho học sinh, không cần giáo viên bấm trả từng bài. */
  @Column(name="publish_score_at") private LocalDateTime publishScoreAt;
+ /** Tiết của chương trình mà bài này neo vào. Rỗng = dùng ngày tuyệt đối như cũ. */
+ @Column(name="anchor_period_id") private Long anchorPeriodId;
+ /** Đệm trước buổi sau, tính bằng phút. Chỉ có nghĩa khi có neo. */
+ @Column(name="due_buffer_minutes",nullable=false) private Integer dueBufferMinutes=120;
+ /** Chỉ chọn bộ mặc định lúc mở biểu mẫu. Luật vòng đời không được rẽ nhánh theo cột này. */
+ @Column(name="task_kind",nullable=false,length=20) private String taskKind="BAI_TAP";
+ /** AFTER_SUBMIT / AFTER_RETURN / IMMEDIATE — cổng của điểm và bảng chữa từng câu. */
+ @Column(name="answer_reveal",nullable=false,length=20) private String answerReveal="AFTER_RETURN";
+ @Column(name="counts_in_gradebook",nullable=false) private Boolean countsInGradebook=true;
+ /** CLASS = cả lớp, không sinh dòng assignment_targets nào. SELECTED = chỉ những em được chọn. */
+ @Column(name="target_scope",nullable=false,length=10) private String targetScope="CLASS";
  @Column(name="created_by",nullable=false) private Long createdBy;
 }

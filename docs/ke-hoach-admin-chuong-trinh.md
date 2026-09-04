@@ -50,7 +50,8 @@ lệch là do test mới xuất hiện giữa các lượt, không phải do tes
 
 Hai mươi ba bảng, chia ba cụm:
 
-- **Chương trình (14):** `program_schedules`, `exercise_types`, `videos`, `special_topics`,
+- **Chương trình (14 → 13):** `program_schedules`, `exercise_types`, `videos`,
+  ~~`special_topics`~~ (đã bỏ ở Lát 5),
   `program_resources`, `program_templates`, `program_template_chapters`, `course_instances`,
   `teacher_resources`, `resource_shares`, `submissions`, `submission_answers`, `submission_events`,
   `student_resource_progress`.
@@ -265,10 +266,12 @@ như thế trên giao diện, và Admin phân loại dần. Thêm `CHECK` với 
 |---|---|---|
 | Luồng nội dung bài học | `lesson_resources` **+** `lesson_documents` | `program_resources` |
 | Bài nộp và điểm | `assignment_progress` + `submission_item_grades` | `submissions` + `submission_answers` + `submission_events` |
-| Chuyên đề | `taxonomy_node` **+** `topics` | `special_topics` |
+| Chuyên đề | ~~`taxonomy_node` **+** `topics`~~ → `taxonomy_node` | ~~`special_topics`~~ đã bỏ (Lát 5) |
 | Học liệu giáo viên | `documents.owner_id` + `document_folders` | `teacher_resources` + `resource_shares` |
 
-Riêng luồng nội dung và chuyên đề giờ có **ba** cơ chế mỗi thứ.
+Riêng luồng nội dung có **ba** cơ chế. Chuyên đề từng bị đếm là ba nhưng thật ra là hai —
+`topics` là **chủ đề** của ngân hàng câu hỏi, không phải chuyên đề — và sau Lát 5 chỉ còn
+`taxonomy_node`.
 
 Nặng nhất là dòng thứ hai. `assignment_progress` là nơi HT-51 / HT-54 / HT-59 / HT-60 đang đứng ở
 **mức A** với khoảng 40 ca test — sổ điểm, chấm trắc nghiệm, chấm từng câu đều đọc nó. `submissions`
@@ -294,7 +297,7 @@ Ba dòng còn lại: rút bảng cũ **trong cùng lát** với việc nối b�
 | `Lesson` | `lessons` | **Đã có** | Thêm `unique (chapter_id, order_index)` — **vẫn thiếu** |
 | `Document` | `documents` + `content_group`/`program_id`/`lesson_id` | **Đã có** | Sửa Đ3 |
 | `Video` | `videos` (chưa commit) | **Đã có DDL + 2 endpoint** | Xem Lát 4 |
-| `SpecialTopic` | `special_topics` + `taxonomy_node` + `topics` | **Ba bản** | Chọn một (Lát 5) |
+| `SpecialTopic` | ~~`special_topics` + `taxonomy_node` + `topics`~~ → `taxonomy_node` | ~~**Ba bản**~~ **Một bản** | ✅ Lát 5 (`topics` là chủ đề ngân hàng câu hỏi, chưa từng là chuyên đề — đếm ba là sai) |
 | `ProgramTemplate` | `program_templates` + `program_template_chapters` | **Đã có** | Xem §3 về thứ tự chương |
 | `ProgramContent` | `program_resources` + `lesson_resources` + `lesson_documents` | **Ba bản** | Rút hai bản cũ (Lát 8) |
 | `Course` (năm học) | `course_instances` | **Đã có** | Sửa Đ1 |
@@ -312,11 +315,11 @@ Trong 13 bảng kế hoạch gốc đề xuất: **11 đã tồn tại** (7 từ
 
 ```text
 TẦNG 1 — KHO NỘI DUNG                     (không phụ thuộc năm học, không phụ thuộc lịch)
-  book_series ─┐                          ← thiếu, phải thêm
-  documents ───┼── doc_type × content_group
-  videos ──────┤
-  special_topics / taxonomy_node
-  worksheets ──┘
+  book_series ───┐                        ← thiếu, phải thêm
+  documents ─────┼── doc_type × content_group
+  videos ────────┤
+  taxonomy_node ─┤                        ← chuyên đề, một nguồn duy nhất từ Lát 5
+  worksheets ────┘
 
 TẦNG 2 — CHƯƠNG TRÌNH VÀ MẪU              (thứ tự học, KHÔNG có ngày)
   courses → chapters → lessons → exercise_types
@@ -407,16 +410,36 @@ migration vá, còn bây giờ chỉ là sửa một file chưa ai thấy.
 > trùng tên thì hàng đổi chỗ giữa hai lượt gọi. Cây chương trình có cùng lỗ hổng, và
 > `program_resources` đã đóng lỗ hổng đó còn `chapters` thì chưa.
 
-### Lát 2 — Tài liệu: sửa Đ3
+### Lát 2 — Tài liệu: sửa Đ3 — **ĐÃ XONG**
 
 | | |
 |---|---|
 | **Đã có** | `documents` + `content_group`, `program_id`, `lesson_id`, `storage_key`, `description` |
 | **Làm** | Bỏ `not null default 'REFERENCE'`; thêm `CHECK` dùng chung với `videos` |
-| **DDL** | `alter table documents alter column content_group drop not null, alter column content_group drop default; update documents set content_group = null where content_group = 'REFERENCE' and updated_at = created_at;` + `check (content_group is null or content_group in (…))` |
-| **UI** | Bộ lọc 4 chiều: bộ SGK × chương × bài × nhóm nội dung. `null` hiện là **"Chưa phân loại"**, có bộ đếm để Admin biết còn bao nhiêu |
-| **Test** | Tài liệu cũ có `content_group is null` và **không** lọt vào bộ lọc "Tham khảo"; giá trị ngoài danh sách → CSDL từ chối |
-| **Xong khi** | Không tài liệu nào bị dán nhãn nó không có |
+| **DDL** | `V202608311300__nhom_noi_dung_chua_phan_loai.sql` — drop default + drop not null cho **cả hai** bảng, đổ `null` cho `documents` còn mang `'REFERENCE'`, hai `CHECK` cùng danh sách bốn giá trị |
+| **UI** | Khối lọc "NHÓM NỘI DUNG" trong `DocumentManagement.tsx` (4 nhóm + **"Chưa phân loại"** kèm bộ đếm), nhãn trên thẻ tài liệu, phân loại/gỡ trong menu ⋮ |
+| **Test** | `NhomNoiDungTest` — 6 ca, 5 vòng đột biến đều đỏ đúng số ca đã đoán |
+| **Xong khi** | Không tài liệu nào bị dán nhãn nó không có — **đã đạt** |
+
+**Lệch so với kế hoạch gốc, và lý do:**
+
+- **Bỏ điều kiện `and updated_at = created_at`.** Kế hoạch định dùng nó để đoán dòng nào là nhãn
+  người chọn. Không cần đoán: entity `Document` chưa từng ánh xạ cột này và không câu SQL nào
+  trong mã ghi vào nó, nên **chưa từng có một dòng nào do người chọn**. Đoán bằng dấu thời gian
+  chỉ là bịa thêm một lớp dữ liệu nữa chồng lên lớp cũ. Vẫn giữ `where content_group = 'REFERENCE'`
+  để không xoá giá trị ai đó từng sửa tay bằng SQL.
+- **Bộ lọc mới làm được 1 trong 4 chiều.** Ba chiều còn lại (bộ SGK × chương × bài) cần cột chưa
+  tồn tại trên `documents`: không có ràng buộc bộ sách, không có ràng buộc bài cho mục đích này.
+  Làm chiều nhóm nội dung trước vì nó là chiều duy nhất giao được mà không phải bịa lược đồ.
+- **Đường ghi riêng `PATCH /content-group`, không gộp vào `PUT`.** Thân PUT hiện chỉ mang
+  tên/loại/phạm vi; nhét thêm trường này vào thì mỗi lần Admin đổi tên tài liệu là nhóm nội dung
+  nhận `null` và bay mất.
+- **Một dòng chưa có phép thử canh, nói thẳng:** `update documents set content_group = null …` chỉ
+  chạm dữ liệu có sẵn từ trước, mà CSDL phép thử dựng mới từ số không. Xoá dòng đó đi thì cả 6 ca
+  vẫn xanh. Đã ghi lại trong javadoc của `NhomNoiDungTest` thay vì lấp bằng một phép thử giả vờ.
+- **Chưa xem được bằng mắt trên trình duyệt.** Backend chỉ có một nguồn dữ liệu là `DATABASE_URL`
+  trỏ Neon staging; chạy thử sẽ áp migration lên staging, đúng cái ràng buộc "không đụng vào Neon
+  staging" cấm. Bằng chứng hiện có: 602/602 phép thử backend xanh và `tsc --noEmit` sạch.
 
 ### Lát 3 — SGK PDF nguyên quyển
 
@@ -426,28 +449,190 @@ migration vá, còn bây giờ chỉ là sửa một file chưa ai thấy.
 
 ### Lát 4 — Video
 
-| | |
-|---|---|
-| **Đã có** | Bảng `videos` + `GET/POST /api/admin/videos` (chưa commit). Song song: `documents` với `doc_type=VIDEO`, `file_url` chứa link YouTube, ảnh bìa qua `youtubeThumbnailUrl()` |
-| **Vấn đề** | Bảng `videos` nhân đôi 5 đường đã có test cho `documents`: upload, kiểm quyền (HT-05), ma trận IDOR (HT-92, 162 ô), sinh ảnh bìa (HT-95), ghi nhật ký (HT-94). `videos` không có đường nào trong số đó |
-| **Khuyên** | **Bỏ bảng `videos`**, dùng `documents` + `doc_type=VIDEO` + `duration_seconds`. Menu "Video" là **bộ lọc**, không phải kho |
-| **Nếu giữ** | Phải nhân đôi cả 5 đường trên trước khi coi là xong — nói thẳng ra để cân nhắc, chứ không phải chuyện thêm một CRUD |
-| **Chi phí đổi bây giờ** | Bảng rỗng, 2 endpoint, chưa commit. Sau khi có video thật thì phải chuyển dữ liệu và sửa `program_resources.resource_type='VIDEO'` |
+**Đã chốt giữ bảng `videos` làm kho riêng** (2026-08-31). Khuyến nghị bỏ bảng ở dưới đã bị bác —
+giữ lại để người sau biết lựa chọn kia từng được cân nhắc, đừng đề xuất lại.
 
-### Lát 5 — Chuyên đề: ba xuống một
+Ba dữ kiện trong bản kế hoạch gốc sai, đã kiểm bằng mã thật: migration tạo `videos` **đã commit** ở
+`7bde517` (không phải "chưa commit"); có **4** endpoint chứ không phải 2; và không một dòng frontend
+nào gọi `/admin/videos` — kho video tới giờ vẫn chưa có màn hình.
 
 | | |
 |---|---|
-| **Đã có** | `taxonomy_node` (cây đầy đủ: `parent_id`, `depth`, `slug`, `merged_into`, alias; `TaxonomyManagement.tsx` đang chạy ở menu "Chuyên đề"), `topics` (bảng phẳng, chỉ `MathContentController` dùng), `special_topics` (mới, có `related_chapter_id` — thứ `taxonomy_node` thiếu) |
-| **Làm** | `taxonomy_node` là nguồn duy nhất. Thêm `related_chapter_id` vào nó. Bỏ `special_topics` khỏi `program_resources.resource_type`; gỡ `topics` khỏi đường đọc |
-| **Vì sao chọn `taxonomy_node`** | Nó là bảng duy nhất trong ba bảng có UI đang chạy, có gộp/tách node, và đã được các phần khác tham chiếu (`documents.taxonomy_node_id`, `class_curriculum`) |
-| **Test** | `MathContentControllerTest` xanh sau khi chuyển; chuyên đề gắn `related_chapter_id` đọc được từ `program_resources` |
-| **Xong khi** | Chỉ còn một chỗ định nghĩa chuyên đề |
+| **Đã có** | Bảng `videos` + 4 endpoint `GET/POST/PUT/DELETE /api/admin/videos`. Song song: `documents` với `doc_type=VIDEO`, `file_url` chứa link YouTube, ảnh bìa qua `youtubeThumbnailUrl()` |
+| **Vấn đề** | Bảng `videos` nhân đôi 5 đường đã có test cho `documents`: upload, kiểm quyền (HT-05), ma trận IDOR (HT-92), sinh ảnh bìa (HT-95), ghi nhật ký (HT-94). `videos` không có đường nào trong số đó |
+| **Khuyên (đã bác)** | Bỏ bảng `videos`, dùng `documents` + `doc_type=VIDEO` + `duration_seconds`. Menu "Video" là bộ lọc, không phải kho |
+| **Đã làm** | `KhoVideoTest` (20 ca) + hàng rào ghi, suy ảnh bìa, nhật ký vòng đời, bịt đường rò bản nháp; 4 dòng mới trong `PermissionMatrixTest` |
+| **Chưa làm** | Đường **tải tệp mp4 lên R2**. Bên `documents`, "upload" là multipart PDF → R2; bản tương đương cho video là truyền tệp lớn, không chuyển mã, trong khi mô hình hiện tại chỉ lưu đường dẫn ngoài. Đó là một tính năng riêng và lớn hơn hẳn, không nằm trong lát này. Cột `storage_key` đã ghi/đọc được để sẵn sàng cho nó |
 
-### Lát 6 — Cây chương trình
+**Bốn lỗ hổng tìm ra khi làm, đều đã bịt** (không cái nào có trong kế hoạch gốc):
 
-Đã có: `courses → chapters → lessons → exercise_types`. Ràng buộc thứ tự làm ở Lát 1. Không có
-việc riêng.
+1. **Video không có nguồn nào.** `video_url` và `storage_key` đều nullable, không có ràng buộc nào
+   bắt phải có một. Một dòng như thế trông y hệt video thật trên mọi danh sách và chỉ khai ra là
+   rỗng lúc học sinh bấm vào.
+2. **`status` mặc định là mã chết.** Cột có `default 'DRAFT'` nhưng câu lệnh chèn liệt kê nó tường
+   minh, mà mặc định của PostgreSQL chỉ áp khi cột bị bỏ khỏi danh sách — nên không gửi trạng thái
+   là lỗi 500, không phải bản nháp.
+3. **Video lạc khỏi cây.** Không có kiểm tra nào buộc `chapter_id` thuộc `program_id`; gắn lệch thì
+   video biến mất khỏi cả hai màn hình mà vẫn nằm trong CSDL.
+4. **`GET /api/lessons/{id}/program-resources` rò bản nháp.** Nó lọc trạng thái của
+   `program_resources` mà không nối sang `videos`, trong khi đường chị em
+   `/api/programs/{id}/resources` có lọc `v.status='PUBLISHED'`. Chênh lệch ấy để lọt tiêu đề của
+   video còn là bản nháp — và của cả video đã lưu trữ — ra cho mọi người đã đăng nhập. Endpoint này
+   trước đó **không có một phép thử nào** canh.
+
+### Lát 5 — Chuyên đề: ~~ba~~ hai xuống một ✅ (đã làm 2026-09-01)
+
+| | |
+|---|---|
+| **Đã có** | `taxonomy_node` (cây đầy đủ: `parent_id`, `depth`, `slug`, `merged_into`, alias; `TaxonomyManagement.tsx` đang chạy ở menu "Chuyên đề"), `special_topics` (bảng phẳng sinh sau, bốn endpoint quản trị mà **không màn hình nào gọi**) |
+| **Đã làm** | `taxonomy_node` là nguồn duy nhất. `V202608311400__chuyen_de_ve_mot_nguon.sql` bê dòng sang rồi `drop table special_topics`; `SPECIAL_TOPIC` trong `program_resources` nay trỏ vào nút phân loại; bốn endpoint `/api/admin/special-topics` đã gỡ |
+| **Vì sao chọn `taxonomy_node`** | Nó là bảng duy nhất có UI đang chạy, có gộp/tách node, và đã được các phần khác tham chiếu (`documents.taxonomy_node_id`, `class_curriculum`) |
+| **Test** | `ChuyenDeMotNguonTest`, 14 ca, ba nhóm. Vòng đột biến 4 lượt, đoán đúng cả số lẫn tên: bỏ kiểm ACTIVE → 2 đỏ; trả bộ lọc đọc về luật chỉ-video → 5 đỏ; bỏ `drop table` → 1 đỏ; thêm lại một ánh xạ `/api/admin/special-topics` → 1 đỏ |
+| **Xong khi** | Chỉ còn một chỗ định nghĩa chuyên đề — ✅ |
+
+**Ba chỗ tài liệu này nói sai, sửa tại chỗ:**
+
+1. **"ba bảng" là hai.** `topics` không phải bảng chuyên đề thứ ba — nó là **chủ đề** của ngân
+   hàng câu hỏi, gốc của `topics → problem_types → problems`. Chính API của nó trả về "Danh sách
+   chủ đề". Nó có 4 dòng dữ liệu thật (`V202607291620`), một khoá ngoại NOT NULL
+   (`problem_types.topic_id`), và **ba màn hình đang gọi** (`App.tsx:1597`,
+   `MathWorkspace.tsx:31`, `TeacherWorksheetView.tsx:142`). Câu "chỉ `MathContentController`
+   dùng" và việc "gỡ `topics` khỏi đường đọc" nếu làm theo sẽ hỏng ngân hàng câu hỏi và trang
+   nhập phiếu của giáo viên. **Đã để nguyên `topics`.**
+2. **Không thêm `related_chapter_id` vào `taxonomy_node`.** Một nút phân loại dùng chung cho cả
+   khối; chương thì thuộc một bộ sách của một chương trình. Mục A1 của chính kế hoạch này đòi
+   nhiều bộ SGK song song cho mỗi lớp và **không đóng cứng**, nên một cột trỏ tới một chương là ép
+   nút chọn một bộ sách. Quan hệ "chuyên đề này thuộc chương nào của chương trình nào" đã có chỗ
+   diễn đạt đúng: dòng `program_resources` — nhiều-nhiều, có thứ tự, đã được lịch xếp sẵn. Thêm
+   cột là dựng lại đúng cái Đ4 mà lát này sinh ra để dẹp. *Còn hở:* `program_resources` gắn vào
+   **bài** chứ không vào **chương**, nên chuyên đề mức chương phải treo vào một bài của nó — ràng
+   buộc mà VIDEO/DOCUMENT/EXERCISE đã sống chung từ đầu; thêm lối gắn mức chương cho riêng một
+   loại thì tự nó lại là Đ4.
+3. **Phép thử mà tài liệu đề ra gần như vô giá trị.** `MathContentControllerTest` là unit test
+   thuần Mockito, giả lập `TopicRepository` và không chạm CSDL, nên nó xanh qua mọi thay đổi bảng
+   miễn là còn biên dịch được.
+
+**Hai thứ tìm thấy khi làm, nặng hơn phát biểu ban đầu của lát:**
+
+- **`special_topics` không phải bản trùng, nó là đường ghi chết nuôi một đường đọc sống.** Không
+  một hàm nào trong `api.ts` gọi `/api/admin/special-topics`, nên không ai tạo được dòng; nhưng
+  `StudentExperience.tsx:531` vẫn dựng tab "Chuyên đề" vĩnh viễn rỗng. Cái rỗng ấy đọc ra là
+  "trường chưa soạn gì" chứ không phải "tính năng này không có cách nào chứa nội dung" — đúng
+  dạng Đ3.
+- **Lỗ rò của Lát 4 lặp lại cho cả ba loại còn lại.** Hai đường đọc luồng nội dung chỉ hỏi trạng
+  thái của video; tài liệu bản nháp hoặc đã ẩn, phiếu đã xoá, chuyên đề đã lưu trữ vẫn phát tiêu
+  đề cho mọi người đã đăng nhập. Nay bốn loại đi chung một biểu thức `PHAT_DUOC` với nhánh
+  `else false`: thêm `resource_type` mới mà quên khai thì nó im lặng **không hiện**, chứ không im
+  lặng lọt ra. *Không kiểm được:* chính nhánh `else false` — ràng buộc CHECK
+  `ck_program_resources_type` không cho tạo loại thứ năm, nên không phép thử nào chạm tới được.
+- **Nhánh bê dữ liệu của migration không có phép thử nào chạy qua**, vì Zonky khởi động từ CSDL
+  rỗng: không thể gieo `special_topics` trước khi chính migration của nó chạy. Vẫn viết nhánh ấy
+  (Neon staging có thể đang giữ dòng, và **không đụng vào**), và phép thử chỉ khẳng định bảng đã
+  biến mất.
+
+**Việc phát sinh, không thuộc lát này:** `POST /api/admin/lessons/{lessonId}/resources` **không
+có một nơi gọi nào ở frontend** — nghĩa là không loại tài nguyên nào trong bốn loại gắn vào bài
+được từ giao diện. Cần một lát riêng.
+
+### Lát 6 — Cây chương trình ✅ (đã làm 2026-09-01)
+
+> ~~Đã có: `courses → chapters → lessons → exercise_types`. Ràng buộc thứ tự làm ở Lát 1. **Không
+> có việc riêng.**~~ — **câu này sai.** Ràng buộc thứ tự thì đúng là Lát 1 đã làm và có phép thử
+> canh (`BoSachVaThuTuCayTest`). Nhưng "có bảng, có ràng buộc thứ tự" không trả lời hai câu hỏi
+> khác: *cắt một cành thì lá có rụng không*, và *sắp xếp lại có ở trong một cành không*. Cả hai
+> đều trả lời **không**.
+
+| | |
+|---|---|
+| **Đã có** | `courses → chapters → lessons → exercise_types`; xoá mềm ở cả bốn tầng; chỉ mục duy nhất từng phần cho thứ tự (Lát 1) |
+| **Vấn đề** | Ba khuyết tật thật, xem bên dưới |
+| **Đã làm** | `CatCanhCay` (dấu xoá xuống hết nhánh) + viết lại hai hàm `reorder` của chương và bài + `CayChuongTrinhTest` 11 ca — **xanh, cả bộ 659 ca xanh** |
+| **Xong khi** | Xoá một chương thì không đường đọc nào còn phát bài của nó; một lượt `reorder` sai không kịp đụng số thứ tự của ai — **đã đạt** |
+
+**Ba khuyết tật, tất cả đều đã chạy ra thật rồi mới sửa:**
+
+1. **Cắt cành không rụng lá.** `softDelete` chỉ đóng dấu lên đúng dòng bị xoá. Xoá một chương thì
+   các bài của nó vẫn `deleted_at` rỗng, nên chúng vẫn là bài đang sống với mọi đường hỏi thẳng
+   bài: `/api/lessons/{id}/exercise-types` trả 200 kèm dữ liệu, `/api/lessons/{id}/program-resources`
+   vẫn phát, `/api/lessons/{id}/documents` vẫn phát, và `GET /api/public/lessons/{code}` — đường
+   này là `permitAll`, tức **rò ra tới người chưa đăng nhập**. Mà trên màn hình quản trị thì chương
+   đã biến mất, nên không còn lối nào tìm ra mấy bài ấy mà dọn: đúng dạng Đ3.
+2. **Reorder trộn hai cây.** `PATCH /api/chapters/reorder` nhận một danh sách id trần, không có
+   cha, rồi đánh số 1..n bất kể chúng thuộc đâu. Trộn id của hai chương trình thì **cả hai** cùng
+   bị đánh số lại, lượt gọi vẫn trả 200 và không nói gì. `/api/lessons/reorder` y hệt, trộn giữa
+   hai chương.
+3. **Reorder thiếu id → 500.** Danh sách thiếu đụng `uq_chapters_order` và nổi lên thành
+   `{"success":false,"code":500,"message":"Hệ thống đang gặp lỗi…"}`. Người gọi không có cách nào
+   biết mình vừa gửi thiếu.
+
+**Chọn cách chữa nào, và vì sao.** Với khuyết tật 1 có hai đường. Đường thứ nhất: mọi đường đọc tự
+join ngược lên cha, ông, cụ. Đường ấy đã thử và đã thua **bốn lần** — mỗi đường đọc mới là một lần
+phải nhớ lại, quên một chỗ là rò một chỗ. Đường thứ hai, chọn ở đây: giữ cho **dấu xoá luôn đầy
+đủ**, để mỗi đường đọc chỉ cần lọc `deleted_at is null` trên chính bảng của nó — đúng thứ tất cả
+chúng đã làm sẵn. Một cơ chế, một chỗ sửa. Với khuyết tật 2 và 3: ba câu hỏi — *cùng một cha
+không, có id lặp không, đã đủ chưa* — phải hỏi **trước khi ghi một dòng nào**, để một lượt gọi sai
+không sửa được một phần rồi mới nổ.
+
+**Vòng đột biến** (rút ruột `CatCanhCay.dong` → 5 ca đỏ; bỏ hai chốt kiểm ở hai hàm `reorder` →
+3 ca đỏ) đúng cả số lẫn tên đã đoán trước.
+
+**Ba việc phát sinh, không thuộc lát này:**
+
+- `deleteExerciseType` là **xoá cứng**, trong khi cả cây còn lại xoá mềm. Chưa gây hại vì dạng bài
+  là lá, nhưng nó là lối ghi lệch chuẩn duy nhất trong cây.
+- `lesson_documents` và `lesson_resources` **cố ý** chưa được đóng dấu: Lát 8 rút hai bảng ấy khỏi
+  mọi đường đọc, nên viết vào hai bảng sắp gỡ là làm để rồi xoá đi. Không hở lỗ nào vì
+  `listLessonDocuments` nạp thực thể `Lesson` trước, mà `Lesson` có `@SQLRestriction`.
+- `program_resources.reorder` đã tự khoanh theo `lesson_id` nên không trộn được hai bài; chỗ còn
+  hở của nó là danh sách thiếu id, và đó đúng là ca test Lát 10 đã đặt sẵn.
+
+### Lát 6b — Đối tượng của dòng phân phối ✅ (đã làm 2026-09-01)
+
+Lát này không có trong danh sách gốc. Nó đến từ bản kế hoạch phân phối riêng (mục #5 và #6 ở đó),
+và chen vào đây vì nó vá một lỗ đang mở, không phải vì tới lượt.
+
+**Lỗ:** `program_resources` không có cột đối tượng, và luật phát của nó chỉ hỏi *trạng thái* của
+thứ được trỏ tới. Trạng thái nói "đã xuất bản chưa", không nói "cho ai". Nên một tài liệu đánh dấu
+`TEACHER_ONLY` và đã xuất bản, gắn vào bài, ra thẳng tới mọi học sinh đã đăng nhập — qua cả hai cửa
+`/api/lessons/{id}/program-resources` và `/api/programs/{id}/resources`. Đường `lesson_documents`
+thì lại lọc đối tượng đúng. Hai cơ chế trả lời khác nhau về cùng một câu hỏi, và cái không lọc là
+cái học sinh gọi được: mẫu Đ4.
+
+**Làm:**
+
+- `V202609011000__doi_tuong_cua_dong_phan_phoi.sql` — thêm cột `audience` + check constraint, trám
+  `TEACHER_ONLY` từ tài liệu nguồn. Không lọc `deleted_at` khi trám (dòng xoá mềm sai đối tượng là
+  mìn chờ đường khôi phục) và không dập `updated_at` (điền cột mới không phải sửa nội dung).
+- Đọc: một hàm `docDuoc()` duy nhất, hai cửa cùng gọi. Chốt trước của kế hoạch —
+  *quyền đọc nằm trong đúng một hàm* — chính là thứ đã hỏng ở đây.
+- Ghi: `doiTuong(ResourceInput)`. Mặc định lấy theo tài liệu nguồn (quên khai báo thì rơi về phía
+  an toàn); **thu hẹp được** cho riêng một dòng gắn — cùng một tệp, hai chỗ, hai đối tượng, không
+  nhân bản; **nới rộng thì không**, kể cả admin, vì một dòng gắn thì lặng lẽ còn sửa chính tài liệu
+  thì đi qua `DocumentService` và có nhật ký.
+- Thứ tự dải *đã học* xếp **ngược** (`THU_TU`): học sinh mở lại phần đã qua là để tìm bài tuần
+  trước, không phải bài đầu năm.
+
+**Test:** `PhanPhoiTheoDoiTuongTest` (6 ca, đi qua đường ghi thật của admin chứ không chèn SQL),
+`ThuTuBonDaiTest` (1 ca, ba khẳng định thứ tự). 4 đỏ → 6 xanh; toàn bộ 659 → 666, 0 đỏ.
+
+**Vòng đột biến** — ba lượt, đúng cả số lẫn tên đã đoán trước: `docDuoc()` → `""` cho 3 đỏ;
+`doiTuong()` luôn trả `STUDENT_ALLOWED` cho 4 đỏ; bỏ phép đảo trong `THU_TU` cho 1 đỏ.
+
+**Ba chỗ bản kế hoạch phân phối nói không khớp repo:**
+
+- `lesson_resources` **không** rò. Bảng không có cột đối tượng nên không có cách nào đánh dấu
+  chỉ-giáo-viên — đó là năng lực còn thiếu, không phải lỗ đang mở. Lát 8 gộp nó vào
+  `program_resources`, thêm cột vào bảng sắp gỡ là làm để rồi xoá.
+- Ca IDOR "tài liệu của lớp khác" **không áp** cho `program_resources`: chương trình dùng chung cho
+  mọi học sinh là chủ ý, có `ChuongTrinhChungChoHocSinhTest` canh. Thêm kiểm tra thành viên lớp là
+  phá một thiết kế đang đúng.
+- `class_documents` bỏ qua `audience` là **cố ý**, có `DocumentAccessTest:171` canh: quyền đến từ
+  việc giáo viên chủ động gắn, không từ đối tượng. Giáo viên phát đáp án sau khi kiểm tra là chuyện
+  có thật. Chưa đụng — đây là quyết định của người dùng, không phải lỗi.
+
+**Chưa làm, có lý do:** bốn dải thật của kế hoạch (*tuần này / sắp tới hai tuần / luôn hiện /
+đã học*) cần mô hình đa mạch và lịch tuần, cả hai chưa tồn tại — bản đang chạy chỉ xấp xỉ ở mức
+chương. Sửa `audience` của một dòng đã gắn cũng chưa có đường; hôm nay chỉ `add()` đặt được.
 
 ### Lát 7 — Mẫu chương trình
 
@@ -459,20 +644,541 @@ việc riêng.
 | **Test** | Mẫu đảo thứ tự chương (Chương 3 trước Chương 2) → API trả đúng thứ tự của **mẫu**, không phải của `chapters.order_index`. **Đây là ca test quan trọng nhất của lát này** — thiếu nó thì lỗi ẩn cho tới mẫu đầu tiên đảo chương |
 | **Xong khi** | Hai mẫu cùng chương trình, khác thứ tự, cùng chạy đúng |
 
-### Lát 8 — Luồng nội dung: ba xuống một
+### Lát 8 — Luồng nội dung: ba xuống ~~một~~ hai ⚠️ (làm 2026-09-01, **mới xong một nửa**)
 
-**Lát khó nhất.**
+**Lát khó nhất.** Ống `lesson_resources` đã gộp xong và đã rút khỏi mọi đường. Ống
+`lesson_documents` **chưa đụng** — xem "Còn thiếu" cuối mục.
 
 | | |
 |---|---|
 | **Đã có** | `program_resources` + 5 endpoint, `unique (lesson_id, order_index)`, `unique (lesson_id, resource_type, resource_ref_id)`, `validateRef` kiểm tài nguyên nguồn có thật, reorder hai lượt (ghi số âm rồi ghi số thật) để lách chỉ mục duy nhất — **phần này làm tốt** |
-| **Vấn đề** | `lesson_resources` và `lesson_documents` vẫn còn nguyên trên đường đọc. Ba cơ chế, ba `order`, ba đường API. Học sinh mở một bài thấy ba danh sách không biết cái nào trước |
-| **Làm** | Migration **chuyển dữ liệu** từ `lesson_documents` + `lesson_resources` sang `program_resources`, giữ nguyên thứ tự tương đối; rút hai bảng cũ khỏi mọi đường đọc **trong cùng lát** |
-| **Test** | Migration chuyển đúng số dòng và **giữ nguyên thứ tự**; xóa tài nguyên khỏi luồng **không** xóa `documents` (đếm dòng trước/sau); hai mục không thể trùng `order_index`; reorder gửi thiếu một id → từ chối cả lượt |
 | **Xong khi** | `lesson_documents` và `lesson_resources` không còn nằm trên đường đọc nào |
 
+**Làm được:**
+
+- `V202609011500__gom_lesson_resources_vao_luong.sql` — chuyển một chiều: nội dung nằm *trong* dòng
+  cũ tách ra thành một mục trong kho (`videos` cho loại VIDEO, `documents` cho năm loại còn lại),
+  rồi dòng cũ thành dòng trỏ trong `program_resources`. Thứ tự tương đối giữ nguyên và xếp *tiếp
+  sau* những gì bài ấy đã có, vì `unique(lesson_id, order_index)` không cho hai mục trùng chỗ.
+- `legacy_lesson_resource_id` trên cả hai kho, có chỉ mục duy nhất từng phần. Không phải để chạy
+  lại cho vui: lượt này **sinh** dữ liệu mới từ dữ liệu cũ, nên hỏng giữa chừng hoặc chạy hai lần
+  là kho đầy bản sao câm không truy được nguồn.
+- `documents.file_asset_id` — `lesson_resources` là bảng **duy nhất** nối một tệp với một bài, và
+  cổng tải tệp lần theo đúng mối nối ấy để hỏi "học sinh này có được mở tệp kia không". Bỏ ống cũ
+  mà không mang cột này theo thì tệp gắn qua đường mới hoặc không tải được, hoặc được phát bằng
+  đường dẫn trần chẳng qua cửa nào.
+- `audience`/`status` của dòng chuyển sang đều để **mở**, có chủ ý: bảng cũ không có hai cột ấy nên
+  mọi dòng của nó học sinh đang đọc được rồi. Ghi `TEACHER_ONLY` ở đây là lặng lẽ giấu đi thứ hôm
+  qua các em còn mở — một lượt chuyển dữ liệu không được phép đổi thứ người ta thấy.
+
+**Cái lỗ mà chính lát này mở ra, và phải vá trong cùng lát.** Cửa *đọc* dời sang
+`program_resources`, nhưng màn soạn của admin vẫn ghi vào `lesson_resources`. Migration chạy đúng
+một lần, nên **mọi thứ gắn từ giờ trở đi rơi vào bảng chết**: không lỗi, không màn hình trống,
+không dòng nhật ký — admin bấm lưu, thấy học liệu nằm trong danh sách của mình, và học sinh không
+bao giờ thấy nó. Đúng mẫu Đ3. Vá bằng:
+
+- `POST /api/admin/lessons/{id}/resources/new` — dựng nội dung **và** gắn trong **một** giao dịch.
+  Hai lượt gọi từ trình duyệt thì lượt hai hỏng để lại một mục mồ côi trong kho: hiện trên mọi danh
+  sách, tìm được, và không bài nào trỏ tới.
+- `PUT /api/admin/program-resources/{id}` — sửa tên/trạng thái/đối tượng, đi qua **đúng** hàm
+  `doiTuong` mà đường gắn đi. Chặn trần lúc gắn mà hở lúc sửa thì người ta gắn hẹp rồi sửa rộng:
+  bịt một đường và tưởng đã bịt cả hai — hình dạng tệ hơn không bịt gì.
+- `luuVideo` tách ra để hai cửa vào kho video cùng qua một hàng rào.
+- `StudentLearningController.resources()` thôi phát `documents.file_url` cho tài liệu **có** tệp.
+  Đường dẫn ấy không hỏi ai, gửi cho người ngoài lớp vẫn mở được, và mở được mãi. `/api/files/{id}`
+  là chỗ trả lời chuyện ấy nên nó phải là đường duy nhất.
+- Gỡ hẳn module ghi cũ: `LessonResourceController` + service + impl + 2 DTO + entity + repository.
+  Một endpoint còn sống ghi vào bảng không ai đọc **tự nó** là mẫu Đ3. Bảng `lesson_resources` ở
+  lại nguyên (không migration nào xoá gì).
+- Frontend: `ResourceManager` chuyển sang 5 hàm mới, thêm hai ô **trạng thái** và **phát cho** —
+  hai cột mà ống cũ chưa từng có. Bỏ select `metadata.resourceTypes`: sáu giá trị ở đó tả bảng giờ
+  không còn cửa đọc, chọn trúng một giá trị là gắn vào chỗ không ai đọc.
+
+**Test:** `GanHocLieuTuManQuanTriTest` (6 ca, đi qua đường ghi thật của admin), `PhanPhoiTheoDoiTuongTest`
+6 → 8 ca, `ChuyenOngCuVaoLuongTest` (5 ca). Toàn bộ 674 → 686, 0 đỏ (không phải 687 vì
+`ContentOwnershipTest.resourceReadChecksLessonCourseOwnership` đi cùng module bị gỡ).
+
+`ChuyenOngCuVaoLuongTest` là cách duy nhất chạm được vào lượt chuyển: Flyway chạy xong trước khi
+phép thử kịp chèn dòng nào, nên lượt thật luôn chạy trên CSDL rỗng. Phép thử đọc **chính tệp
+migration từ classpath** và thi hành lại — sửa tệp thì nó chạy bản đã sửa, chứ không canh một bản
+chép.
+
+**Vòng đột biến** — bảy lượt:
+
+| Đột biến | Đoán | Thật |
+|---|---|---|
+| `sua()` ghi thẳng `x.audience()` | 1: `khongNoiRongDuocQuyenBangDuongSua` | ✅ đúng |
+| bỏ `case when file_asset_id is null` | 1: `duongDanThoKhongLotRaManHocSinh` | ✅ đúng |
+| `doiTuongMoi` luôn trả `STUDENT_ALLOWED` | 1: `chiGiaoVienGanVaoKhongLotRa` | ✅ đúng |
+| `luuVideo` bỏ gọi `kiemVideo` | 6 ca `KhoVideoTest` | ❌ **7** — thiếu `hongOHangRaoThiKhongGhi`, do đọc danh sách ca bị cắt ngắn. Sáu tên đã đoán đều nằm trong bảy |
+| migration: `row_number` bỏ `order by lr.order_index` | 1: `giuNguyenThuTu` | ❌ **2** — `chayLaiKhongSinhThem` cũng khẳng định thứ tự ở cuối, quên tính |
+| migration: bỏ chốt `not exists` của kho tài liệu | 1: `chayLaiKhongSinhThem` | ✅ đúng |
+| migration: bỏ `lr.file_asset_id` | 1: `noiDungTachRaKho` | ✅ đúng |
+
+Năm trên bảy đúng cả số lẫn tên. Hai lượt trượt đều là **trượt lên** — nhiều ca đỏ hơn dự đoán, do
+đọc thiếu danh sách ca chứ không phải do phép thử canh hụt.
+
+**Còn thiếu — lát này chưa đóng được:**
+
+- `lesson_documents` vẫn còn nguyên cả đường đọc lẫn đường ghi (`LessonDocumentManager`,
+  `getLessonDocuments`, câu hỏi kèm tài liệu, `recordLessonDocumentStudy`, `submitLessonDocumentQuiz`).
+  Không gộp được bằng một câu insert như ống kia: nó mang `start_page`, `teacher_note`, `required`,
+  cộng bộ câu hỏi và bản ghi đã-học trỏ vào chính nó. Gộp nghĩa là quyết xem `program_resources` có
+  nhận thêm ba cột ấy không — một quyết định, không phải một lượt chuyển. **Đây là lát riêng.**
+- ~~Test canh migration còn nợ~~ — **đã trả**: `ChuyenOngCuVaoLuongTest`, 5 ca. Seed ba dòng
+  `lesson_resources` với `order_index` **cố tình ngược** thứ tự chèn (VIDEO→3, PDF→1, TEXT→2) để một
+  câu thiếu `order by` không thể xanh nhờ may; thêm một bài đã có sẵn dòng trỏ để đo phần cộng bù.
+  Ba tính chất đo rời nhau: chuyển đủ dòng, giữ đúng thứ tự, nội dung tách ra kho. Ca thứ năm chạy
+  lượt hai và khẳng định số dòng lẫn thứ tự không đổi.
+- Kiểm chủ sở hữu khóa học ở tầng bài học đang **trống** trên ống mới: ca test cũ đi cùng
+  `LessonResourceServiceImpl`, và các endpoint mới chỉ chặn tới mức `hasRole('ADMIN')`. Việc của
+  lát "quyền sở hữu".
+
 > Ràng buộc "rút cũ trong cùng lát" là bắt buộc. Thêm mà không rút chính là cách ba cơ chế này ra
-> đời. Cùng lỗi đã xảy ra ở HT-59/60: ba màn hình cùng chấm một bài nộp.
+> đời. Cùng lỗi đã xảy ra ở HT-59/60: ba màn hình cùng chấm một bài nộp. Lát này giữ được ràng buộc
+> ấy cho ống thứ hai — và chỉ vì thế mà cái lỗ Đ3 ở trên mới lộ ra ngay, thay vì lộ ra sau vài
+> tháng qua một câu hỏi "sao học sinh không thấy tài liệu tôi vừa thêm".
+
+---
+
+## 4b. Năm lát từ kế hoạch phân phối
+
+Năm lát dưới đây không thuộc dãy hai mươi lát ở trên. Chúng đến từ `MATH10-luong-phan-phoi-DAY-DU.md`
+— bản kế hoạch cắt lát cho luồng phân phối tài liệu — nên đánh số **PP-n** theo bản đó, để không ai
+đọc nhầm "Lát 3" ở đây thành "SGK PDF nguyên quyển" ở trên. Bản ấy tự đặt đường đi ngắn nhất là
+`PP-3 → PP-4 → PP-13`, và ba chặng ấy đã đi hết. **PP-5** là chặng thứ tư và không nằm trên đường
+ngắn nhất — nó là lát mà bản kế hoạch gọi là *trung tâm của cả kế hoạch*: một bảng thay cả bốn chỗ
+gắn tài liệu đang chạy song song. Thứ tự thật của bản ấy là `#5 → #6`, nên PP-5 mở đường cho
+**PP-6** — lát gỡ cổng thời gian và đổi nó thành thứ tự hiển thị, chặng thứ năm.
+
+### Lát PP-3 — Mô hình đa mạch ✅ (làm 2026-09-01)
+
+| | |
+|---|---|
+| **Đã có** | `program_schedules`: mỗi chương một khoảng ngày, tại một ngày có đúng một chương đang chạy |
+| **Làm** | `program_strands` + `program_periods`; `PhanPhoiChuan` giữ quy tắc sinh; ba endpoint đọc/sinh |
+| **Test** | `MoHinhDaMachTest`, 9 ca. Toàn bộ 686 → 695, 0 đỏ |
+| **Xong khi** | Hỏi "tuần 5 học gì" ra đúng ba dòng; tổng 105 tiết; tuần 12 là lần đầu Thống kê xuất hiện |
+
+Một `current-chapter` số ít không biểu diễn được chương trình thật: tuần 1 có Đại số tiết 1 và Hình
+học tiết 1 chạy song song, hai bộ đếm độc lập, không cái nào là chương hiện hành của cái kia. Bảng cũ
+**không bỏ đi** — nó trả lời một câu khác ("chương này dạy trong khoảng ngày nào") và câu đó vẫn đúng.
+
+Số tiết đếm **riêng theo mạch**, nên chỉ mục duy nhất đi theo `(strand_id, period_no)` chứ không theo
+chương trình. Đánh chung một chuỗi là mô hình sai: "Hình học tiết 9" là câu giáo viên nói, "tiết thứ
+14 của cả năm" thì không ai dùng. Thống kê vào từ tuần 12 **bắt đầu lại từ tiết 1**, không nối tiếp
+tiết 22 của Hình học, dù hai mạch dùng chung một ô trong thời khóa biểu.
+
+Lượt sinh là **endpoint của admin, không phải DDL trong migration** — vì không migration nào chèn
+`courses`, nên không có chương trình nào để treo 105 dòng vào lúc Flyway chạy. Hóa ra đó lại là chỗ
+đúng: chạy lại được, có mục tiêu rõ ràng, và **từ chối được** thay vì làm hỏng. Cột `source` phân biệt
+dòng máy sinh với dòng người nhập; lượt sinh lại chỉ xóa mềm dòng `SEED`.
+
+**Vòng đột biến** — sáu lượt:
+
+| Đột biến | Đoán | Thật |
+|---|---|---|
+| `TUAN_CUOI_HINH_HOC` 11 → 12 | 3: `caNamDungMotTramLinhNamTiet`, `tuanMuoiHaiThongKeVaoThayCho`, `soTietDemRiengTungMach` | ✅ đúng |
+| `order by … p.period_no desc` | 2: `tuanNamTraVeDungBaDong`, `soTietDemRiengTungMach` | ✅ đúng |
+| xóa mềm bỏ điều kiện `source='SEED'` | 2: `sinhLaiKhongXoaDongNhapTay`, `dongNhapTayChiemChoThiDung` | ✅ đúng |
+| bỏ chốt va chạm số tiết | 1: `dongNhapTayChiemChoThiDung` | ✅ đúng |
+| `TUAN_HDTN` rỗng | 2: `caNamDungMotTramLinhNamTiet`, `phanLoaiTietDiTheoTuan` | ✅ đúng |
+| `phanLoaiODon` luôn trả `BAI_MOI` | 1: `phanLoaiTietDiTheoTuan` | ✅ đúng |
+
+Sáu trên sáu đúng cả số lẫn tên.
+
+**Còn thiếu:**
+
+- **`lesson_id` rỗng ở cả 105 dòng, và đó là chủ ý.** Trung tâm chưa có tệp phân phối chương trình
+  thật trong hệ, nên lượt sinh chỉ dựng *cấu trúc* — mạch nào, tuần nào, tiết thứ mấy, loại tiết gì
+  — còn tiêu đề là chuỗi máy ghép ("Đại số · tiết 5"), không thể nhầm với tên bài. Bịa tên bài cho
+  105 dòng là thứ dữ liệu sai tệ nhất: nhìn thì đủ, đọc thì hợp lý, và không ai phát hiện ra cho tới
+  lúc dạy sai. Ca 5 khẳng định `lesson_id is null` cho cả 105 dòng để điều này không âm thầm trôi đi.
+- Chưa có đường nhập PPCT thật. Khi có, nó thay đúng phần `SEED` — đó là việc cột `source` sinh ra để làm.
+- Chưa có màn hình nào gọi ba endpoint mới.
+
+### Lát PP-4 — Lịch tuần sinh từ ngày khai giảng ✅ (làm 2026-09-01)
+
+| | |
+|---|---|
+| **Đã có** | `academic_breaks` (kỳ nghỉ của khóa), `course_instances.starts_on` — tầng duy nhất được mang ngày |
+| **Làm** | `course_weeks`; `LichTuan` giữ quy tắc trải tuần; bốn endpoint: đọc, **xem trước**, ghi, sửa một tuần |
+| **Test** | `LichTuanCuaKhoaTest`, 8 ca. Toàn bộ 695 → 703, 0 đỏ |
+| **Xong khi** | Chèn nghỉ Tết giữa HK II: tuần sau dịch đúng, tuần trước không đổi, tuần đã sửa tay giữ nguyên, báo rõ bỏ qua N tuần |
+
+**Xem trước và ghi thật đi qua đúng một hàm** (`LichTuan.sinh`). Để hai bên tự tính thì cái admin
+nhìn thấy trước khi bấm không còn là cái sẽ được lưu — mà toàn bộ lý do có màn xem trước là để không
+ai bất ngờ. Ca 1 đo cả hai nửa: neo đúng thứ Hai, **và** không ghi dòng nào.
+
+Ba điểm kế hoạch gọi tên là dễ sai, cả ba đều có ca riêng:
+
+1. **Neo về thứ Hai.** Chọn 05/09/2026 (thứ Bảy) thì tuần 1 vẫn là 31/08 – 06/09. Tuần học là đơn vị
+   của thời khóa biểu, không phải bảy ngày kể từ hôm khai giảng.
+2. **Tuần nghỉ không tiêu số tuần.** Dòng tuần nghỉ có mặt trong lịch — để màn hình nói được đang
+   nghỉ vì gì và bao giờ học lại — nhưng `week_no` rỗng. CSDL canh bằng `ck_course_week_break`
+   (`is_break = (week_no is null)`), không chỉ dựa vào bộ sinh.
+3. **Quá khứ không đụng.** Sinh lại từ tuần 20 thì mười chín dòng đầu **giữ nguyên `id`**, không phải
+   chỉ giữ nguyên ngày. Ca 5 so `id` chứ không so ngày, vì sinh ra ngày y hệt rồi ghi đè cũng qua
+   được phép so ngày.
+
+Ranh giới ngược lại cũng phải canh: **phủ kín cả bảy ngày mới là tuần nghỉ.** Nghỉ lễ hai ngày giữa
+tuần không làm tuần ấy biến mất — vẫn dạy, chỉ mất hai buổi. Quy tắc "chạm vào kỳ nghỉ là thành tuần
+nghỉ" viết dễ hơn và sẽ ăn mất mấy tuần học mỗi năm mà lịch vẫn trông hợp lý. Xét theo **hợp** của
+các kỳ nghỉ, vì Tết chín ngày cộng một ngày nghỉ bù chồng lên nhau là dữ liệu người ta thật sự nhập.
+
+`edited_by_hand` là cột cứu mạng, và nó phải **sống sót qua nhiều lượt sinh lại** — lượt ghi viết lại
+dòng, nên cờ phải được mang sang dòng mới. Ca 6 sinh lại hai lượt: giữ được một lượt là chưa đủ, thứ
+dễ hỏng là lượt sau làm mất cờ rồi lượt thứ ba xóa mất công người ta sửa mà không báo gì.
+
+Cửa sửa **không** cho biến một tuần thành tuần nghỉ. Tuần nghỉ sinh ra từ `academic_breaks` — thêm kỳ
+nghỉ rồi sinh lại là đường duy nhất. Mở đường thứ hai ở đây thì câu "tuần này có nghỉ không" có hai
+nguồn trả lời, và chúng sẽ lệch nhau. Cùng lý do đó, bộ sinh đọc kỳ nghỉ qua `AcademicBreaks.all()`
+chứ không tự viết câu `select` thứ hai.
+
+**Vòng đột biến** — bảy lượt:
+
+| Đột biến | Đoán | Thật |
+|---|---|---|
+| `thuHaiCua` trả về chính ngày | 3: `neoVeThuHaiTruocKhiLuu`, `ghiThatTraiDuBaMuoiLamTuan`, `tuanSuaTayGiuNguyenVaBaoRoBoQua` | ⚠️ đúng số, lệch một tên: đỏ ở `sinhLaiKhongDungVaoQuaKhu` chứ không phải ca sửa tay |
+| tuần nghỉ vẫn tiêu số tuần (`so++`) | 2: `tuanNghiKhongTieuSoTuan`, `sinhLaiKhongDungVaoQuaKhu` | ✅ đúng |
+| bỏ nhánh giữ tuần sửa tay trong `sinh` | 1: `tuanSuaTayGiuNguyenVaBaoRoBoQua` | ✅ đúng |
+| lượt ghi không mang cờ sửa tay sang dòng mới | 1: `tuanSuaTayGiuNguyenVaBaoRoBoQua` | ✅ đúng |
+| chạm kỳ nghỉ là thành tuần nghỉ | 3: `nghiHaiNgayKhongLamMatTuan`, `tuanNghiKhongTieuSoTuan`, `sinhLaiKhongDungVaoQuaKhu` | ✅ đúng |
+| bỏ chốt chồng ngày ở cửa sửa | 1: `suaChongLenTuanKhacThiTuChoi` | ✅ đúng |
+| sinh lại luôn dọn sạch, không giữ phần đầu | 1: `sinhLaiKhongDungVaoQuaKhu` | ❌ **2** — `suaChongLenTuanKhacThiTuChoi` cũng đỏ: dọn sạch thì tuần 5 không còn tồn tại để mà sửa |
+
+Năm trên bảy đúng cả số lẫn tên. Lượt đầu đúng số nhưng lệch tên — đoán tuần 30 rút ngắn sẽ đẩy tuần
+31 lệch chỗ, thật ra ca trước đó đã neo lại lịch về thứ Hai nên chỗ lệch tự lành trước khi tới ca ấy.
+Lượt cuối **trượt lên**, cùng kiểu với hai lượt trượt ở Lát 8.
+
+> Một lượt đột biến viết hụt: `for (…; false; …)` là lỗi biên dịch "unreachable statement", nên lượt
+> chạy trả về **rỗng** chứ không phải 0 đỏ. Kết quả rỗng của một vòng đột biến trông y hệt "phép thử
+> không canh gì" — phải đọc log tới dòng `BUILD FAILURE` mới phân biệt được. Đã viết lại thành bản
+> biên dịch được rồi chạy lại.
+
+**Còn thiếu:**
+
+- `id` của dòng lịch **không ổn định** qua lượt sinh lại phần sau: dòng bị xóa mềm rồi chèn mới. Phần
+  giữ nguyên thì `id` không đổi (ca 5 canh đúng điều đó), nhưng thứ gì trỏ vào một tuần bằng `id`
+  sẽ đứt sau một lượt sinh lại. Chưa có gì trỏ vào — cần biết trước khi có.
+- ~~Lịch tuần **chưa nối với `program_periods`**~~ — đã nối ở PP-13 dưới đây.
+- Chưa có màn hình nào gọi bốn endpoint mới.
+
+---
+
+### Lát PP-13 — Màn Hôm nay ✅ (làm 2026-09-02)
+
+| | |
+|---|---|
+| **Đã có** | `program_periods` (tuần 12 học gì) và `course_weeks` (tuần 12 là ngày nào) — hai câu hỏi ở hai chỗ |
+| **Làm** | `GET /api/student/hom-nay`; `LichCuaKhoa` gom mọi câu đọc lịch về một chỗ; sáu trạng thái màn hình |
+| **Test** | `ManHomNayTest`, 11 ca. Toàn bộ 703 → 714, 0 đỏ |
+| **Xong khi** | Một ngày học bình thường, học sinh không phải rời màn này để lấy tài liệu của bài đang học |
+
+Kế hoạch đặt phép thử của lát này bằng một câu phủ định: *"Nếu vẫn phải nhảy sang Thư viện mới lấy
+được tài liệu của bài đang học thì lát này chưa xong."* Nên endpoint trả **một** gói: tuần và khoảng
+ngày, ba mạch mỗi mạch một dòng kèm tên bài, học liệu của tuần **gom chung không tách theo loại tệp**
+(chỉ có cờ `loai` để màn hình chọn icon), việc cần làm, điểm mới trả, thẻ học tiếp, "sắp tới" hai
+tuần, "đã học" gom theo chương. Một lượt gọi, không có lượt thứ hai.
+
+**Rỗng có sáu nghĩa, và màn hình phải nói đúng nghĩa nào.** `LichCuaKhoa.tai` trả `Optional` rỗng cho
+ba tình huống khác hẳn nhau — chưa khai giảng, đã hết năm, chưa xếp lịch — nên nó không đoán hộ; chỗ
+gọi mới đủ dữ kiện để phân biệt. Cộng thêm đang nghỉ và chưa vào lớp thành sáu: `DANG_HOC`,
+`DANG_NGHI`, `CHUA_KHAI_GIANG`, `DA_KET_THUC`, `CHUA_CO_LICH`, `CHUA_VAO_LOP`. Ca 6 gọi bốn tình
+huống rỗng và đòi bốn nhãn khác nhau — gộp chúng thành một màn "chưa có gì" thì học sinh mở app ngày
+20/8 và ngày 20/6 thấy y hệt nhau.
+
+Kế hoạch nói riêng về kỳ nghỉ: *"hiện đúng là đang nghỉ, kèm ngày học lại và chương sẽ học."* Nên
+nhánh nghỉ **không** dừng ở dòng nghỉ mà neo tiếp tới tuần **học** kế — và `tuanHocTuNgay` bỏ qua
+dòng nghỉ chứ không lấy dòng liền sau, vì nghỉ Tết chín ngày rơi vào hai tuần dương lịch thì dòng
+ngay sau vẫn là một tuần nghỉ nữa, và trả về nó là nói với học sinh rằng thứ Hai tới đi học. Ca 5 là
+kỳ nghỉ cuối cùng của khóa: không có tuần học nào sau nữa, phải ra `DA_KET_THUC` chứ không phải
+`DANG_NGHI` với ngày học lại rỗng.
+
+Ba chốt của lát, mỗi chốt một ca:
+
+1. **Tiết chưa gắn bài vẫn phải đếm được.** `program_periods.lesson_id` rỗng là chuyện thường — mạch
+   Thống kê tuần 12 có tên tiết mà chưa có bài. Câu `mach` dùng `left join`, và ca 3 đòi con số
+   `soTietChuaCoBai` đúng. Dùng `join` thì mạch ấy biến mất khỏi màn hình mà không ai báo.
+2. **Một học liệu một dòng.** Hai mạch cùng trỏ về một bài trong một tuần là bình thường (ôn tập
+   chung), và học liệu của bài ấy không được hiện hai lần. Gộp trùng theo `id` tài liệu.
+3. **`BAI_MO` áp cả ở đường đọc lẫn đường mở tệp.** Bài còn ẩn thì học liệu của nó không được lọt
+   vào danh sách, **và** tệp của nó không được mở bằng đường dẫn trực tiếp. Ca 10 và ca 11 canh hai
+   nửa ấy riêng — danh sách sạch mà cửa tệp hở thì vẫn là IDOR.
+
+Không có ranh giới nào ở đây khóa nội dung tương lai: "sắp tới" hiện đủ hai tuần kèm cả dòng nghỉ,
+"đã học" xếp **ngược** (gần nhất trước). Kế hoạch gọi bốn ranh giới băng là một trong bốn thứ dễ vỡ
+nhất, nên chúng nằm trong đúng một câu truy vấn mỗi loại, không rải ra chỗ gọi.
+
+> **Một lỗi thật, nằm im từ lát trước.** Mười trên mười một ca đầu tiên trả 500:
+> `bad SQL grammar [... from course_weekswhere course_instance_id=?]`. Text block của Java cắt phần
+> thụt đầu dòng theo dòng thụt ít nhất, nên khoảng trắng cố ý trước `where` bị ăn mất. Hai hàm
+> `tai` và `tuanHocTuNgay` sinh ra ở lát trước và **chưa ca nào chạm tới** — đó là lý do nó sống sót
+> qua 703 ca xanh. Sửa bằng `CAU_SELECT + "\n" + """`.
+
+**Vòng đột biến** — ba vòng, mười hai lượt, đoán trước cả số lẫn tên:
+
+| Đột biến | Đoán | Thật |
+|---|---|---|
+| `soTietChuaCoBai` luôn 0 | 1: `tietChuaCoBaiPhaiDemDuoc` | ✅ |
+| `daHoc` xếp `desc` → `asc` | 1: `daHocXepNguoc` | ✅ |
+| `mach` đổi `left join` → `join` | 1: `motNgayHocBinhThuong` | ✅ |
+| `sapToi` lọc bỏ dòng nghỉ | 1: `sapToiGiuNguyenDongNghi` | ✅ |
+| `viec` bỏ điều kiện chưa nộp | 1: `viecVaDiem` | ✅ |
+| bỏ chốt "khóa không phải của mình" | 1: `khoaCuaNguoiKhac` | ✅ |
+| `CHUA_VAO_LOP` trả thành `CHUA_CO_LICH` | 1: `manRongPhaiNoiDuocViSaoRong` | ✅ |
+| `hocLieu` bỏ `BAI_MO` | 2: `motNgayHocBinhThuong`, `manMoiKhongMoThemCua` | ✅ |
+| nhánh nghỉ hiện dòng nghỉ, không neo tới tuần học kế | 2: `dangNghiThiNoiDungLaDangNghi`, `nghiCuoiCungLaDaKetThuc` | ✅ |
+| `diem` dùng `getGradedAt() != null` thay `scoreVisible` | 1: `viecVaDiem` | ✅ |
+| khóa gộp trùng đổi từ `id` sang số thứ tự | 2: `motHocLieuMotDong`, `motNgayHocBinhThuong` | ✅ |
+| `moDuocTep` bỏ `BAI_MO` | 1: `manMoiKhongMoThemCua` | ✅ |
+
+Mười hai trên mười hai đúng cả số lẫn tên — lần đầu một lát không có lượt nào trượt. Khác với Lát 8
+và PP-4 ở một điểm: các ca ở đây **không dùng chung dữ liệu dựng sẵn theo kiểu chồng lên nhau**, mỗi
+ca hỏi một ngày khác nhau trên cùng một khóa, nên hỏng một chỗ không lan sang chỗ khác.
+
+> Hai chỗ **xanh giả** tự mình gây ra, phát hiện khi soát lại chứ không phải khi chạy: `daHoc` chỉ có
+> một chương nên "xếp ngược" chẳng canh gì, và mọi mạch đều có tiết tuần 12 nên `left join` cũng
+> chẳng canh gì. Sửa bằng cách **thêm dữ liệu** — chương mở đầu ở tuần 10, mạch Thực hành chỉ có tiết
+> tuần 14 — chứ không phải bằng cách hạ yêu cầu của phép thử.
+
+**Còn thiếu:**
+
+- Chưa có màn hình nào gọi endpoint này. Cả PP-3, PP-4, PP-13 đều mới có cửa backend.
+- Học sinh học hai khóa cùng lúc: thứ tự ở `khoaCuaHocSinh` quyết định khóa nào hiện mặc định (khóa
+  có tuần phủ lên hôm nay đứng trước). Đủ tất định cho dữ liệu hiện có, **chưa có ca nào canh** khi
+  hai khóa cùng phủ lên hôm nay.
+- `documents.file_url` của tài liệu **không** có `file_asset_id` vẫn phát thẳng cho học sinh, không
+  qua `moDuocTep`. Lỗ này thuộc lát #1/#16 của kế hoạch phân phối, chưa vá.
+
+---
+
+### Lát PP-5 — Bảng phân phối chung ✅ (làm 2026-09-03)
+
+| | |
+|---|---|
+| **Đã có** | Bốn chỗ gắn tài liệu chạy song song, và một cột `phạm vi` làm hai việc cùng lúc |
+| **Làm** | `program_resources` mọc hai trục nơi đến; `toiDuocBai` + `toiDuocLop`; cửa ghi `POST /api/admin/phan-phoi` |
+| **Test** | `NoiDenCuaDongPhanPhoiTest`, 12 ca, 12 xanh |
+| **Xong khi** | Cùng một tệp gắn được hai chỗ với hai đối tượng khác nhau, không cần nhân bản |
+
+Kế hoạch gọi đây là *lát trung tâm của cả kế hoạch*: một bảng thay cả bốn chỗ gắn tài liệu. Nó liệt kê
+bảy nơi đến — toàn hệ thống / một mạch / một bài / một tiết / một lớp / một bài trong lớp / một nút
+chuyên đề — nhưng bảy **không** phải bảy giá trị của một cột. "Một bài" và "một bài trong lớp" là cùng
+một nơi đến nhìn qua hai độ rộng khác nhau; "toàn hệ thống" và "một lớp" cũng vậy. Viết thành bảy nhánh
+thì mỗi lần thêm một loại neo phải nhân đôi số nhánh, và nhánh "trong lớp" của loại mới sẽ là nhánh bị
+quên. Nên **hai trục**: `noi_den_loai + neo` (neo vào nội dung nào) nhân với `lop_id` (hẹp lại tới lớp
+nào). Năm loại nhân hai độ rộng ra đúng bảy chỗ kế hoạch gọi tên.
+
+**Bài vẫn neo bằng `lesson_id` sẵn có, không chép sang cột `neo`.** Một sự thật ở hai cột là Đ4, và Đ4
+ở đây nghĩa là hai câu trả lời lệch nhau cho "dòng này gắn vào bài nào" — đúng cơ chế đã nuôi lỗ hổng
+lần trước. `ck_program_resources_neo` canh việc ấy bằng CSDL: mỗi loại nói đúng một chỗ neo, các chỗ
+còn lại phải rỗng.
+
+> **Một phát hiện thật, do một ca đỏ lôi ra.** Ca 10 trả 500. Thủ phạm là
+> `uq_program_resources_ref (lesson_id, resource_type, resource_ref_id)` — và soát tiếp thì
+> `uq_program_resources_order (lesson_id, order_index)` cũng vậy. **Cả hai chỉ mục duy nhất cũ đều mã
+> hóa mô hình cũ**, nơi `lesson_id` là toàn bộ nơi đến, nên cả hai đồng thời **quá lỏng** (dòng toàn
+> hệ thống để `lesson_id` rỗng, mà NULL trong chỉ mục duy nhất của Postgres không đụng nhau — phát
+> toàn trường bao nhiêu lần cũng lọt) và **quá chặt** (không biết tới lớp, nên cùng một đề gắn vào
+> cùng một bài cho hai lớp bị chặn — đó đúng là **nhánh D** của kế hoạch). Không sửa thì "một bài
+> trong lớp" chỉ dùng được cho đúng một lớp đầu tiên, và cách người ta sẽ tự chữa là nhân bản tệp
+> thành hai tài liệu, rồi sửa đề một chỗ quên chỗ kia. Sửa ở tầng lược đồ, không phải bằng cách hạ
+> yêu cầu của phép thử: cả hai khóa lại theo đúng bộ định danh của một chỗ đến, với `coalesce(-1)` để
+> bịt vế quá lỏng. Bỏ một chỉ mục sai không phải là bỏ một cột — dữ liệu ở nguyên chỗ.
+
+**Nhánh B tự xuất hiện từ dữ liệu đang có.** Backfill lấy tài liệu đánh dấu chỉ-giáo-viên mà chưa gắn
+vào đâu cả — trước lát này chúng vô hình, không đường nào đọc tới — và biến chúng thành phân phối toàn
+hệ thống, đối tượng giáo viên. Không đụng tài liệu `STUDENT_ALLOWED` chưa gắn: phát toàn hệ thống cho
+học sinh là một quyết định về nội dung, không phải một phép suy ra từ việc chưa ai gắn nó vào đâu.
+
+**Quyền đọc vẫn nằm trong một hàm.** `toiDuocBai(bai)` trả lời "dòng này có tới bài ấy không" cho cả
+năm loại neo, `toiDuocLop(vai, ai)` trả lời "dòng của lớp ấy có tới người này không" — cả hai ở trong
+`LuongNoiDung`, sinh ra SQL để nhét vào câu truy vấn chứ không lọc trong Java. Ba cửa đọc của học sinh
+và `moDuocTep` dùng chung chúng.
+
+**Cửa ghi dịch lỗi khóa trùng, không kiểm tra trước.** Hàng rào thật nằm ở CSDL; kiểm tra trước rồi mới
+chèn là mở một khe đua giữa hai lượt gọi. Nên `POST /api/admin/phan-phoi` bắt `DuplicateKeyException`
+và phân biệt hai chỉ mục bằng tên trong thông điệp: trùng chỗ đứng thì đổi thứ tự là xong, trùng nguồn
+thì dòng cũ đã có sẵn. Trả 500 ở đây là bắt người ta đoán.
+
+**Nghiệm thu của kế hoạch chưa chạy được ở đây.** Kế hoạch đòi: *"Số hàng phân phối sau backfill khớp
+với số cặp tài liệu–nơi gắn đếm được ở khâu kiểm kê. Lệch một hàng cũng phải truy ra lý do."* Flyway
+chạy **trước** khi bất kỳ ca nào kịp gieo dữ liệu, nên trong bộ test câu backfill luôn chạy trên CSDL
+rỗng và đếm được 0 = 0 — một phép thử rỗng nghĩa. Đây là mục **checklist trước khi hợp nhất**, đối
+chiếu trên bản sao dữ liệu thật, không phải mục có thể đóng bằng một ca test.
+
+**Vòng đột biến** — mười một lượt, đoán trước cả số lẫn tên:
+
+| # | Đột biến | Đoán | Thật | Ca đỏ |
+|---|---|---|---|---|
+| M0 | không đột biến (nền) | 0 | 0 | — |
+| M1 | `toiDuocBai`: `HE_THONG` trả `false` | 3 | 3 | `toanHeThongToiMoiBai`, `congTepMoTheoDungDanhSach`, `motNguonMotLanVaoMotCho` |
+| M2 | `toiDuocBai`: `TIET` bỏ điều kiện `p.lesson_id` | 1 | 1 | `tietChiToiBaiCuaTietAy` |
+| M3 | `toiDuocBai`: `MACH` bỏ điều kiện `p.lesson_id` | 1 | 1 | `machToiMoiBaiCoTietTrongMach` |
+| M4 | `toiDuocBai`: `CHUYEN_DE` trả `true` | 1 | 1 | `chuyenDeKhongToiBaiNao` |
+| M5 | `toiDuocLop`: bỏ nhánh học sinh | 2 | 2 | `dongCuaLopChiToiHocSinhLopAy`, `giaoVienThayCaDongCuaLopKhac` |
+| M6 | `moDuocTep`: bỏ nhánh `HE_THONG` | 1 | 1 | `congTepMoTheoDungDanhSach` |
+| M7 | `doiTuong`: bỏ trần của tài liệu | 1 | 2F+1E | `khongNoiRongDoiTuongQuaCuaPhanPhoi` (đoán đúng), thêm `thuTuDemTrongDungNhomChoDung` và một lỗi trùng khóa ở `csdlCanhChoDungCuaDong` |
+| M8 | `neoCua`: `MACH` không kiểm tra chỗ neo có thật | 1 | 1 | `noiDenPhaiNoiDuChoNeo` |
+| M9 | `ketTiepCua`: đếm không theo nhóm chỗ đứng | 1 | 1 | `motNguonMotLanVaoMotCho` |
+| M10 | `CatCanhCay`: bỏ nhánh xóa theo bài | 1 | 1 | `xoaBaiThiDongCuaBaiAyCungRut` |
+| M11 | chỉ mục `uq_program_resources_mot_nguon`: bỏ `lop_id` | 1 | 1 | `motNguonMotLanVaoMotCho` |
+
+Hai chỗ đoán trượt, và cả hai đều đáng ghi lại.
+
+**M6 trượt vì bản vá hỏng, không phải vì mã hỏng.** Lượt đầu bản vá chèn `// đột biến` ngay sau dấu
+mở `"""` của một khối văn bản, mà Java bắt buộc dấu mở ấy phải xuống dòng ngay — nên nó không biên
+dịch được và cả lớp đỏ. Sửa bản vá rồi chạy lại thì đúng một ca đỏ như đoán. Ghi lại vì một vòng đột
+biến hỏng cách này trông y hệt một vòng đột biến thành công rực rỡ: rất nhiều đỏ.
+
+**M7 giết nhiều hơn đoán, và đó là tin xấu chứ không phải tin tốt.** Bỏ trần đối tượng làm hỏng thêm
+hai ca chẳng liên quan gì tới đối tượng — một ca thứ tự và một lỗi trùng khóa. Nghĩa là dữ liệu dựng
+sẵn của lớp ấy đang phụ thuộc vào việc trần chặn bớt một dòng; ca thứ tự đếm đúng chỉ nhờ dòng kia
+không vào được bảng. Đó là hai ca tựa vào nhau, và ngày nào có người sửa trần thật thì hai ca ấy sẽ
+đỏ mà không ai hiểu tại sao.
+
+> **Đã xử ở PP-6.** `thuTuDemTrongDungNhomChoDung` cho chỗ đứng thứ ba vào một **tiết mới tạo trong
+> chính ca ấy** thay vì mượn nhóm toàn hệ thống của ca khác — nhóm mới tinh thì số 1 tự nó đứng
+> vững; `csdlCanhChoDungCuaDong` dựng tài liệu riêng để chiếm chỗ 91 thay vì mượn `tlDapAn`. Chạy
+> lại đúng đột biến ấy (M7b: vô hiệu hóa trần, giữ nguyên sàn kiểm tra) thì **đúng một ca đỏ** —
+> `khongNoiRongDoiTuongQuaCuaPhanPhoi`, ca duy nhất nói về trần. Trước khi sửa là hai đỏ một lỗi.
+
+**Còn thiếu:**
+
+- `GET /api/programs/{id}/resources` vẫn neo theo bài, cố ý để nguyên: nó và bốn dải hiển thị là cùng
+  một câu hỏi, và PP-6 sửa cả hai một lượt. Sửa trước ở đây là viết hai lần.
+- `ketTiep(lessonId)` và mẹo đảo dấu khi sắp xếp lại vẫn ở mô hình cũ (`where lesson_id=?`). Chúng
+  phục vụ cửa ghi cũ, chưa dòng nào của cửa mới đi qua.
+- `CatCanhCay` cắt cành bằng `lesson_id` ở cả ba mức — dưới bài, dưới chương, dưới chương trình — nên
+  mới chỉ dọn dòng `BAI`. Dòng `TIET` và `MACH` neo vào tiết/mạch của phần vừa xóa còn ở lại. (Dòng
+  `HE_THONG` ở lại là **đúng**: nó không thuộc chương trình nào.)
+- Chưa màn hình nào gọi cửa mới. PP-3, PP-4, PP-13, PP-5 đều mới có cửa backend.
+- `lesson_documents` — ống thứ ba — vẫn sống cả đường đọc lẫn đường ghi. Nó có `start_page`,
+  `teacher_note`, `required`, cộng câu hỏi trắc nghiệm và bản ghi học đính kèm, nên không gộp thẳng
+  được; cần một lát riêng và một quyết định về bốn thứ ấy.
+
+---
+
+### Lát PP-6 — Bốn dải hiển thị ✅ (làm 2026-09-03)
+
+| | |
+|---|---|
+| **Đã có** | Cổng thời gian: chương chưa tới thì học sinh không thấy tài liệu của nó |
+| **Làm** | `LuongNoiDung.dai()` + `thuTuBonDai()`; `LichCuaKhoa.tuanHienTaiCuaHocSinh`; viết lại `GET /api/programs/{id}/resources`; sàn đối tượng cho tiết kiểm tra; màn học sinh có tìm kiếm và phần đã học thu gọn |
+| **Test** | `ThuTuBonDaiTest` 11 ca, `ChuongTrinhChungChoHocSinhTest` 2 ca, `NoiDenCuaDongPhanPhoiTest` 14 ca — tất cả xanh |
+| **Xong khi** | Học sinh thấy tài liệu cả năm, tuần này ghim đầu, tuần cũ gom xuống dưới, và đề kiểm tra vẫn không lọt |
+
+Kế hoạch nói một câu ngắn mà đổi cả cách nghĩ: **an toàn do đối tượng lo, thứ tự do thời gian lo**. Ba
+trục, hai cứng một mềm — nơi đến (đi tới đâu, cứng), đối tượng (ai đọc được, cứng), tuần (xếp thứ tự,
+**mềm**, không chặn). Trước lát này tuần làm cả hai việc, và làm việc thứ hai một cách tình cờ.
+
+**Thứ mất đi không phải một tính năng, mà một tấm che.** Cổng thời gian che giúp mọi sai sót khai đối
+tượng: ai gắn đề kiểm tra vào tuần 12 rồi quên đánh dấu chỉ-giáo-viên vẫn an toàn tới tận tuần 12. Gỡ
+cổng ra thì kỷ luật đối tượng thành bắt buộc — đúng như kế hoạch đã cảnh báo. Nên lát này không chỉ
+gỡ, nó còn phải dựng lại chỗ trống ấy bằng một thứ nói thẳng ra là an toàn.
+
+**Năm tên dải cho bốn dải hiển thị, và đó là cố ý.** Kế hoạch gọi bốn: tuần này → sắp tới (hai tuần) →
+luôn hiện (không gắn tiết) → đã học. Câu truy vấn đặt **năm** tên, thêm `TUONG_LAI` cho phần ngoài hai
+tuần. Vì "ngoài hai tuần thì chỉ có ở màn Lộ trình" vẫn là một câu trả lời về dải, và nơi duy nhất
+biết tuần của dòng là câu truy vấn. Để màn hình tự suy ra "cái này xa quá" nghĩa là hai bên cùng biết
+một luật, rồi một ngày một bên đổi. Màn hình chỉ làm một việc: lọc `TUONG_LAI` ra khỏi danh sách
+thường, và cho nó hiện lại khi người ta đang tìm kiếm.
+
+**Tuần đo theo khóa của chương trình này, không phải khóa gần nhất.** Một em có thể học hai khóa cùng
+lúc — lớp chính và lớp ôn — và hai khóa lệch tuần nhau. Hỏi "em đang ở tuần mấy" mà không nói của
+chương trình nào thì câu trả lời đúng về mặt SQL và sai về mặt việc: tài liệu tuần 10 của lớp chính bị
+xếp vào "tương lai" vì lớp ôn mới tới tuần 2. `khoaCuaHocSinh` nhận thêm tham số chương trình, và
+`ThuTuBonDaiTest` dựng hẳn khóa thứ hai để ca ấy **sai được** — một phép thử chỉ đúng khi dữ liệu đủ
+để nó sai.
+
+> **Một lỗi thật, do việc gỡ cổng lôi ra.** Câu cũ nối chương qua bài, nên dòng neo vào **tiết** không
+> có chương — trước đây không ai thấy vì dòng tiết cũng bị cổng thời gian chặn từ đầu. Mở ra thì màn
+> *Chi tiết chương* lọc theo `chapter_id` và bỏ rơi đúng những dòng gắn sát nhất với buổi học. Sửa
+> bằng `NOI_CHUONG`: chương lấy qua bài **hoặc** qua tiết, tùy dòng neo vào đâu. Ca
+> `dongCuaTietVanBietChuongCuaNo` canh chỗ ấy.
+
+**Sàn của tiết kiểm tra là sàn, không phải trần.** Neo vào một tiết loại `KIEM_TRA` mà không khai đối
+tượng thì mặc định là chỉ-giáo-viên. Đó là người thay chỗ tấm che vừa gỡ. Nhưng khai thẳng cho học
+sinh vẫn được, vì **chấm xong phát lại cả lớp là việc thường ngày** — biến mặc định thành lệnh cấm là
+đổi một việc thật lấy một dòng an toàn trên giấy. Trần vẫn là dấu trên chính tài liệu: tài liệu
+`TEACHER_ONLY` thì không dòng phân phối nào mở rộng ra được. Hai ca test đi hai chiều, vì một quy tắc
+"chỉ chặn" và một quy tắc "chặn rồi mở lại được" trông y hệt nhau nếu chỉ thử chiều chặn.
+
+**Đánh đổi phải xử ở giao diện, và kế hoạch nói trước điều đó.** Học sinh giờ thấy 200 tài liệu thay
+vì 12. Nên phần *Đã học* gom theo chương và thu gọn mặc định, và ô tìm kiếm **bỏ dấu** — gõ `ham so`
+ra `hàm số`, vì không ai gõ dấu khi đang vội. Đang tìm thì mọi phần bung ra và `TUONG_LAI` hiện lại:
+tìm kiếm là lúc duy nhất người ta biết rõ mình muốn gì, chặn ở đó là vô lý.
+
+**Bảy ca IDOR kế hoạch đòi, có đủ bảy** — bốn ca đầu kiểm tra *thứ tự* chứ không kiểm tra chặn, nên
+assert viết trên tên dải và vị trí trong danh sách, không phải trên việc có hay không:
+
+| Ca kế hoạch | Phép thử |
+|---|---|
+| 1. Tiết tuần chưa tới → cho, dải sắp tới | `tuanChuaToiVanDocDuoc` |
+| 2. Tiết tuần này → cho, xếp **đầu tiên** | `tuanNayXepDauTien` |
+| 3. Tiết tuần đã qua → cho, dải đã học, xếp sau | `tuanDaQuaXepSau` |
+| 4. Đã học tuần 3 và tuần 8 → tuần 8 **trên** | `daHocXepNguoc` |
+| 5. Tài liệu chỉ-giáo-viên → **chặn** | `chiGiaoVienKhongLotSangHocSinh` |
+| 6. Tài liệu lớp khác → **chặn** | `dongCuaLopKhacKhongLot` |
+| 7. Quản trị, kho riêng giáo viên → **chặn** | `quanTriKhongVaoKhoRiengGiaoVien` |
+
+Thêm `namDaiChayDungMotMach` đọc cả năm dải trong một danh sách — bốn ca đầu mỗi ca chỉ nhìn một dải,
+mà lỗi thứ tự hay nằm ở chỗ nối giữa hai dải.
+
+**Bước "chạy song song trước khi chuyển" bỏ hẳn, đúng như kế hoạch cho phép**: *"Nếu chưa có dữ liệu
+thật thì bỏ hẳn bước này, chuyển thẳng."* Bộ test chạy trên PostgreSQL nhúng, không đụng Neon staging,
+nên không có dữ liệu thật để đối chiếu hai câu truy vấn.
+
+**Vòng đột biến** — mười lượt, đoán trước cả số lẫn tên:
+
+| # | Đột biến | Đoán | Thật | Ca đỏ |
+|---|---|---|---|---|
+| N0 | không đột biến (nền) | 0 | 0 | — |
+| N1 | `dai()`: gộp `TUONG_LAI` vào `SAP_TOI` | 1 | 1 | `tuanChuaToiVanDocDuoc` |
+| N2 | `thuTuBonDai()`: dải đã học bỏ dấu trừ, xếp xuôi trở lại | 2 | 2 | `daHocXepNguoc`, `namDaiChayDungMotMach` |
+| N3 | `thuTuBonDai()`: đổi chỗ số thứ tự của `TUAN_NAY` và `LUON_HIEN` | 2 | 2 | `tuanNayXepDauTien`, `namDaiChayDungMotMach` |
+| N4 | cửa đọc: bỏ `toiDuocLop` | 2 | 2 | `dongCuaLopKhacKhongLot`, `namDaiChayDungMotMach` |
+| N5 | cửa đọc: hỏi `docDuocDayDu` bằng vai quản trị thay vì vai thật | 2 | 2 | `chiGiaoVienKhongLotSangHocSinh`, `namDaiChayDungMotMach` |
+| N6 | `tuanHienTaiCuaHocSinh`: bỏ bộ lọc chương trình khi chọn khóa | 6 | 6 | `daHocXepNguoc`, `namDaiChayDungMotMach`, `tuanChuaToiVanDocDuoc`, `tuanDaQuaXepSau`, `tuanDoTheoKhoaCuaChuongTrinhNay`, `tuanNayXepDauTien` |
+| N7 | `NOI_CHUONG`: bỏ nhánh lấy chương qua tiết | 1 | 1 | `dongCuaTietVanBietChuongCuaNo` |
+| N8 | `NOI_TUAN`: dòng theo bài bỏ `min(...)`, thành phép nối ngang | 1 | 1 | `hocLieuKhongBiNhanDoi` |
+| N9 | `doiTuong`: bỏ sàn của tiết kiểm tra | 1 | 1 | `tietKiemTraMacDinhChiGiaoVien` |
+| N10 | `doiTuong`: sàn thành trần — tiết kiểm tra thì luôn chỉ-giáo-viên | 1 | 1 | `tietKiemTraVanPhatLaiDuocSauKhiCham` |
+
+Mười lượt đều đúng cả số lẫn tên, nhưng **hai dòng đoán phải sửa trước khi chạy**, và chỗ sửa ấy mới
+là chỗ học được. N1 thoạt nhìn phải giết hai ca thứ tự, vì gộp hai dải là đổi thứ tự; đọc kỹ assert
+thì không — khóa sắp xếp phụ vẫn là `tt.tuan`, nên trong dải gộp thứ tự vẫn y nguyên và chỉ **tên
+dải** sai. N6 thoạt nhìn chỉ giết đúng ca mang tên nó; thật ra hỏi nhầm khóa làm tuần rơi từ 10 xuống
+2, và mọi dòng trượt dải một lượt — sáu ca. Đoán bằng cách nhìn tên đột biến thì trượt cả hai lần;
+đoán bằng cách đọc assert thì đúng cả hai. Ghi lại vì một vòng đột biến "đoán đâu trúng đó" mà đoán
+lấy lệ thì chẳng chứng minh gì.
+
+**Bẫy kỹ thuật, lần thứ hai cùng một chỗ.** Neo của N2/N3 nằm trong chuỗi Java có `\n`, và heredoc
+của shell nuốt mất một dấu chéo ngược, nên Python nhận về một dấu xuống dòng thật thay vì hai ký tự.
+Kết quả: `KHONG DAT: thay 0 cho khop` — bản vá không nổ, nó **im lặng không tìm thấy gì**. Sửa bằng
+`chr(92)` nối tay. Đáng nhớ vì thất bại kiểu này trông như "đã chạy rồi" nếu không đọc kỹ đầu ra.
+
+**Một lượt phụ ngoài mười lượt: M7b.** Vòng PP-5 để lại một phát hiện chưa xử — hai ca của
+`NoiDenCuaDongPhanPhoiTest` xanh một phần nhờ trần đối tượng chặn bớt một dòng, chứ không hoàn
+toàn nhờ thứ mang tên chúng. Lát này cắt sợi dây ấy: ca đếm thứ tự đi vào một tiết mới tạo tại chỗ,
+ca canh CSDL dựng tài liệu riêng để chiếm chỗ. Chạy lại đúng đột biến cũ thì **một đỏ**, đúng ca nói
+về trần — trước là hai đỏ một lỗi. Chi tiết ở mục PP-5 phía trên.
+
+**Còn thiếu:**
+
+- **Người lớn không có tuần.** Giáo viên và quản trị nhận `tuanNay = null`, nên mọi dòng rơi vào
+  `LUON_HIEN` và mất thứ tự theo dải; cột `tuan` vẫn hiện đúng. Cố ý — họ dạy nhiều lớp lệch tuần nên
+  "tuần này" của họ không phải một con số. Ca `nguoiLonKhongCoTuanThiMoiDongLuonHien` chốt hành vi ấy
+  lại để nó là một quyết định chứ không phải một chỗ quên.
+- Chưa màn hình nào của **giáo viên** dùng bốn dải. Chỉ đường học sinh xong.
+- `GET /api/lessons/{id}/program-resources` (đọc theo bài) không đi qua bốn dải: nó là màn trong một
+  bài, không phải danh sách cả năm. Đúng chỗ, nhưng nghĩa là hai cửa đọc trả về hai hình dạng khác
+  nhau — ai thêm cột vào một cửa phải nhớ cửa kia.
+- Ma trận IDOR mới phủ đường đọc chương trình. `documents.file_url` của tài liệu **không** có
+  `file_asset_id` vẫn phát thẳng cho học sinh — lỗ cũ, thuộc lát #1/#16 của kế hoạch phân phối.
+
+---
 
 ### Lát 9 — Admin chọn nội dung từ kho
 
@@ -502,6 +1208,7 @@ việc riêng.
 | **Còn làm** | Ràng buộc `unique (template_id, school_year)`; mở rộng ca test lên đủ 9 chương; bỏ cột `course_id` thừa |
 | **Test** | Hai khóa cùng mẫu cùng năm → từ chối (**chưa có**) |
 | **Xong khi** | Xếp lịch 2027/2028 mà lịch 2026/2027 còn nguyên — **đã đạt và có test canh** |
+| **UI** | Mục "Khóa học" trong sidebar admin: bảng mẫu + form tạo mẫu chương trình (`POST /api/admin/program-templates`), bảng khóa + form tạo khóa (`KhoaHocManagement` trong `src/App.tsx`). Tạo khóa bị khoá khi chưa có mẫu; tạo mẫu bị khoá khi chưa có chương trình. |
 
 ### Lát 12 — Lịch chương (sửa Đ2)
 
@@ -511,6 +1218,7 @@ việc riêng.
 | **Làm** | Ràng buộc `exclude` chống chồng lịch ở tầng CSDL; **bỏ `ProgramScheduleController`** (đường ghi thứ hai, không kiểm gì) |
 | **Test** | Hai chương chồng ngày → CSDL từ chối, kể cả khi gọi thẳng API; `GET /current-chapter` với `today` trong khoảng → đúng một chương; ngoài mọi khoảng → `null`, không phải 500; **ngày biên** (`today == starts_on` và `today == ends_on`) → vẫn tính là đang học |
 | **Xong khi** | Không thể tạo hai chương chồng lịch bằng bất kỳ đường nào |
+| **UI** | Panel "Lịch chương" trong mục "Khóa học": mỗi chương một khoảng ngày, badge dải TUẦN NÀY / SẮP TỚI / ĐÃ HỌC, "Lưu lịch" gọi `PUT /api/admin/courses/{id}/schedule` — không chép luật sang client |
 
 ### Lát 13 — Lịch bài học
 
@@ -618,7 +1326,7 @@ CHƯƠNG TRÌNH
 │     ├── Bài tập              worksheets / problems
 │     └── Chuyên đề            taxonomy_node
 ├── Mẫu chương trình           program_templates + program_resources
-└── Khóa học                   course_instances + program_schedules
+└── Khóa học                   course_instances + program_schedules   ← đã có mục phẳng: tạo mẫu chương trình + bảng khóa + tạo khóa + đặt lịch chương (`KhoaHocManagement` trong App.tsx)
 
 NGƯỜI DÙNG
 ├── Giáo viên
@@ -672,7 +1380,7 @@ Vòng gần nhất ở HT-59/60: dự đoán 1 và 3, thực tế 1 và 3.
 | 1 | `Course` có `template_id` + ngày | Đã đúng trong DDL, nhưng **hỏng vì chỉ mục cũ** — đã kiểm chứng và sửa | `uq_program_schedule_chapter` chặn năm thứ hai (Đ1) |
 | 2 | Bảng `Video` riêng | Khuyên bỏ, dùng `documents` | Nhân đôi 5 đường đã có test (Lát 4) |
 | 3 | `TeacherResource` bảng mới | Phải chọn một trong hai bản đang có | Bản cũ có UI và test IDOR (Lát 19) |
-| 4 | `SpecialTopic` bảng mới | `taxonomy_node` | Ba cơ chế chuyên đề là quá nhiều (Lát 5) |
+| 4 | `SpecialTopic` bảng mới | `taxonomy_node` | ✅ Lát 5. Đúng ra là **hai** cơ chế chứ không phải ba — `topics` là chủ đề ngân hàng câu hỏi, đếm nhầm ngay từ đầu |
 | 5 | Sidebar bỏ Lớp học + Nhật ký | Giữ, nhóm HỆ THỐNG | Nhật ký ở mức A với 16 ca test |
 | 6 | Lát 3 cắt SGK theo trang | Không làm | `document_page_mappings` đã khớp từng trang |
 | 7 | `ProgramContent` thêm vào | Thêm **và rút** hai bảng cũ cùng lát | Không rút thì thành cơ chế thứ ba — **và điều đó đã xảy ra** |

@@ -1,6 +1,7 @@
 package com.math10.student.controller;
 
 import com.math10.assignments.domain.AssignmentRows;
+import com.math10.assignments.domain.NguoiNhan;
 import com.math10.assignments.domain.AssignmentWindow;
 import com.math10.assignments.domain.McqGrading;
 import com.math10.assignments.entity.Assignment;
@@ -8,6 +9,7 @@ import com.math10.assignments.entity.AssignmentProgress;
 import com.math10.assignments.entity.AssignmentState;
 import com.math10.common.dto.ApiResponse;
 import com.math10.configuration.security.CurrentUserService;
+import com.math10.programs.support.LuongNoiDung;
 import com.math10.student.dto.StudentAssignmentResponse;
 import com.math10.student.dto.StudentCourseResponse;
 import com.math10.taxonomy.dto.TaxonomyNodeResponse;
@@ -33,6 +35,7 @@ public class StudentLearningController {
     private final JdbcTemplate jdbc;
     private final CurrentUserService current;
     private final TaxonomyService taxonomyService;
+    private final LuongNoiDung luat;
 
     @GetMapping("/taxonomy")
     @PreAuthorize("hasRole('STUDENT')")
@@ -47,7 +50,9 @@ public class StudentLearningController {
         List<Map<String, Object>> courseRows = jdbc.queryForList("""
                 select distinct c.id,c.code,c.name,c.description,c.status
                 from courses c
-                join class_courses cc on cc.course_id=c.id and cc.deleted_at is null
+                join program_templates pt on pt.program_id=c.id and pt.deleted_at is null
+                join course_instances ci on ci.template_id=pt.id and ci.deleted_at is null
+                join class_courses cc on cc.course_instance_id=ci.id and cc.deleted_at is null
                 join class_students cs on cs.class_id=cc.class_id and cs.deleted_at is null
                 where cs.student_id=? and c.deleted_at is null and c.status='PUBLISHED'
                 order by c.name
@@ -80,7 +85,7 @@ public class StudentLearningController {
 
                 for (Map<String, Object> lesson : lessonRows) {
                     Long lessonId = num(lesson.get("id"));
-                    boolean locked = !"PUBLISHED".equals(str(lesson.get("status")));
+                    boolean locked = !LuongNoiDung.baiMo(str(lesson.get("status")));
                     List<StudentCourseResponse.Resource> resources = locked ? List.of() : resources(lessonId);
                     List<StudentCourseResponse.AttachedWorksheet> attached = locked ? List.of() : worksheets(lessonId);
                     lessons.add(new StudentCourseResponse.Lesson(
@@ -137,8 +142,8 @@ public class StudentLearningController {
                 from assignments a join class_students cs on cs.class_id=a.class_id and cs.deleted_at is null
                 left join worksheets w on w.id=a.worksheet_id and w.deleted_at is null
                 left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=cs.student_id and ap.deleted_at is null
-                where cs.student_id=? and a.deleted_at is null order by a.created_at desc
-                """, studentId);
+                where cs.student_id=? and a.deleted_at is null
+                """ + " and " + NguoiNhan.NHAN_DUOC + " order by a.created_at desc", studentId);
         LocalDateTime now = LocalDateTime.now();
         List<StudentAssignmentResponse> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -197,13 +202,35 @@ public class StudentLearningController {
         return jdbc.query(sql, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"), rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), !McqGrading.laTracNghiem(rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), rs.getString("correct_option"))), args);
     }
 
+    /**
+     * Học liệu của một bài, đọc chung ống với mọi cửa còn lại.
+     *
+     * <p>Trước lát này hàm đọc thẳng {@code lesson_resources} — bảng không có cột trạng thái lẫn cột
+     * đối tượng — nên màn học sinh mở nhiều nhất là cửa duy nhất không hỏi ai đọc được. Không phải
+     * vì ai đó bỏ qua luật, mà vì bảng ấy không có gì để hỏi.
+     *
+     * <p>Ba giá trị cuối là chỗ nội dung trong dòng thành nội dung trong kho: đường dẫn lấy của
+     * video hoặc của tài liệu tùy mục trỏ đâu, tệp đính kèm và đoạn văn bản đi theo tài liệu. Mục
+     * trỏ vào phiếu bài tập hay chuyên đề thì cả ba đều rỗng — chúng có đường xem riêng, ở đây chỉ
+     * cần hiện tên.
+     *
+     * <p>Luật "tài liệu có tệp thì không phát đường dẫn kho" nằm ở {@link LuongNoiDung#DUONG_DAN},
+     * không viết lại ở đây: màn Hôm nay phát cùng thứ học liệu ấy cho cùng học sinh ấy, và hai bản
+     * chép của một biểu thức lọc là chỗ một bản sẽ rụng mất mệnh đề {@code case}.
+     */
     private List<StudentCourseResponse.Resource> resources(Long lessonId) {
         return jdbc.query("""
-                select id,type,title,external_url,file_asset_id,text_content,order_index
-                from lesson_resources
-                where lesson_id=? and deleted_at is null
-                order by order_index
-                """, (rs, n) -> new StudentCourseResponse.Resource(rs.getLong("id"), rs.getString("type"), rs.getString("title"), rs.getString("external_url"), rs.getObject("file_asset_id", Long.class), rs.getString("text_content"), rs.getInt("order_index")), lessonId);
+                select pr.id,pr.resource_type type,pr.title,pr.order_index,
+                """ + LuongNoiDung.DUONG_DAN + """
+                 external_url,
+                       d.file_asset_id,d.content_markdown text_content
+                from program_resources pr
+                """ + LuongNoiDung.NOI_NGUON
+                + "where" + LuongNoiDung.toiDuocBai(String.valueOf(lessonId))
+                + " and" + luat.docDuocDayDu()
+                + " and" + luat.toiDuocLop(current.requireRoleCode(), current.requireUserId())
+                + " order by pr.order_index",
+                (rs, n) -> new StudentCourseResponse.Resource(rs.getLong("id"), rs.getString("type"), rs.getString("title"), rs.getString("external_url"), rs.getObject("file_asset_id", Long.class), rs.getString("text_content"), rs.getInt("order_index")));
     }
 
     private List<StudentCourseResponse.AttachedWorksheet> worksheets(Long lessonId) {

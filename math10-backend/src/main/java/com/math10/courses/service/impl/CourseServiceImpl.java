@@ -20,6 +20,7 @@ import com.math10.audit.service.AuditService;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.enrollments.entity.CourseTeacher;
 import com.math10.enrollments.repository.CourseTeacherRepository;
+import com.math10.programs.support.CatCanhCay;
 import org.springframework.data.domain.PageImpl;
 import java.util.List;
 
@@ -36,6 +37,7 @@ public class CourseServiceImpl implements CourseService {
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
     private final CourseTeacherRepository courseTeacherRepository;
+    private final CatCanhCay catCanhCay;
 
     @Override
     @Transactional(readOnly = true)
@@ -93,6 +95,7 @@ public class CourseServiceImpl implements CourseService {
         var course = courseRepository.findById(id).orElseThrow(() -> new CourseNotFoundException(id));
         securityService.checkCourseOwnership(course.getId());
         auditService.record("DELETE", "COURSE", id, courseMapper.toResponse(course).toString(), null);
+        catCanhCay.duoiChuongTrinh(id);
         course.markDeleted();
         log.info("Soft deleted course {}", course.getId());
     }

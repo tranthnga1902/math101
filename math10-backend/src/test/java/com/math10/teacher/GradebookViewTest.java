@@ -446,8 +446,8 @@ class GradebookViewTest {
 
     private long taoPhieu(long... cauHoi) {
         Long phieu = jdbc.queryForObject("""
-                insert into worksheets (name, columns_count, show_qr, show_student_fields, created_by, created_at, updated_at)
-                values (?, 1, true, true, ?, now(), now())
+                insert into worksheets (name, columns_count, show_qr, show_student_fields, status, created_by, created_at, updated_at)
+                values (?, 1, true, true, 'PUBLISHED', ?, now(), now())
                 returning id
                 """, Long.class, "Phiếu sổ điểm " + dem.incrementAndGet(), giaoVien);
         for (int i = 0; i < cauHoi.length; i++) {

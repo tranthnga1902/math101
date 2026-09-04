@@ -1,6 +1,7 @@
 package com.math10.documents.entity;
 
 import com.math10.common.entity.BaseEntity;
+import com.math10.common.entity.ContentGroup;
 import com.math10.subjects.entity.Subject;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,6 +58,17 @@ public class Document extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private DocumentStatus status = DocumentStatus.DRAFT;
+
+    /**
+     * Tài liệu này dùng vào lúc nào trong quá trình học — để trống khi chưa ai phân loại.
+     *
+     * <p>Cột đã có trong CSDL từ lâu nhưng chưa từng được ánh xạ, nên mọi dòng đều mang giá trị máy
+     * đặt sẵn. Ánh xạ vào đây để nhãn có đường ghi thật; {@code null} là câu trả lời hợp lệ và
+     * đúng cho tài liệu chưa phân loại, đừng đặt giá trị mặc định.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "content_group", length = 30)
+    private ContentGroup contentGroup;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")

@@ -1,5 +1,7 @@
 package com.math10.teachercontent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.math10.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.Loader;
@@ -30,7 +32,14 @@ public class TeacherContentPipelineService {
     return new ParseResult(0,0,e.pages(),"UNSUPPORTED_SCAN");
    }
    return persist(sourceId,e);
-  }catch(Exception ex){jdbc.update("update teacher_source_documents set status='FAILED',pipeline_stage='FAILED',failure_reason=?,updated_at=now() where id=?",safe(ex.getMessage()),sourceId);throw new BusinessException("Không thể phân tích tài liệu: "+safe(ex.getMessage()));}
+  // Không ghi status='FAILED' ở đây. Lệnh gọi duy nhất là TeacherContentController.upload, và nó
+  // @Transactional: hỏng giữa chừng thì cả dòng teacher_source_documents cũng bị cuốn theo
+  // rollback, nên bản ghi FAILED không bao giờ tồn tại để mà đọc. Tệ hơn, nếu lỗi đến từ CSDL thì
+  // giao dịch đã hỏng, câu UPDATE này ném 25P02 đè lên ngoại lệ thật và người dùng chỉ còn thấy
+  // "Hệ thống đang gặp lỗi" — đúng cái đã che mất lỗi JSON ở trên suốt buổi. Muốn giữ vết hỏng
+  // cho giáo viên xem lại thì phải tách giao dịch cho cả lúc tạo dòng lẫn lúc đánh dấu, không vá
+  // được bằng một câu UPDATE ở đây.
+  }catch(Exception ex){throw new BusinessException("Không thể phân tích tài liệu: "+safe(ex.getMessage()));}
  }
  private Extracted pdf(byte[] bytes)throws IOException{try(PDDocument d=Loader.loadPDF(bytes)){return new Extracted(new PDFTextStripper().getText(d),d.getNumberOfPages(),"PDF_TEXT");}}
  private String docx(InputStream in)throws IOException{try(XWPFDocument d=new XWPFDocument(in)){StringBuilder b=new StringBuilder();d.getParagraphs().forEach(p->b.append(p.getText()).append('\n'));d.getTables().forEach(t->t.getRows().forEach(r->r.getTableCells().forEach(c->b.append(c.getText()).append('\n'))));return b.toString();}}
@@ -51,9 +60,16 @@ public class TeacherContentPipelineService {
  private List<String> mathFragments(String text){List<String> out=new ArrayList<>();Matcher m=MATH.matcher(text);while(m.find())out.add(m.group().trim());return out;}
  public String normalizeLatex(String x){return x.replace("²","^2").replace("³","^3").replaceAll("√\\(([^)]*)\\)","\\\\sqrt{$1}").replace("×","\\cdot ").replace("÷","\\div ");}
  public String classify(String q){String x=normalizeLatex(q);return x.matches("(?s).*[a-zA-Z].*=.*")?"LEVEL_2":"LEVEL_0";}
- private String ast(String raw){String safe=normalizeLatex(raw).replace("\\","\\\\").replace("\"","\\\"");return "{\"type\":\"SYMBOLIC_EXPRESSION\",\"source\":\""+safe+"\"}";}
- private String optionsJson(Map<String,String> x){return "{\"A\":"+json(x.get("A"))+",\"B\":"+json(x.get("B"))+",\"C\":"+json(x.get("C"))+",\"D\":"+json(x.get("D"))+"}";}
- private String json(String x){return x==null?"null":"\""+x.replace("\\","\\\\").replace("\"","\\\"")+"\"";}
+ // Ba hàm này trước đây tự chắp chuỗi JSON và chỉ thoát \ với ", nên mọi ký tự điều khiển đều
+ // lọt nguyên vào chuỗi. Thân câu hỏi được nối nhiều dòng bằng '\n', mà lớp ký tự trong MATH có
+ // \s nên một mảnh toán cắt ra từ thân câu kéo theo cả dấu xuống dòng — Postgres từ chối nguyên
+ // câu insert với "invalid input syntax for type json". Đề PDF thật nào có câu nhiều dòng là vỡ.
+ // Giao việc thoát ký tự cho Jackson: nó biết đủ mọi ký tự điều khiển, mình thì không. Dùng thể
+ // hiện riêng chứ không tiêm bean, vì đây là mã hoá thuần chứ không phải hành vi để cấu hình.
+ private static final ObjectMapper JSON=new ObjectMapper();
+ private String ast(String raw){Map<String,Object> node=new LinkedHashMap<>();node.put("type","SYMBOLIC_EXPRESSION");node.put("source",normalizeLatex(raw));return json(node);}
+ private String optionsJson(Map<String,String> x){Map<String,Object> node=new LinkedHashMap<>();for(String key:List.of("A","B","C","D"))node.put(key,x.get(key));return json(node);}
+ private String json(Object x){try{return JSON.writeValueAsString(x);}catch(JsonProcessingException e){throw new BusinessException("Không thể mã hoá dữ liệu trích xuất sang JSON");}}
  private String afterColon(String x){int i=x.indexOf(':');return i<0?x:x.substring(i+1).trim();}
  private int estimatePage(int i,int total,int pages){return Math.min(pages,1+(int)((long)i*pages/Math.max(1,total)));}
  private String safe(String x){return x==null?"Lỗi không xác định":x.substring(0,Math.min(500,x.length()));}

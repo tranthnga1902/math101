@@ -5,8 +5,10 @@ import com.math10.chapters.repository.ChapterRepository;
 import com.math10.common.dto.ApiResponse;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
+import com.math10.configuration.security.CurrentUserService;
 import com.math10.courses.entity.Course;
 import com.math10.courses.repository.CourseRepository;
+import com.math10.programs.AcademicBreaks;
 import com.math10.programs.dto.ProgramScheduleDtos;
 import com.math10.programs.entity.ProgramSchedule;
 import com.math10.programs.repository.ProgramScheduleRepository;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequiredArgsConstructor
@@ -26,6 +29,8 @@ public class ProgramScheduleController {
     private final ProgramScheduleRepository schedules;
     private final CourseRepository courses;
     private final ChapterRepository chapters;
+    private final AcademicBreaks breaks;
+    private final CurrentUserService currentUser;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
@@ -39,8 +44,14 @@ public class ProgramScheduleController {
     public ApiResponse<ProgramScheduleDtos.Response> current(@RequestParam Long courseId,
                                                              @RequestParam(required = false) LocalDate at) {
         LocalDate date = at == null ? LocalDate.now() : at;
-        return ApiResponse.ok("Chương hiện hành", schedules.current(courseId, date)
-                .map(row -> response(row, date)).orElse(null));
+        Optional<AcademicBreaks.Break> nghi = breaks.forUser(currentUser.requireUserId(), courseId, date);
+        // Lịch vẫn chỉ vào chương đang dở, nhưng ngày nghỉ thì không ai học nó. Vẫn trả chương lại
+        // để màn hình nói được "nghỉ tới ngày X rồi học tiếp Chương 5"; cờ current mới là chỗ nói
+        // hôm nay có học hay không.
+        ProgramScheduleDtos.Response body = schedules.current(courseId, date)
+                .map(row -> response(row, date, nghi))
+                .orElseGet(() -> nghi.map(x -> ProgramScheduleDtos.Response.onBreak(x.reason(), x.endsOn())).orElse(null));
+        return ApiResponse.ok(nghi.isPresent() ? "Đang trong kỳ nghỉ" : "Chương hiện hành", body);
     }
 
     @PostMapping
@@ -92,11 +103,22 @@ public class ProgramScheduleController {
         return schedules.findById(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch chương trình"));
     }
 
+    /**
+     * Dùng cho danh sách lịch và cho lúc vừa lưu: đó là lịch <em>đã đặt</em>, không phải lịch đang
+     * trải qua, nên không hỏi kỳ nghỉ. Chỉ endpoint {@code /current} mới trả lời "hôm nay học gì".
+     */
     private ProgramScheduleDtos.Response response(ProgramSchedule row, LocalDate at) {
+        return response(row, at, Optional.empty());
+    }
+
+    private ProgramScheduleDtos.Response response(ProgramSchedule row, LocalDate at, Optional<AcademicBreaks.Break> nghi) {
         Course course = courses.findById(row.getCourseId()).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương trình"));
         Chapter chapter = chapters.findById(row.getChapterId()).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy chương"));
-        boolean current = "ACTIVE".equals(row.getStatus()) && !at.isBefore(row.getStartsOn()) && !at.isAfter(row.getEndsOn());
+        boolean current = nghi.isEmpty() && "ACTIVE".equals(row.getStatus())
+                && !at.isBefore(row.getStartsOn()) && !at.isAfter(row.getEndsOn());
         return new ProgramScheduleDtos.Response(row.getId(), course.getId(), course.getCode(), course.getName(),
-                chapter.getId(), chapter.getTitle(), chapter.getOrderIndex(), row.getStartsOn(), row.getEndsOn(), row.getStatus(), current);
+                chapter.getId(), chapter.getTitle(), chapter.getOrderIndex(), row.getStartsOn(), row.getEndsOn(), row.getStatus(),
+                current, nghi.isPresent(), nghi.map(AcademicBreaks.Break::reason).orElse(null),
+                nghi.map(AcademicBreaks.Break::endsOn).orElse(null));
     }
 }

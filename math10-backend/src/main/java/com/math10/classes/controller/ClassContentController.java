@@ -1,5 +1,6 @@
 package com.math10.classes.controller;
 
+import com.math10.assignments.domain.NguoiNhan;
 import com.math10.audit.service.AuditService;
 import com.math10.classes.entity.ClassCurriculum;
 import com.math10.classes.entity.ClassDocument;
@@ -221,6 +222,13 @@ public class ClassContentController {
     /**
      * Bảng theo dõi từng học sinh. Bắt buộc và tự chọn tách hẳn hai cột: phần bắt buộc cho ra
      * điểm trung bình, phần tự chọn chỉ đếm mức độ tự giác — không trộn vào điểm.
+     *
+     * <p>Điều kiện người nhận nằm trong <em>điều kiện nối</em> chứ không ở {@code where}: bài giao
+     * riêng cho vài em không được tính vào mẫu số của những em khác, nhưng em chưa có bài nào vẫn
+     * phải hiện ra trong bảng — đẩy xuống {@code where} là làm em ấy biến mất.
+     *
+     * <p>{@code counts_in_gradebook} chỉ chặn phần <em>điểm</em>: bài luyện tự do vẫn đếm vào số
+     * bài đã làm, chỉ không kéo điểm trung bình.
      */
     @GetMapping("/progress")
     public ApiResponse<List<Map<String, Object>>> progress(@PathVariable Long classId) {
@@ -229,13 +237,15 @@ public class ClassContentController {
                 select u.id student_id,u.full_name,u.username,
                        count(a.id) filter (where a.requirement='BAT_BUOC') required_total,
                        count(a.id) filter (where a.requirement='BAT_BUOC' and ap.submitted_at is not null) required_submitted,
-                       round(avg(ap.score) filter (where a.requirement='BAT_BUOC' and ap.returned_at is not null),2) required_avg_score,
+                       round(avg(ap.score) filter (where a.requirement='BAT_BUOC' and ap.returned_at is not null
+                                                     and a.counts_in_gradebook),2) required_avg_score,
                        count(a.id) filter (where a.requirement='TU_CHON') optional_total,
                        count(a.id) filter (where a.requirement='TU_CHON' and ap.submitted_at is not null) optional_submitted,
                        max(ap.submitted_at) last_submitted_at
                 from class_students cs
                 join users u on u.id=cs.student_id and u.deleted_at is null
                 left join assignments a on a.class_id=cs.class_id and a.deleted_at is null
+                                       and """ + NguoiNhan.NHAN_DUOC + """
                 left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=u.id and ap.deleted_at is null
                 where cs.class_id=? and cs.deleted_at is null
                 group by u.id,u.full_name,u.username

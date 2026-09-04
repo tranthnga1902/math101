@@ -43,7 +43,8 @@ public class ClassRosterController {
         guard.requireTeacher(classId);
         return ApiResponse.ok("Học sinh của lớp", jdbc.queryForList("""
                 select cs.id,cs.student_id,cs.created_at joined_at,
-                       u.full_name,u.username,u.email,u.phone,u.status
+                       u.full_name,u.username,u.email,u.phone,u.status,
+                       u.date_of_birth,u.gender
                 from class_students cs
                 join users u on u.id=cs.student_id and u.deleted_at is null
                 where cs.class_id=? and cs.deleted_at is null

@@ -4,12 +4,15 @@ import { MoreVertical, Plus, X } from "lucide-react";
 import {
   convertDocumentToMarkdown,
   deleteDocument,
+  getContentGroupCounts,
   getDocuments,
   getMetadata,
   openDocumentFile,
   saveDocumentMarkdown,
+  setDocumentContentGroup,
   uploadDocument,
   type AuthSession,
+  type ContentGroup,
   type DocumentItem,
   type MetadataOption,
 } from "../api";
@@ -31,6 +34,22 @@ const hiddenStorageKey = (session: AuthSession) => `math10.hidden-document-categ
 const mappingStorageKey = (session: AuthSession) => `math10.document-category-mappings.${session.userId}`;
 const DOCUMENTS_QUERY_KEY = "admin-documents";
 const METADATA_QUERY_KEY = "admin-document-metadata";
+const CONTENT_GROUPS_QUERY_KEY = "admin-content-groups";
+
+/**
+ * Nhóm nội dung trả lời "dùng vào lúc nào trong quá trình học" — khác hẳn LOẠI FILE ở trên vốn
+ * trả lời "đây là loại ấn phẩm gì". Danh sách cố định, do CSDL chốt bằng ràng buộc CHECK, nên
+ * không cho sửa/xóa như các phân loại tự đặt trong localStorage.
+ */
+const NHOM_NOI_DUNG: { value: ContentGroup; label: string }[] = [
+  { value: "THEORY", label: "Lý thuyết" },
+  { value: "PRACTICE", label: "Luyện tập" },
+  { value: "ASSESSMENT", label: "Kiểm tra, đánh giá" },
+  { value: "REFERENCE", label: "Tham khảo" },
+];
+/** Khóa lọc cho tài liệu chưa ai phân loại. Không phải một nhóm, nên đứng riêng ngoài NHOM_NOI_DUNG. */
+const CHUA_PHAN_LOAI = "CHUA_PHAN_LOAI";
+const nhomLabel = (group: ContentGroup | null) => NHOM_NOI_DUNG.find(item => item.value === group)?.label ?? "Chưa phân loại";
 
 function loadSavedTypes(session: AuthSession): ManagedType[] {
   try {
@@ -46,12 +65,14 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   const [rows, setRows] = useState<DocumentItem[]>([]);
   const [types, setTypes] = useState<ManagedType[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [upload, setUpload] = useState(false);
   const [bulkUpload, setBulkUpload] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openDocMenu, setOpenDocMenu] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [groupError, setGroupError] = useState("");
   const [categoryDialog, setCategoryDialog] = useState<CategoryDialog>(null);
   const [deleteType, setDeleteType] = useState<ManagedType | null>(null);
   const [markdownDoc, setMarkdownDoc] = useState<DocumentItem | null>(null);
@@ -67,7 +88,14 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
 
   const documentsQuery = useQuery({ queryKey: [DOCUMENTS_QUERY_KEY, session.accessToken], queryFn: () => getDocuments(session) });
   const metadataQuery = useQuery({ queryKey: [METADATA_QUERY_KEY, session.accessToken], queryFn: () => getMetadata(session) });
-  const invalidateDocuments = () => queryClient.invalidateQueries({ queryKey: [DOCUMENTS_QUERY_KEY] });
+  // Bộ đếm lấy từ máy chủ chứ không đếm lại trên máy khách: đếm hai nơi là hai câu trả lời cho
+  // cùng một câu hỏi, và chỉ có con số của máy chủ mới có phép thử canh cái quy tắc "chưa phân
+  // loại không phải là Tham khảo". Làm mới cùng lúc với danh sách nên hai bên không lệch nhau.
+  const groupCountsQuery = useQuery({ queryKey: [CONTENT_GROUPS_QUERY_KEY, session.accessToken], queryFn: () => getContentGroupCounts(session) });
+  const invalidateDocuments = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: [DOCUMENTS_QUERY_KEY] }),
+    queryClient.invalidateQueries({ queryKey: [CONTENT_GROUPS_QUERY_KEY] }),
+  ]);
   const error = documentsQuery.isError ? message(documentsQuery.error) : metadataQuery.isError ? message(metadataQuery.error) : "";
   const persistCategoryMapping = (document: DocumentItem, category: ManagedType) => {
     if (category.builtin) return;
@@ -139,12 +167,24 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
     onError: (reason: unknown) => setDeleteError(message(reason)),
   });
 
+  const groupMutation = useMutation({
+    mutationFn: (x: { id: number; group: ContentGroup | null }) => setDocumentContentGroup(session, x.id, x.group),
+    onMutate: () => setGroupError(""),
+    onSuccess: () => { void invalidateDocuments(); },
+    onError: (reason: unknown) => setGroupError(message(reason)),
+  });
+
   const visible = useMemo(() => rows.filter(row =>
     (!selectedTypes.length || selectedTypes.includes(row.docType)) &&
+    // Chưa phân loại là một lựa chọn lọc thật, không phải "không lọc": chọn nó để lôi ra đúng
+    // những tài liệu còn thiếu nhãn mà đi dán.
+    (!selectedGroups.length || selectedGroups.includes(row.contentGroup ?? CHUA_PHAN_LOAI)) &&
     row.title.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi"))
-  ), [rows, selectedTypes, search]);
+  ), [rows, selectedTypes, selectedGroups, search]);
   const counts = useMemo(() => Object.fromEntries(types.map(type => [type.value, rows.filter(row => row.docType === type.value).length])), [rows, types]);
+  const groupCounts = groupCountsQuery.data;
   const toggleType = (value: string) => setSelectedTypes(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
+  const toggleGroup = (value: string) => setSelectedGroups(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
   const deleteOne = (row: DocumentItem) => {
     if (!confirm(`Xóa tài liệu "${row.title}"? Thao tác này không hoàn tác được.`)) return;
     deleteMutation.mutate(row.id);
@@ -214,11 +254,18 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
           <button className="danger" role="menuitem" onClick={() => { setOpenMenu(null); setDeleteType(item); }}>Xóa</button>
         </div>}
       </div>)}
+      <div className="docs-filter-heading docs-filter-heading-plain"><h3>NHÓM NỘI DUNG</h3></div>
+      {NHOM_NOI_DUNG.map(item => <div className="docs-category-row" key={item.value}>
+        <label><input type="checkbox" checked={selectedGroups.includes(item.value)} onChange={() => toggleGroup(item.value)} /><span title={item.label}>{item.label}</span><b>{groupCounts?.theoNhom[item.value] ?? 0}</b></label>
+      </div>)}
+      <div className="docs-category-row">
+        <label><input type="checkbox" checked={selectedGroups.includes(CHUA_PHAN_LOAI)} onChange={() => toggleGroup(CHUA_PHAN_LOAI)} /><span>Chưa phân loại</span><b>{groupCounts?.chuaPhanLoai ?? 0}</b></label>
+      </div>
     </aside>
     <main>
       <div className="docs-toolbar"><div><h1>Kho Tài Liệu</h1><input aria-label="Tìm kiếm tài liệu" placeholder="Tìm kiếm tài liệu…" value={search} onChange={event => setSearch(event.target.value)} /></div><div><button onClick={() => setBulkUpload(true)}>Tải nhiều file</button><button className="docs-primary" onClick={() => setUpload(true)}>Tải lên</button></div></div>
-      {(error || deleteError) && <div className="api-error">{error || deleteError}</div>}
-      <div className="docs-collection">{visible.map(row => { const thumbnail = row.docType === "VIDEO" ? youtubeThumbnailUrl(row.fileUrl) : null; return <article key={row.id}><button className={`doc-preview${thumbnail ? " doc-video-preview" : ""}`} onClick={() => openRow(row)}>{thumbnail ? <><img src={thumbnail} alt={`Ảnh video ${row.title}`}/><span className="doc-video-play material-symbols-outlined">play_circle</span></> : row.fileUrl && row.docType !== "VIDEO" ? <PdfThumbnail fileUrl={row.fileUrl} accessToken={session.accessToken} pageNumber={1} className="doc-pdf-preview" renderScale={0.75} thumbnailUrl={row.thumbnailUrl} docType={row.docType}/> : <span className={`doc-kind ${row.docType.toLowerCase()}`}>{row.docType === "VIDEO" ? "VIDEO" : "TÀI LIỆU"}</span>}</button><div className="doc-info"><div><h2>{row.title}</h2><span className="doc-menu-wrap"><button className="doc-menu-trigger" aria-label={`Thao tác với ${row.title}`} aria-expanded={openDocMenu === row.id} onClick={() => setOpenDocMenu(current => current === row.id ? null : row.id)}><MoreVertical size={17}/></button>{openDocMenu === row.id && <span className="doc-menu" role="menu"><button role="menuitem" onClick={() => { setOpenDocMenu(null); openRow(row); }}>{row.contentMarkdown ? "Đọc bản Markdown" : row.docType === "VIDEO" ? "Xem video" : "Mở tài liệu"}</button>{row.contentMarkdown && <button role="menuitem" onClick={() => { setOpenDocMenu(null); openFile(row); }}>Mở file gốc</button>}{isPdfDoc(row) && !row.contentMarkdown && <button role="menuitem" disabled={converting === row.id} onClick={() => { setOpenDocMenu(null); convertMutation.mutate(row.id); }}>{converting === row.id ? "Đang chuyển đổi…" : "Chuyển sang Markdown"}</button>}{isPdfDoc(row) && <button role="menuitem" disabled={!!ocrJob || converting === row.id} onClick={() => { setOpenDocMenu(null); void runOcr(row); }}>{row.contentMarkdown ? "Nhận dạng lại chữ (OCR)" : "Nhận dạng chữ (OCR)"}</button>}<hr/><button className="danger" role="menuitem" disabled={deleteMutation.isPending} onClick={() => { setOpenDocMenu(null); deleteOne(row); }}>Xóa tài liệu</button></span>}</span></div><p><span>{types.find(item => item.value === row.docType)?.label ?? row.docType}</span><time>{new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt))}</time></p>{isPdfDoc(row) && (row.contentMarkdown || converting === row.id || ocrJob?.id === row.id || convertErrors[row.id]) && <p className="doc-markdown-row">{ocrJob?.id === row.id ? <><span className="doc-markdown-badge">{ocrJob.text}</span><button className="doc-ocr-cancel" onClick={() => { ocrCancel.current = true; }}>Hủy</button></> : row.contentMarkdown ? <span className="doc-markdown-badge">Markdown ✓</span> : converting === row.id ? <span className="doc-markdown-badge">Đang chuyển đổi…</span> : null}{convertErrors[row.id] && <span className="doc-markdown-error">{convertErrors[row.id]}</span>}</p>}</div></article>; })}</div>
+      {(error || deleteError || groupError) && <div className="api-error">{error || deleteError || groupError}</div>}
+      <div className="docs-collection">{visible.map(row => { const thumbnail = row.docType === "VIDEO" ? youtubeThumbnailUrl(row.fileUrl) : null; return <article key={row.id}><button className={`doc-preview${thumbnail ? " doc-video-preview" : ""}`} onClick={() => openRow(row)}>{thumbnail ? <><img src={thumbnail} alt={`Ảnh video ${row.title}`}/><span className="doc-video-play material-symbols-outlined">play_circle</span></> : row.fileUrl && row.docType !== "VIDEO" ? <PdfThumbnail fileUrl={row.fileUrl} accessToken={session.accessToken} pageNumber={1} className="doc-pdf-preview" renderScale={0.75} thumbnailUrl={row.thumbnailUrl} docType={row.docType}/> : <span className={`doc-kind ${row.docType.toLowerCase()}`}>{row.docType === "VIDEO" ? "VIDEO" : "TÀI LIỆU"}</span>}</button><div className="doc-info"><div><h2>{row.title}</h2><span className="doc-menu-wrap"><button className="doc-menu-trigger" aria-label={`Thao tác với ${row.title}`} aria-expanded={openDocMenu === row.id} onClick={() => setOpenDocMenu(current => current === row.id ? null : row.id)}><MoreVertical size={17}/></button>{openDocMenu === row.id && <span className="doc-menu" role="menu"><button role="menuitem" onClick={() => { setOpenDocMenu(null); openRow(row); }}>{row.contentMarkdown ? "Đọc bản Markdown" : row.docType === "VIDEO" ? "Xem video" : "Mở tài liệu"}</button>{row.contentMarkdown && <button role="menuitem" onClick={() => { setOpenDocMenu(null); openFile(row); }}>Mở file gốc</button>}{isPdfDoc(row) && !row.contentMarkdown && <button role="menuitem" disabled={converting === row.id} onClick={() => { setOpenDocMenu(null); convertMutation.mutate(row.id); }}>{converting === row.id ? "Đang chuyển đổi…" : "Chuyển sang Markdown"}</button>}{isPdfDoc(row) && <button role="menuitem" disabled={!!ocrJob || converting === row.id} onClick={() => { setOpenDocMenu(null); void runOcr(row); }}>{row.contentMarkdown ? "Nhận dạng lại chữ (OCR)" : "Nhận dạng chữ (OCR)"}</button>}<hr/><span className="doc-menu-label">Nhóm nội dung</span>{NHOM_NOI_DUNG.map(item => <button key={item.value} role="menuitem" disabled={groupMutation.isPending || row.contentGroup === item.value} onClick={() => { setOpenDocMenu(null); groupMutation.mutate({ id: row.id, group: item.value }); }}>{row.contentGroup === item.value ? `✓ ${item.label}` : item.label}</button>)}{row.contentGroup && <button role="menuitem" disabled={groupMutation.isPending} onClick={() => { setOpenDocMenu(null); groupMutation.mutate({ id: row.id, group: null }); }}>Gỡ phân loại</button>}<hr/><button className="danger" role="menuitem" disabled={deleteMutation.isPending} onClick={() => { setOpenDocMenu(null); deleteOne(row); }}>Xóa tài liệu</button></span>}</span></div><p><span>{types.find(item => item.value === row.docType)?.label ?? row.docType}</span><span className={row.contentGroup ? "doc-group" : "doc-group doc-group-empty"}>{nhomLabel(row.contentGroup)}</span><time>{new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt))}</time></p>{isPdfDoc(row) && (row.contentMarkdown || converting === row.id || ocrJob?.id === row.id || convertErrors[row.id]) && <p className="doc-markdown-row">{ocrJob?.id === row.id ? <><span className="doc-markdown-badge">{ocrJob.text}</span><button className="doc-ocr-cancel" onClick={() => { ocrCancel.current = true; }}>Hủy</button></> : row.contentMarkdown ? <span className="doc-markdown-badge">Markdown ✓</span> : converting === row.id ? <span className="doc-markdown-badge">Đang chuyển đổi…</span> : null}{convertErrors[row.id] && <span className="doc-markdown-error">{convertErrors[row.id]}</span>}</p>}</div></article>; })}</div>
       {!visible.length && <div className="docs-empty">Không có tài liệu phù hợp.</div>}
     </main>
     {upload && <DocumentUpload session={session} types={types} onClose={() => setUpload(false)} onDone={async (document, category) => {

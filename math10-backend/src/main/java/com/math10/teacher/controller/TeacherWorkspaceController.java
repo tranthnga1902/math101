@@ -1,4 +1,5 @@
 package com.math10.teacher.controller;
+import com.math10.assignments.domain.NguoiNhan;
 import com.math10.common.dto.ApiResponse;
 import com.math10.configuration.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class TeacherWorkspaceController {
   */
  @GetMapping("/gradebook") public ApiResponse<List<Map<String,Object>>> gradebook(@RequestParam Long classId){check(classId);return ApiResponse.ok("Sổ điểm",jdbc.queryForList("""
    select u.id student_id,u.full_name,u.username,a.id assignment_id,a.title,a.status assignment_status,a.due_at,
+   a.task_kind,a.answer_reveal,a.counts_in_gradebook,a.anchor_period_id,
    ap.id progress_id,
    case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end status,
    coalesce(ap.completion_percent,0) completion_percent,ap.score,ap.max_score,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
@@ -53,8 +55,7 @@ public class TeacherWorkspaceController {
    from class_students cs join users u on u.id=cs.student_id and u.deleted_at is null
    cross join assignments a left join assignment_progress ap on ap.student_id=u.id and ap.assignment_id=a.id and ap.deleted_at is null
    where cs.class_id=? and cs.deleted_at is null and a.class_id=? and a.deleted_at is null and a.status<>'DRAFT'
-   order by u.full_name,u.id,a.created_at,a.id
-   """,classId,classId));}
+   """+" and "+NguoiNhan.NHAN_DUOC+" order by u.full_name,u.id,a.created_at,a.id",classId,classId));}
  private void check(Long classId){if("ADMIN".equals(current.requireRoleCode()))return;Integer n=jdbc.queryForObject("select count(*) from class_teachers where class_id=? and teacher_id=? and deleted_at is null",Integer.class,classId,current.requireUserId());if(n==null||n==0)throw new AccessDeniedException("Không có quyền truy cập lớp");}
  @GetMapping("/class-results") public ApiResponse<List<Map<String,Object>>> classResults(){
   Long teacher=current.requireUserId();boolean isAdmin="ADMIN".equals(current.requireRoleCode());
@@ -72,10 +73,11 @@ public class TeacherWorkspaceController {
        ap.max_score,
        ap.returned_at
      from assignments a
-     cross join class_students cs
+     join class_students cs on cs.class_id=a.class_id and cs.deleted_at is null
      left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=cs.student_id and ap.deleted_at is null
-     where a.deleted_at is null and cs.deleted_at is null
+     where a.deleted_at is null and a.counts_in_gradebook
      and (a.class_id in (select class_id from class_teachers where teacher_id=? and deleted_at is null) or ?)
+     """+" and "+NguoiNhan.NHAN_DUOC+"""
      order by a.class_id, cs.student_id, a.created_at desc
    ),
    student_stats as (

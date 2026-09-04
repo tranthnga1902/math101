@@ -7,7 +7,7 @@ import {
   type AuthSession,
   type StudentCourse,
 } from "../api";
-import { flattenLessons, formatPercent } from "./format";
+import { flattenLessons, formatPercent, ngayDiHocLai, ngayVN } from "./format";
 
 type LessonsPageProps = {
   session: AuthSession;
@@ -109,18 +109,24 @@ export function LessonsPage({ session, onOpenLesson, onOpenChapter }: LessonsPag
 
       <section className="md:col-span-8 lg:col-span-9 space-y-5">
         {current.data && (
-          <section className="rounded-xl border border-primary/25 bg-primary-container p-5">
+          /* Trong kỳ nghỉ vẫn nêu tên chương đang dở — mục lục bên dưới vẫn mở đúng chỗ đó — nhưng
+             tiêu đề phải nói là nghỉ, chứ không phải "đang học theo chương trình". */
+          <section className={`rounded-xl border p-5 ${current.data.onBreak ? "border-outline-variant bg-surface-container-lowest" : "border-primary/25 bg-primary-container"}`}>
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-on-primary-container">Đang học theo chương trình</p>
-                <h2 className="mt-1 text-xl font-bold text-on-primary-container">
-                  Chương {current.data.chapterOrder}: {current.data.chapterTitle}
+              <div className={current.data.onBreak ? "text-on-surface" : "text-on-primary-container"}>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em]">{current.data.onBreak ? "Đang nghỉ" : "Đang học theo chương trình"}</p>
+                <h2 className="mt-1 text-xl font-bold">
+                  {current.data.onBreak ? (current.data.breakReason ?? "Kỳ nghỉ") : `Chương ${current.data.chapterOrder}: ${current.data.chapterTitle}`}
                 </h2>
-                <p className="mt-1 text-sm text-on-primary-container/80">
-                  {new Date(`${current.data.startsOn}T00:00:00`).toLocaleDateString("vi-VN")} – {new Date(`${current.data.endsOn}T00:00:00`).toLocaleDateString("vi-VN")}
+                <p className="mt-1 text-sm opacity-80">
+                  {current.data.onBreak
+                    ? [current.data.breakEndsOn && `Học lại từ ${ngayDiHocLai(current.data.breakEndsOn)}`,
+                       current.data.chapterTitle && `học tiếp Chương ${current.data.chapterOrder}: ${current.data.chapterTitle}`]
+                        .filter(Boolean).join(", ")
+                    : current.data.startsOn && current.data.endsOn && `${ngayVN(current.data.startsOn)} – ${ngayVN(current.data.endsOn)}`}
                 </p>
               </div>
-              <span className="material-symbols-outlined text-4xl text-primary" aria-hidden="true">calendar_month</span>
+              <span className={`material-symbols-outlined text-4xl ${current.data.onBreak ? "text-on-surface-variant" : "text-primary"}`} aria-hidden="true">{current.data.onBreak ? "beach_access" : "calendar_month"}</span>
             </div>
           </section>
         )}

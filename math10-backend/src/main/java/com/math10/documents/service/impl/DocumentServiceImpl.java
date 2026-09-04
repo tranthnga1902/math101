@@ -3,8 +3,10 @@ package com.math10.documents.service.impl;
 import com.math10.audit.service.AuditService;
 import com.math10.chapters.repository.ChapterRepository;
 import com.math10.classes.repository.ClassDocumentRepository;
+import com.math10.common.entity.ContentGroup;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.configuration.security.SecurityService;
 import com.math10.documents.dto.DocumentOpenResponse;
@@ -159,6 +161,37 @@ public class DocumentServiceImpl implements DocumentService {
         }
         document.setTaxonomyNodeId(taxonomyNodeId);
         return map(documents.save(document));
+    }
+
+    /**
+     * Gán hoặc gỡ nhóm nội dung. {@code null} là "gỡ phân loại", nói ra bằng một lời gọi riêng.
+     *
+     * <p>Không nhét trường này vào {@code updateDocument}: thân PUT hiện chỉ mang tên/loại/phạm vi,
+     * nên mỗi lần Admin đổi tên tài liệu là nhóm nội dung nhận null và bay mất — mất dữ liệu vì một
+     * trường không được gửi lên. Đường đi riêng thì gỡ chỉ xảy ra khi có người thật sự bấm gỡ.
+     */
+    @Override
+    @Transactional
+    public DocumentResponse setContentGroup(Long documentId, ContentGroup contentGroup) {
+        Document document = document(documentId);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không phân loại hộ được");
+        }
+        document.setContentGroup(contentGroup);
+        return map(documents.save(document));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContentGroupCounts countsByContentGroup() {
+        List<DocumentResponse> rows = listDocuments();
+        Map<ContentGroup, Long> theoNhom = new HashMap<>();
+        // Nêu đủ bốn nhóm kể cả nhóm rỗng: bộ lọc thiếu hẳn một dòng thì trông như nhóm đó không
+        // tồn tại, còn "Kiểm tra 0" nói đúng rằng chưa ai xếp tài liệu nào vào đó.
+        for (ContentGroup group : ContentGroup.values()) {
+            theoNhom.put(group, rows.stream().filter(row -> row.contentGroup() == group).count());
+        }
+        return new ContentGroupCounts(theoNhom, rows.stream().filter(row -> row.contentGroup() == null).count());
     }
 
     @Override
@@ -966,7 +999,8 @@ public class DocumentServiceImpl implements DocumentService {
                 thumbnailUrl(document),
                 document.getFolderId(),
                 document.getContentMarkdown(),
-                document.getTaxonomyNodeId()
+                document.getTaxonomyNodeId(),
+                document.getContentGroup()
         );
     }
 

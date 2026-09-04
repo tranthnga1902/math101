@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.SQLRestriction;
@@ -31,6 +32,15 @@ public class User extends BaseEntity {
 
     @Column(length = 30)
     private String phone;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(length = 20)
+    private String gender;
+
+    @Column(name = "avatar_url", columnDefinition = "text")
+    private String avatarUrl;
 
     @Column(nullable = false, length = 30)
     private String roleCode;

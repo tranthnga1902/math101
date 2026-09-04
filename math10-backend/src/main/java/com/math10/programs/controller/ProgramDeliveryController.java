@@ -3,6 +3,7 @@ package com.math10.programs.controller;
 import com.math10.common.dto.ApiResponse;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
+import com.math10.programs.AcademicBreaks;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,12 +12,15 @@ import org.springframework.web.bind.annotation.*;
 
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController @RequiredArgsConstructor
 public class ProgramDeliveryController {
     private final JdbcTemplate jdbc;
+    private final AcademicBreaks breaks;
 
     @GetMapping("/api/admin/program-templates") @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<List<Map<String,Object>>> templates(){return ApiResponse.ok("Mẫu chương trình",jdbc.queryForList("select * from program_templates where deleted_at is null order by name"));}
@@ -46,7 +50,38 @@ public class ProgramDeliveryController {
     }
 
     @GetMapping("/api/courses/{courseId}/current-chapter") @PreAuthorize("isAuthenticated()")
-    public ApiResponse<Map<String,Object>> current(@PathVariable Long courseId,@RequestParam(required=false) LocalDate at){LocalDate date=at==null?LocalDate.now():at;List<Map<String,Object>> rows=jdbc.queryForList("select ps.*,ch.title chapter_title,ch.order_index chapter_order,'CURRENT' time_group from program_schedules ps join chapters ch on ch.id=ps.chapter_id where ps.course_instance_id=? and ps.deleted_at is null and ps.status='ACTIVE' and ? between ps.starts_on and ps.ends_on order by ps.starts_on desc limit 1",courseId,date);return ApiResponse.ok("Chương hiện hành",rows.isEmpty()?null:rows.get(0));}
+    public ApiResponse<Map<String,Object>> current(@PathVariable Long courseId,@RequestParam(required=false) LocalDate at){
+        LocalDate date=at==null?LocalDate.now():at;
+        Optional<AcademicBreaks.Break> nghi=breaks.of(courseId,date);
+        List<Map<String,Object>> rows=jdbc.queryForList("select ps.*,ch.title chapter_title,ch.order_index chapter_order,'CURRENT' time_group from program_schedules ps join chapters ch on ch.id=ps.chapter_id where ps.course_instance_id=? and ps.deleted_at is null and ps.status='ACTIVE' and ? between ps.starts_on and ps.ends_on order by ps.starts_on desc limit 1",courseId,date);
+        if(rows.isEmpty()&&nghi.isEmpty())return ApiResponse.ok("Chương hiện hành",null);
+        // Ngày nghỉ vẫn trả về chương đang dở nếu có, nhưng đổi nhóm thời gian: màn hình nào đọc
+        // time_group để tô "đang học" sẽ không tô nữa, thay vì phải nhớ kiểm tra thêm một cờ.
+        Map<String,Object> row=new LinkedHashMap<>(rows.isEmpty()?Map.of():rows.get(0));
+        row.put("on_break",nghi.isPresent());
+        nghi.ifPresent(x->{row.put("time_group","BREAK");row.put("break_reason",x.reason());row.put("break_ends_on",x.endsOn());});
+        return ApiResponse.ok(nghi.isPresent()?"Đang trong kỳ nghỉ":"Chương hiện hành",row);
+    }
+
+    @GetMapping("/api/admin/course-instances/{id}/breaks") @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<List<Map<String,Object>>> breaks(@PathVariable Long id){require("course_instances",id);return ApiResponse.ok("Kỳ nghỉ của khóa",jdbc.queryForList("select * from academic_breaks where course_instance_id=? and deleted_at is null order by starts_on",id));}
+
+    @PostMapping("/api/admin/course-instances/{id}/breaks") @PreAuthorize("hasRole('ADMIN')") @Transactional
+    public ApiResponse<Map<String,Object>> addBreak(@PathVariable Long id,@RequestBody BreakInput x){
+        Map<String,Object> khoa=one("course_instances",id);
+        if(x.startsOn()==null||x.endsOn()==null)throw new BusinessException("Kỳ nghỉ phải có ngày bắt đầu và ngày kết thúc");
+        if(x.startsOn().isAfter(x.endsOn()))throw new BusinessException("Ngày bắt đầu phải trước ngày kết thúc");
+        if(x.reason()==null||x.reason().isBlank())throw new BusinessException("Kỳ nghỉ phải có lý do — màn hình học sinh hiện đúng dòng chữ này");
+        // Kỳ nghỉ nằm ngoài khoảng của khóa thì không ngày học nào rơi vào nó: nhận rồi cất đi sẽ
+        // thành một dòng vô hại nhưng vô dụng, mà Admin thì tin là đã đặt xong.
+        LocalDate tu=((Date)khoa.get("starts_on")).toLocalDate(),den=((Date)khoa.get("ends_on")).toLocalDate();
+        if(x.startsOn().isBefore(tu)||x.endsOn().isAfter(den))throw new BusinessException("Kỳ nghỉ phải nằm trong khoảng của khóa ("+tu+" đến "+den+")");
+        Long newId=jdbc.queryForObject("insert into academic_breaks(course_instance_id,starts_on,ends_on,reason,created_at,updated_at) values(?,?,?,?,now(),now()) returning id",Long.class,id,x.startsOn(),x.endsOn(),x.reason().trim());
+        return ApiResponse.created("Đã thêm kỳ nghỉ",one("academic_breaks",newId));
+    }
+
+    @DeleteMapping("/api/admin/academic-breaks/{id}") @PreAuthorize("hasRole('ADMIN')") @Transactional
+    public ApiResponse<Void> removeBreak(@PathVariable Long id){if(jdbc.update("update academic_breaks set deleted_at=now(),updated_at=now() where id=? and deleted_at is null",id)!=1)throw new ResourceNotFoundException("Không tìm thấy kỳ nghỉ");return ApiResponse.ok("Đã gỡ kỳ nghỉ",null);}
 
     @GetMapping("/api/courses/{courseId}/chapters-by-time") @PreAuthorize("isAuthenticated()")
     public ApiResponse<List<Map<String,Object>>> grouped(@PathVariable Long courseId,@RequestParam(required=false) LocalDate at){return ApiResponse.ok("Chương theo thời gian",scheduleRows(courseId,at==null?LocalDate.now():at));}
@@ -60,4 +95,5 @@ public class ProgramDeliveryController {
     public record TemplateChapterInput(Long chapterId,Integer orderIndex,Integer recommendedDays){}
     public record CourseInput(Long templateId,String name,String schoolYear,LocalDate startsOn,LocalDate endsOn,String status){}
     public record ScheduleInput(Long chapterId,LocalDate startsOn,LocalDate endsOn){}
+    public record BreakInput(LocalDate startsOn,LocalDate endsOn,String reason){}
 }

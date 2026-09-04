@@ -1,5 +1,6 @@
 package com.math10.documents.dto;
 
+import com.math10.common.entity.ContentGroup;
 import com.math10.documents.entity.DocumentAudience;
 import com.math10.documents.entity.DocumentStatus;
 import com.math10.documents.entity.DocumentType;
@@ -22,6 +23,8 @@ public record DocumentResponse(
         String thumbnailUrl,
         Long folderId,
         String contentMarkdown,
-        Long taxonomyNodeId
+        Long taxonomyNodeId,
+        /** Để trống khi chưa ai phân loại — màn hình hiện "Chưa phân loại", không tự suy ra nhóm nào. */
+        ContentGroup contentGroup
 ) {
 }

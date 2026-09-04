@@ -1,5 +1,7 @@
 package com.math10.documents.service;
 
+import com.math10.common.entity.ContentGroup;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.documents.dto.DocumentOpenResponse;
 import com.math10.documents.dto.DocumentResponse;
 import com.math10.documents.dto.DocumentUpdateRequest;
@@ -29,6 +31,8 @@ public interface DocumentService {
     List<DocumentResponse> listByTaxonomyNode(Long taxonomyNodeId);
     DocumentResponse attachToTaxonomyNode(Long documentId, Long taxonomyNodeId);
     Map<Long, Integer> countsByTaxonomyNode();
+    DocumentResponse setContentGroup(Long documentId, ContentGroup contentGroup);
+    ContentGroupCounts countsByContentGroup();
     List<DocumentResponse> listMyDocuments();
     DocumentResponse uploadMyDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, MultipartFile file, String videoUrl);
     DocumentResponse updateMyDocument(Long id, DocumentUpdateRequest request);

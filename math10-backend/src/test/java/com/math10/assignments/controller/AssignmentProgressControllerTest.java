@@ -1,11 +1,11 @@
 package com.math10.assignments.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.math10.assignments.domain.NguoiNhan;
 import com.math10.assignments.entity.*;
 import com.math10.assignments.repository.*;
 import com.math10.assignments.service.SubmissionLogService;
 import com.math10.common.exception.BusinessException;
 import com.math10.configuration.security.CurrentUserService;
-import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.assignments.service.WorksheetAnswerKeys;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -18,11 +18,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * Ở đây kiểm phần nối dây: controller có thật sự hỏi {@link com.math10.assignments.domain.AssignmentWindow}
  * trước khi ghi hay không. Bản thân luật vòng đời đã có test riêng trong {@code AssignmentWindowTest}.
+ *
+ * <p>Cổng "bài này có dành cho em không" đi qua {@link NguoiNhan} chứ không hỏi thẳng bảng lớp nữa:
+ * từ khi có bài giao cho nhóm học sinh, thuộc lớp là điều kiện cần chứ không còn là điều kiện đủ.
  */
 class AssignmentProgressControllerTest {
  private final AssignmentRepository assignments=mock(AssignmentRepository.class);
  private final AssignmentProgressRepository progress=mock(AssignmentProgressRepository.class);
- private final ClassStudentRepository classes=mock(ClassStudentRepository.class);
+ private final NguoiNhan nguoiNhan=mock(NguoiNhan.class);
  private final CurrentUserService current=mock(CurrentUserService.class);
 
  @Test void studentCompletesOwnClassAssignment(){
@@ -47,12 +50,12 @@ class AssignmentProgressControllerTest {
  private Assignment mo(){Assignment a=new Assignment();a.setId(3L);a.setClassId(4L);a.setStatus("PUBLISHED");return a;}
  private void giaoBai(Assignment a){
   when(assignments.findById(3L)).thenReturn(Optional.of(a));when(current.requireUserId()).thenReturn(7L);
-  when(classes.existsByClassIdAndStudentId(4L,7L)).thenReturn(true);
+  when(nguoiNhan.nhanDuoc(a,7L)).thenReturn(true);
   when(progress.findByAssignmentIdAndStudentId(3L,7L)).thenReturn(Optional.empty());
   when(progress.save(any())).thenAnswer(x->x.getArgument(0));
  }
  private AssignmentProgressController controller(){
-  return new AssignmentProgressController(assignments,progress,mock(SubmissionLogService.class),classes,current,
+  return new AssignmentProgressController(assignments,progress,mock(SubmissionLogService.class),nguoiNhan,current,
     mock(LearningProgressRepository.class),mock(WorksheetAnswerKeys.class),mock(SubmissionItemGradeRepository.class),new ObjectMapper(),mock(JdbcTemplate.class));
  }
 }

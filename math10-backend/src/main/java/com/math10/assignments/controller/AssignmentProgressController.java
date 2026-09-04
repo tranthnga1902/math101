@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.math10.assignments.domain.AssignmentWindow;
 import com.math10.assignments.domain.McqGrading;
+import com.math10.assignments.domain.NguoiNhan;
 import com.math10.assignments.domain.WorksheetScoring;
 import com.math10.assignments.dto.AssignmentProgressResponse;
 import com.math10.assignments.dto.AssignmentResultResponse;
@@ -20,7 +21,6 @@ import com.math10.common.dto.ApiResponse;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
 import com.math10.configuration.security.CurrentUserService;
-import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.assignments.service.WorksheetAnswerKeys;
 import com.math10.progress.entity.LearningProgress;
 import com.math10.progress.repository.LearningProgressRepository;
@@ -44,7 +44,7 @@ public class AssignmentProgressController {
     private final AssignmentRepository assignments;
     private final AssignmentProgressRepository progress;
     private final SubmissionLogService submissionLog;
-    private final ClassStudentRepository classStudents;
+    private final NguoiNhan nguoiNhan;
     private final CurrentUserService current;
     private final LearningProgressRepository learningProgress;
     private final WorksheetAnswerKeys answerKeys;
@@ -192,7 +192,9 @@ public class AssignmentProgressController {
     private AssignmentProgress get(Long id) {
         Assignment assignment = assignment(id);
         Long student = current.requireUserId();
-        if (!classStudents.existsByClassIdAndStudentId(assignment.getClassId(), student)) throw new AccessDeniedException("Bài giao không thuộc lớp của bạn");
+        // Cổng ghi duy nhất của học sinh: hỏi NguoiNhan chứ không hỏi riêng lớp, vì bài SELECTED
+        // vẫn thuộc lớp mà chỉ vài em nhận — hỏi lớp là mở cửa cho cả lớp.
+        if (!nguoiNhan.nhanDuoc(assignment, student)) throw new AccessDeniedException("Bài giao không dành cho bạn");
         return progress.findByAssignmentIdAndStudentId(id, student).orElseGet(() -> {
             AssignmentProgress created = new AssignmentProgress();
             created.setAssignmentId(id);

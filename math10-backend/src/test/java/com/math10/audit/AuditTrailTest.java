@@ -539,8 +539,8 @@ class AuditTrailTest {
 
     private long taoPhieu() {
         return jdbc.queryForObject("""
-                insert into worksheets (name, columns_count, show_qr, show_student_fields, created_by, created_at, updated_at)
-                values ('Phiếu cho nhật ký', 1, true, true, ?, now(), now())
+                insert into worksheets (name, columns_count, show_qr, show_student_fields, status, created_by, created_at, updated_at)
+                values ('Phiếu cho nhật ký', 1, true, true, 'PUBLISHED', ?, now(), now())
                 returning id
                 """, Long.class, giaoVien);
     }

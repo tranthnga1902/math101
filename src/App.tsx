@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import katex from "katex";
 import QRCode from "qrcode";
-import { BookOpen, BookOpenCheck, CheckCircle, ChevronDown, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, Filter, FileText, GraduationCap, Home, KeyRound, LibraryBig, Lock, LogOut, Menu, MoreVertical, PlayCircle, Plus, Search, Settings, UserRound, X } from "lucide-react";
+import { BookOpen, BookOpenCheck, CalendarRange, CheckCircle, ChevronDown, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, Edit3, Filter, FileText, GraduationCap, Home, KeyRound, LayoutList, LibraryBig, Lock, LogOut, Menu, MoreVertical, PlayCircle, Plus, Printer, Search, Settings, UserRound, Users, X } from "lucide-react";
 import "katex/dist/katex.min.css";
 import { MainLayout } from "./layout/MainLayout";
 import { PdfThumbnail } from "./PdfThumbnail";
@@ -12,7 +12,9 @@ import { TextbookManagement } from "./admin/TextbookManagement";
 import { DocumentManagement } from "./admin/DocumentManagement";
 import { TaxonomyManagement } from "./admin/TaxonomyManagement";
 import { AuditManagement } from "./admin/AuditManagement";
+import { PpctCauTrucModal } from "./admin/PpctCauTrucModal";
 import { StudentExperience } from "./student/StudentExperience";
+import { ngayDiHocLai, ngayVN } from "./student/format";
 import { TeacherDocumentLibrary } from "./teacher/TeacherDocumentLibrary";
 import { TaxonomyBrowser } from "./teacher/TaxonomyBrowser";
 import { TeacherSubmissionView } from "./teacher/TeacherSubmissionView";
@@ -23,6 +25,7 @@ import { TeacherOperationsView } from "./teacher/TeacherOperationsView";
 import { TeacherClassManager } from "./teacher/TeacherClassManager";
 import { ClassDetail } from "./teacher/class/ClassDetail";
 import { TeacherRoster } from "./teacher/TeacherRoster";
+import { ProfileSettings } from "./settings/ProfileSettings";
 import { MathWorkspace } from "./teacher/MathWorkspace";
 import {
   createCourse,
@@ -34,9 +37,22 @@ import {
   deleteLesson,
   reorderChapters,reorderLessons,
   getCourses,
+  getCourseInstances,
+  getAcademicBreaks,
+  addAcademicBreak,
+  removeAcademicBreak,
+  getProgramTemplates,
+  createProgramTemplate,
+  createCourseInstance,
+  getCourseSchedule,
+  saveCourseSchedule,
   getChapters,
   getLessons,
+  getProgramCourseTree,
+  uploadPpctPreview,confirmPpct,getProgramStrands,
+  xemTruocLichTuan,sinhLichTuan,
   getAdminStats,
+  getAdminCalendarEvents,
   getAuditLogs,
   getMetadata,
   getUsers,
@@ -60,9 +76,9 @@ import {
   getPublicProblem,
   markProblemProgress,
   getClassesPage,getAdminClassOverview,createClass,updateClass,deleteClass,getTeacherStats,getTeacherClasses,getGradebook,getClassResults,
-  getResources,saveResource,deleteResource,uploadFile,
-  reorderResources,
-  getEnrollments,addEnrollment,removeEnrollment,getAssignments,
+  getLessonResources,addLessonResource,updateLessonResource,deleteLessonResource,uploadFile,
+  reorderLessonResources,
+  getEnrollments,addEnrollment,removeEnrollment,getAssignments,getClassRoster,addRosterStudent,
   getDocuments,openDocumentFile,openLessonDocumentFile,getLessonDocuments,getLessonDocumentQuestions,addLessonDocumentQuestion,deleteLessonDocumentQuestion,recordLessonDocumentStudy,submitLessonDocumentQuiz,attachLessonDocument,updateLessonDocument,deleteLessonDocument,moveLessonDocument,
   getTextbooks,openTextbookInBrowser,
   downloadFile,
@@ -76,10 +92,12 @@ import {
   type Progress,
   type StudentCourse,
   type StudentAssignment,
-  type AdminClassOverviewRow,type Classroom,type ClassroomInput,
-  type LessonResource,
+  type AdminClassOverviewRow,type AdminCalendarEvent,type Classroom,type ClassroomInput,
+  type Enrollment,type CourseInstance,type CourseScheduleRow,type RosterStudent,
+  type LessonProgramResource,
   type TextbookItem,type LessonDocument,type LessonDocumentQuestion,
-  type Metadata,type MetadataOption,
+  type Metadata,type MetadataOption,type ProgramImportStrand,
+  type PpctPreview,type PpctRow,
 } from "./api";
 
 function useMetadata(session: AuthSession) {
@@ -254,8 +272,9 @@ function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSe
  const items=[
   ["overview","Tổng quan",Home],
   ["users","Tài khoản",UserRound],
-  ["classes","Lớp học",CheckCircle],
   ["programs","Chương trình",BookOpenCheck],
+  ["course-instances","Khóa học",CalendarRange],
+  ["classes","Lớp học",CheckCircle],
   ["textbooks","Sách giáo khoa",GraduationCap],
   ["documents","Tài liệu",FileText],
   ["topics","Chuyên đề",ClipboardList],
@@ -289,6 +308,49 @@ function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSe
  </div>;
 }
 
+const localDateKey=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+
+function AdminOverviewCalendar({session}:{session:AuthSession}) {
+  const today=new Date();
+  const [month,setMonth]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1));
+  const visible=useMemo(()=>{
+    const first=new Date(month.getFullYear(),month.getMonth(),1);
+    const offset=(first.getDay()+6)%7;
+    const count=offset+new Date(month.getFullYear(),month.getMonth()+1,0).getDate()>35?42:35;
+    return Array.from({length:count},(_,index)=>new Date(month.getFullYear(),month.getMonth(),index-offset+1));
+  },[month]);
+  const from=localDateKey(visible[0]),to=localDateKey(visible[visible.length-1]);
+  const eventsQuery=useQuery({queryKey:["admin-important-calendar",session.accessToken,from,to],queryFn:()=>getAdminCalendarEvents(session,from,to),staleTime:60_000});
+  const events=eventsQuery.data??[];
+  const monthLabel=new Intl.DateTimeFormat("vi-VN",{month:"long",year:"numeric"}).format(month);
+  const move=(step:number)=>setMonth(value=>new Date(value.getFullYear(),value.getMonth()+step,1));
+  const eventLabel=(event:AdminCalendarEvent)=>{
+    const prefix=event.kind==="EXAM"?"Kiểm tra":event.kind==="ASSIGNMENT_DUE"?"Hạn nộp":event.kind==="COURSE_START"?"Bắt đầu khóa":"Kết thúc khóa";
+    return `${prefix} · ${event.title}${event.class_name?` · ${event.class_name}`:""}`;
+  };
+  const eventClass=(kind:AdminCalendarEvent["kind"])=>kind==="EXAM"?"exam":kind==="ASSIGNMENT_DUE"?"due":kind==="COURSE_START"?"start":"end";
+  return <article className="audit-panel admin-calendar-panel">
+    <div className="admin-calendar-toolbar">
+      <div><h2>Lịch học tập quan trọng</h2><p>Chỉ hiển thị kiểm tra, hạn bài bắt buộc và mốc khóa học đã gán cho lớp.</p></div>
+      <div className="admin-calendar-actions"><button type="button" onClick={()=>move(-1)} aria-label="Tháng trước">‹</button><button type="button" onClick={()=>setMonth(new Date(today.getFullYear(),today.getMonth(),1))}>Hôm nay</button><button type="button" onClick={()=>move(1)} aria-label="Tháng sau">›</button></div>
+    </div>
+    <div className="admin-calendar-legend"><span className="exam">Kiểm tra</span><span className="due">Hạn nộp bắt buộc</span><span className="start">Mốc bắt đầu</span><span className="end">Mốc kết thúc</span></div>
+    <strong className="admin-calendar-month">{monthLabel.charAt(0).toUpperCase()+monthLabel.slice(1)}</strong>
+    <div className="admin-calendar-weekdays">{["T2","T3","T4","T5","T6","T7","CN"].map(x=><span key={x}>{x}</span>)}</div>
+    <div className="admin-calendar-grid">{visible.map(date=>{
+      const key=localDateKey(date),inMonth=date.getMonth()===month.getMonth(),isToday=key===localDateKey(today);
+      const dayEvents=events.filter(event=>event.event_date===key);
+      return <div key={key} className={`admin-calendar-day${inMonth?"":" other-month"}${isToday?" today":""}`}>
+        <span className="admin-calendar-number">{date.getDate()}</span>
+        <div className="admin-calendar-events">{dayEvents.slice(0,2).map(event=>{const label=eventLabel(event);return <span key={`${event.kind}-${event.source_id}`} className={`admin-calendar-event ${eventClass(event.kind)}`} title={label}>{label}</span>})}{dayEvents.length>2&&<small>+{dayEvents.length-2} sự kiện quan trọng</small>}</div>
+      </div>;
+    })}</div>
+    {eventsQuery.isLoading&&<p className="admin-calendar-empty">Đang tải sự kiện quan trọng…</p>}
+    {eventsQuery.isError&&<p className="admin-calendar-empty error">{messageOf(eventsQuery.error)}</p>}
+    {!eventsQuery.isLoading&&!eventsQuery.isError&&!events.length&&<p className="admin-calendar-empty">Không có sự kiện quan trọng trong khoảng thời gian này.</p>}
+  </article>;
+}
+
 function AdminDashboard({session,activeSection}:{session:AuthSession;activeSection:string}) {
   const metadata=useMetadata(session);
   const statsQuery=useQuery({queryKey:["admin-stats",session.accessToken],queryFn:()=>getAdminStats(session)});
@@ -301,6 +363,7 @@ function AdminDashboard({session,activeSection}:{session:AuthSession;activeSecti
       {activeSection==="overview"&&<>
         <PageHeading eyebrow="QUẢN TRỊ HỆ THỐNG" title="Tổng quan" text="Theo dõi nhanh người dùng, lớp học, khóa học và nội dung đã xuất bản." />
         <section className="stat-grid">{stats&&[["Người dùng",stats.totalUsers],["Giáo viên",stats.teachers],["Học sinh",stats.students],["Lớp học",stats.classes],["Khóa học",stats.courses],["Khóa đã publish",stats.publishedCourses],["Bài toán publish",stats.publishedProblems]].map(([label,value])=><article key={label}><small>{label}</small><b>{value}</b></article>)}</section>
+        <AdminOverviewCalendar session={session}/>
         <section className="admin-overview-grid"><article className="audit-panel"><h2>Phân bổ tài khoản</h2>{stats&&<div className="admin-distribution">{[["Giáo viên",stats.teachers],["Học sinh",stats.students],["Khác",Math.max(0,stats.totalUsers-stats.teachers-stats.students)]].map(([label,value])=><div key={label}><span><b>{label}</b><small>{Number(value).toLocaleString("vi-VN")}</small></span><progress max={Math.max(stats.totalUsers,1)} value={Number(value)}/></div>)}</div>}</article><article className="audit-panel"><h2>Hoạt động gần đây</h2>{logs.slice(0,6).map(log=><div className="audit-row" key={log.id}><b>{log.action}</b><span>{log.targetType}{log.targetId?` #${log.targetId}`:""}</span><small>{new Date(log.createdAt).toLocaleString("vi-VN")}</small></div>)}{!logs.length&&<EmptyState text="Chưa có hoạt động hệ thống."/>}</article></section>
       </>}
       {activeSection==="users"&&<>
@@ -309,20 +372,27 @@ function AdminDashboard({session,activeSection}:{session:AuthSession;activeSecti
       {activeSection==="textbooks"&&<TextbookManagement session={session}/>} 
       {activeSection==="documents"&&<DocumentManagement session={session}/>} 
       {activeSection==="topics"&&<TaxonomyManagement session={session}/>} 
-      {activeSection==="classes"&&<AdminClasses session={session}/>} 
-      {activeSection==="programs"&&<><PageHeading eyebrow="NỘI DUNG HỆ THỐNG" title="Chương trình học" text="Quản trị cây chương, bài học và thứ tự nội dung dùng chung."/><CurriculumWorkspace session={session} metadata={metadata}/></>}
+      {activeSection==="classes"&&<AdminClasses session={session}/>}
+      {activeSection==="course-instances"&&<KhoaHocManagement session={session}/>}
+      {activeSection==="programs"&&<CurriculumWorkspace session={session} metadata={metadata}/>}
       {activeSection==="audit"&&<AuditManagement session={session}/>} 
       {activeSection==="settings"&&<AdminSystemSettings session={session} metadata={metadata}/>}
   </div>;
 }
 
 function AdminSystemSettings({session,metadata}:{session:AuthSession;metadata:Metadata|null}) {
- const groups:[keyof Metadata,string][]=[["roles","Vai trò người dùng"],["userStatuses","Trạng thái tài khoản"],["classStatuses","Trạng thái lớp học"],["courseStatuses","Trạng thái khóa học"],["publishStatuses","Trạng thái xuất bản"],["documentTypes","Loại tài liệu"],["documentAudiences","Phạm vi tài liệu"]];
- return <><PageHeading eyebrow="HỆ THỐNG" title="Cài đặt hệ thống" text="Thông tin cấu hình đang được backend áp dụng cho tài khoản quản trị."/><section className="admin-settings-grid"><article className="audit-panel"><h2>Tài khoản quản trị</h2><dl className="settings-details"><div><dt>Email</dt><dd>{session.email}</dd></div><div><dt>Vai trò</dt><dd>{session.role}</dd></div><div><dt>Mã người dùng</dt><dd>{session.userId}</dd></div></dl></article>{groups.map(([key,title])=><article className="audit-panel" key={key}><h2>{title}</h2><div className="settings-options">{metadataOptions(metadata,key).map(option=><span key={option.value}><b>{option.label}</b><code>{option.value}</code></span>)}{!metadataOptions(metadata,key).length&&<small>Backend chưa khai báo dữ liệu.</small>}</div></article>)}</section></>;
+ void metadata;
+ return <ProfileSettings session={session}/>;
 }
 
 /** Dòng tổng quan (snake_case từ SQL) đổi về hình dạng Classroom mà các panel sẵn có đang dùng. */
 const asClassroom=(row:AdminClassOverviewRow):Classroom=>({id:row.id,code:row.code,name:row.name,gradeId:row.grade_id,status:row.status as Classroom["status"],teacherCount:Number(row.teacher_count),studentCount:Number(row.student_count),courseCount:Number(row.course_count),createdAt:row.created_at,description:row.description,curriculumCount:Number(row.curriculum_count),documentCount:Number(row.document_count)});
+/** Một lớp có thể có nhiều giáo viên. Mỗi giáo viên cần có nhóm riêng thay vì coi chuỗi tên đã nối là một người. */
+const groupClassesByTeacher=(rows:AdminClassOverviewRow[])=>[...rows.reduce((groups,row)=>{
+ const teachers=row.teacher_names?.split(", ").map(name=>name.trim()).filter(Boolean)??[];
+ for(const teacher of teachers.length?teachers:[""])groups.set(teacher,[...(groups.get(teacher)??[]),row]);
+ return groups;
+},new Map<string,AdminClassOverviewRow[]>()).entries()].sort((a,b)=>a[0]?(b[0]?a[0].localeCompare(b[0],"vi"):1):-1);
 /** Lớp do chính giáo viên lập trong 7 ngày gần đây — đây là cách Admin thấy có lớp mới, khớp với dòng audit ghi lúc tạo lớp. */
 const isNewTeacherClass=(row:AdminClassOverviewRow)=>row.created_by_role==="TEACHER"&&Date.now()-new Date(row.created_at).getTime()<7*86400000;
 
@@ -330,13 +400,13 @@ function AdminClasses({session}:{session:AuthSession}){
  const metadata=useMetadata(session);
  const queryClient=useQueryClient();
  const [form,setForm]=useState({code:"",name:"",gradeId:0,status:""}),[editing,setEditing]=useState<number|null>(null),[selected,setSelected]=useState<Classroom|null>(null);
- const [search,setSearch]=useState(""),[gradeId,setGradeId]=useState(0),[status,setStatus]=useState(""),[formOpen,setFormOpen]=useState(false);
- const [mode,setMode]=useState<"teacher"|"table">("teacher"),[detail,setDetail]=useState<Classroom|null>(null);
+ const [search,setSearch]=useState(""),[gradeId,setGradeId]=useState(0),[status,setStatus]=useState(""),[formOpen,setFormOpen]=useState(false),[classMenu,setClassMenu]=useState<number|null>(null);
+ const [mode,setMode]=useState<"teacher"|"table">("table"),[expandedTeacher,setExpandedTeacher]=useState<string|null>(null);
  const classesQuery=useQuery({queryKey:["admin-classes",session.accessToken,search,gradeId,status],queryFn:async()=>{const [overview,nextGrades]=await Promise.all([getAdminClassOverview(session,{search,gradeId:gradeId||undefined,status}),getGrades(session)]);return {overview,grades:nextGrades}}});
  const overview=classesQuery.data?.overview??[],grades=classesQuery.data?.grades??[];
  const rows=overview.map(asClassroom),teacherNames=Object.fromEntries(overview.map(row=>[row.id,row.teacher_names??""])) as Record<number,string>;
  /* Gom lớp theo giáo viên phụ trách; nhóm chưa phân công luôn đứng đầu vì đó là việc Admin cần xử lý. */
- const teacherGroups=[...overview.reduce((map,row)=>map.set(row.teacher_names??"",[...(map.get(row.teacher_names??"")??[]),row]),new Map<string,AdminClassOverviewRow[]>()).entries()].sort((a,b)=>a[0]?(b[0]?a[0].localeCompare(b[0],"vi"):1):-1);
+ const teacherGroups=groupClassesByTeacher(overview);
  const invalidate=()=>queryClient.invalidateQueries({queryKey:["admin-classes"]});
  const createMutation=useMutation({mutationFn:(input:ClassroomInput)=>createClass(session,input),onSuccess:invalidate});
  const updateMutation=useMutation({mutationFn:({id,input}:{id:number;input:ClassroomInput})=>updateClass(session,id,input),onSuccess:invalidate});
@@ -349,25 +419,64 @@ function AdminClasses({session}:{session:AuthSession}){
  const edit=(row:Classroom)=>{setEditing(row.id);setForm({code:row.code,name:row.name,gradeId:row.gradeId,status:row.status});setFormOpen(true)};
  const archive=async(row:Classroom)=>{if(!confirm(`Xóa lớp “${row.name}”? Dữ liệu lịch sử vẫn được giữ lại.`))return;try{await deleteMutation.mutateAsync(row.id);if(selected?.id===row.id)setSelected(null)}catch{/* lỗi đã có trong mutation state */}};
  const gradeName=(id:number)=>grades.find(x=>x.id===id)?.name??`Khối ${id}`,statusName=(value:string)=>metadataOptions(metadata,"classStatuses").find(x=>x.value===value)?.label??value;
- return <section className={`classroom-module ${selected?"has-detail":""}`}><div className="classroom-master"><header className="classroom-heading"><div><p>QUẢN TRỊ HỆ THỐNG</p><h1>Lớp học theo giáo viên phụ trách</h1><span>Ai đang quản lý lớp nào, lớp đã có chương trình học và tài liệu chưa, học sinh nộp bài tới đâu.</span></div><div><div className="class-view-toggle"><button className={mode==="teacher"?"active":""} onClick={()=>setMode("teacher")}>Theo giáo viên</button><button className={mode==="table"?"active":""} onClick={()=>setMode("table")}>Bảng lớp</button></div><button className="primary-action" onClick={()=>{reset();setFormOpen(true)}}>+ Tạo lớp</button></div></header>{error&&<div className="accounts-error"><span>{error}</span><button onClick={()=>void classesQuery.refetch()}>Thử lại</button></div>}<div className="classroom-card"><div className="classroom-filters"><input aria-label="Tìm lớp" placeholder="Tìm kiếm lớp học, giáo viên…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={gradeId} onChange={e=>setGradeId(Number(e.target.value))}><option value={0}>Tất cả khối</option>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div>{mode==="teacher"?<div className="teacher-groups">{teacherGroups.map(([teacher,list])=><article className={`teacher-group ${teacher?"":"unassigned"}`} key={teacher||"__none"}><header><h3>{teacher||"Chưa phân công giáo viên"}</h3><small>{list.length} lớp · {list.reduce((sum,row)=>sum+Number(row.student_count),0)} học sinh</small></header>{list.map(row=><div className="teacher-class-row" key={row.id}><span className="cell-title"><b>{row.name}{isNewTeacherClass(row)&&<span className="new-class-flag">GV vừa lập</span>}</b><small>Mã {row.code} · {row.grade_name??gradeName(row.grade_id)} · {statusName(row.status)}</small></span><span className="cell-metric"><b>{row.student_count}</b>học sinh</span><span className={`cell-metric ${Number(row.curriculum_count)?"":"warn"}`}><b>{row.curriculum_count}</b>mục chương trình</span><span className={`cell-metric ${Number(row.document_count)?"":"warn"}`}><b>{row.document_count}</b>tài liệu</span><span className="cell-metric"><b>{row.required_total}/{row.optional_total}</b>bắt buộc/tự chọn</span><span className="row-actions"><button onClick={()=>setDetail(asClassroom(row))}>Chi tiết</button><button onClick={()=>setSelected(asClassroom(row))}>Phân công</button><button onClick={()=>edit(asClassroom(row))}>Sửa</button></span></div>)}</article>)}{!overview.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div>:<div className="classroom-table-wrap"><table><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Giáo viên</th><th>Học sinh</th><th>Khóa học</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{rows.map(row=><tr className={selected?.id===row.id?"selected":""} key={row.id} onClick={()=>setSelected(row)}><td><b>{row.code}</b><small>{row.name}</small></td><td className="numeric">{new Date(row.createdAt??Date.now()).getFullYear()}–{new Date(row.createdAt??Date.now()).getFullYear()+1}</td><td>{gradeName(row.gradeId)}</td><td className="class-teacher-name">{teacherNames[row.id]||<button className="assign-teacher" onClick={event=>{event.stopPropagation();setSelected(row)}}>Chưa phân công</button>}</td><td className="numeric">{row.studentCount}</td><td className="numeric">{row.courseCount}</td><td><span className={`status-chip status-${row.status.toLowerCase()}`}>{statusName(row.status)}</span></td><td className="class-actions"><button onClick={e=>{e.stopPropagation();edit(row)}}>Sửa</button><button className="danger-link" onClick={e=>{e.stopPropagation();void archive(row)}}>Xóa</button></td></tr>)}</tbody></table>{!rows.length&&<EmptyState text="Không có lớp phù hợp với bộ lọc."/>}</div>}<footer>{rows.length.toLocaleString("vi-VN")} lớp học · {teacherGroups.filter(([teacher])=>teacher).length} giáo viên phụ trách</footer></div></div>{detail&&<div className="class-detail-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setDetail(null)}}><div><ClassDetail session={session} classroom={detail} onClose={()=>setDetail(null)}/></div></div>}{selected&&<ClassEnrollmentPanel session={session} classroom={selected} onClose={()=>setSelected(null)}/>} {formOpen&&<div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)reset()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA LỚP":"TẠO LỚP MỚI"}</p><h2>{editing?form.name:"Thông tin lớp học"}</h2></div><button onClick={reset}>×</button></header><form onSubmit={save}><label>Mã lớp<input required maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><footer><button type="button" className="secondary-action" onClick={reset}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo lớp"}</button></footer></form></aside></div>}</section>;
+ const now=new Date(),schoolYearStart=now.getMonth()>=7?now.getFullYear():now.getFullYear()-1,schoolYear=`${schoolYearStart}–${schoolYearStart+1}`;
+  const clrColors=['#176b50','#1d4ed8','#7c3aed','#b45309','#dc2626'];
+  return <section className="classroom-module"><header className="clr-page-head"><div className="clr-page-icon"><GraduationCap size={26}/></div><div className="clr-page-title"><h1>Quản lý lớp học</h1><p>Chọn một lớp để xem thông tin, học sinh và phân công giáo viên.</p></div><div className="clr-page-search"><Search size={14}/><input placeholder="Tìm lớp, giáo viên..." value={search} onChange={e=>setSearch(e.target.value)}/></div></header>{error&&<div className="accounts-error" style={{margin:"0 24px"}}><span>{error}</span><button onClick={()=>void classesQuery.refetch()}>Thử lại</button></div>}<div className="clr-body"><aside className="clr-left"><div className="clr-left-head"><span>Danh sách lớp học</span><button className="clr-head-btn" onClick={()=>{reset();setFormOpen(true)}}><Plus size={13}/>Thêm lớp</button></div><div className="clr-left-filters"><select value={gradeId} onChange={e=>setGradeId(Number(e.target.value))}><option value={0}>Tất cả khối</option>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Mọi trạng thái</option>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div><div className="clr-left-search"><Search size={12}/><input placeholder="Tìm lớp học..." value={search} onChange={e=>setSearch(e.target.value)}/></div><div className="clr-left-count">Tổng {rows.length} lớp học</div><div className="clr-class-list">{rows.map(row=><div className={`clr-class-item ${selected?.id===row.id?"active":""}`} key={row.id} onClick={()=>setSelected(row)}><div className="clr-class-icon" style={{background:clrColors[row.gradeId%clrColors.length]}}>{row.name.replace(/[^A-Z0-9]/gi,"").slice(0,2)||"L"}</div><div className="clr-class-info"><b>{row.name}</b><small>{gradeName(row.gradeId)} · {teacherNames[row.id]||"Chưa phân công"}</small></div><span className={`clr-status-badge ${row.status==="ACTIVE"?"pub":"dft"}`}>{statusName(row.status)}</span><button className="clr-item-dots" onClick={e=>{e.stopPropagation();setClassMenu(classMenu===row.id?null:row.id)}}>⋯</button>{classMenu===row.id&&<div className="clr-item-menu"><button onClick={e=>{e.stopPropagation();setClassMenu(null);edit(row)}}>Sửa</button><button className="danger" onClick={e=>{e.stopPropagation();setClassMenu(null);void archive(row)}}>Xóa</button></div>}</div>)}{!rows.length&&<div className="clr-list-empty">Không có lớp phù hợp.</div>}</div><div className="clr-left-footer">{rows.length} lớp · {teacherGroups.filter(([t])=>t).length} giáo viên phụ trách</div></aside><main className="clr-right">{selected?<ClassEnrollmentPanel session={session} classroom={selected} gradeLabel={gradeName(selected.gradeId)} statusLabel={statusName(selected.status)} onClose={()=>setSelected(null)}/>:<div className="clr-no-selection"><div className="clr-no-sel-icon"><GraduationCap size={28}/></div><h3>Chọn một lớp học</h3><p>Chọn lớp từ danh sách bên trái để xem thành viên, chương trình học và tài liệu phân công.</p></div>}</main></div>{formOpen&&<div className="accounts-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)reset()}}><aside className="account-panel"><header><div><p>{editing?"CHỈNH SỬA LỚP":"TẠO LỚP MỚI"}</p><h2>{editing?form.name:"Thông tin lớp học"}</h2></div><button onClick={reset}>×</button></header><form onSubmit={save}><label>Mã lớp<input required maxLength={30} value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label><label>Tên lớp<input required maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Khối<select value={form.gradeId} onChange={e=>setForm({...form,gradeId:Number(e.target.value)})}>{grades.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label><label>Trạng thái<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{metadataOptions(metadata,"classStatuses").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label><footer><button type="button" className="secondary-action" onClick={reset}>Hủy</button><button className="primary-action">{editing?"Lưu thay đổi":"Tạo lớp"}</button></footer></form></aside></div>}</section>;
 }
 
-function ClassEnrollmentPanel({session,classroom,onClose}:{session:AuthSession;classroom:Classroom;onClose:()=>void}){
+function ClassEnrollmentPanel({session,classroom,gradeLabel,statusLabel,onClose}:{session:AuthSession;classroom:Classroom;gradeLabel:string;statusLabel:string;onClose:()=>void}){
  const queryClient=useQueryClient();
- const [teacherId,setTeacherId]=useState(0),[studentId,setStudentId]=useState(0),[courseId,setCourseId]=useState(0);
+ const [section,setSection]=useState<"members"|"curriculum"|"schedule"|"materials">("members"),[filter,setFilter]=useState<"all"|"students"|"teachers">("all"),[search,setSearch]=useState("");
+ const [addOpen,setAddOpen]=useState(false),[addKind,setAddKind]=useState<"student"|"teacher"|null>(null),[candidateId,setCandidateId]=useState(0),[selectedStudentIds,setSelectedStudentIds]=useState<number[]>([]),[candidateSearch,setCandidateSearch]=useState(""),[rowMenu,setRowMenu]=useState<string|null>(null);
+ const [courseDialog,setCourseDialog]=useState(false),[courseSearch,setCourseSearch]=useState(""),[chosenCourses,setChosenCourses]=useState<number[]>([]);
+ useEffect(()=>{setAddOpen(false);setAddKind(null);setCandidateId(0);setSelectedStudentIds([]);setCandidateSearch("");setRowMenu(null)},[classroom.id]);
+ const key=["class-members",session.accessToken,classroom.id];
+ const query=useQuery({queryKey:key,queryFn:async()=>{const [teachers,students,courses,users,allCourses,roster]=await Promise.all([getEnrollments(session,"class-teachers",classroom.id),getEnrollments(session,"class-students",classroom.id),getEnrollments(session,"class-courses",classroom.id),getUsers(session),getCourseInstances(session),getClassRoster(session,classroom.id)]);return {teachers,students,courses,users,allCourses,roster}}});
+ const teachers=query.data?.teachers??[],students=query.data?.students??[],courses=query.data?.courses??[],users=query.data?.users??[],allCourses=query.data?.allCourses??[],roster=query.data?.roster??[];
+ const invalidate=()=>queryClient.invalidateQueries({queryKey:key});
+ const addMutation=useMutation({mutationFn:({kind,ids}:{kind:"student"|"teacher";ids:number[]})=>Promise.all(ids.map(id=>kind==="student"?addRosterStudent(session,classroom.id,{userId:id}):addEnrollment(session,"class-teachers",{classId:classroom.id,userId:id}))),onSuccess:()=>{setCandidateId(0);setSelectedStudentIds([]);setCandidateSearch("");setAddKind(null);setAddOpen(false)},onSettled:()=>void invalidate()});
+ const removeMutation=useMutation({mutationFn:({kind,id}:{kind:"student"|"teacher";id:number})=>removeEnrollment(session,kind==="student"?"class-students":"class-teachers",id),onSuccess:()=>{setRowMenu(null);void invalidate()}});
+ const assignCourses=useMutation({mutationFn:()=>Promise.all(chosenCourses.map(courseInstanceId=>addEnrollment(session,"class-courses",{classId:classroom.id,courseInstanceId}))),onSuccess:()=>{setCourseDialog(false);setChosenCourses([]);setCourseSearch("");void invalidate()}});
+ const removeCourse=useMutation({mutationFn:(id:number)=>removeEnrollment(session,"class-courses",id),onSuccess:()=>void invalidate()});
+ const rows=[...students.map((x,index)=>({key:`s-${x.id}`,id:x.id,userId:x.userId,kind:"student" as const,name:x.label,role:"Học sinh",assignment:classroom.name,status:"Hoạt động",isHomeroom:false,index})),...teachers.map((x,index)=>({key:`t-${x.id}`,id:x.id,userId:x.userId,kind:"teacher" as const,name:x.label,role:index===0?"GVCN":"Giáo viên",assignment:index===0?`Chủ nhiệm ${classroom.name}`:"GV bộ môn · Toán",status:"Hoạt động",isHomeroom:index===0,index}))];
+ const visible=rows.filter(row=>(filter==="all"||filter==="students"&&row.kind==="student"||filter==="teachers"&&row.kind==="teacher")&&row.name.toLocaleLowerCase("vi").includes(search.trim().toLocaleLowerCase("vi")));
+ const candidates=users.filter(user=>user.roleCode===(addKind==="student"?"STUDENT":"TEACHER")&&!rows.some(row=>row.userId===user.id));
+ const visibleStudentCandidates=candidates.filter(user=>`${user.fullName} ${user.username} ${user.email}`.toLocaleLowerCase("vi").includes(candidateSearch.trim().toLocaleLowerCase("vi")));
+ const availableCourses=allCourses.filter(course=>!courses.some(link=>link.courseInstanceId===course.id)&&`${course.name} ${course.template_name}`.toLocaleLowerCase("vi").includes(courseSearch.trim().toLocaleLowerCase("vi")));
+ const schoolYear=(()=>{const now=new Date(),year=now.getMonth()>=7?now.getFullYear():now.getFullYear()-1;return `${year}–${year+1}`})();
+ const error=query.isError?messageOf(query.error):addMutation.isError?messageOf(addMutation.error):removeMutation.isError?messageOf(removeMutation.error):"";
+ const dateOfBirth=(value:string|null)=>{if(!value)return "—";const [year,month,day]=value.slice(0,10).split("-");return year&&month&&day?`${day}/${month}/${year}`:value};
+ const genderLabel=(value:string|null)=>{const normalized=value?.trim().toLocaleUpperCase("vi");if(!normalized)return "—";if(["MALE","NAM","M"].includes(normalized))return "Nam";if(["FEMALE","NỮ","NU","F"].includes(normalized))return "Nữ";return value!};
+ const printRoster=()=>{const className="printing-class-roster";const cleanup=()=>document.body.classList.remove(className);document.body.classList.add(className);window.addEventListener("afterprint",cleanup,{once:true});try{window.print()}finally{window.setTimeout(cleanup,0)}};
+ return <><aside className="class-detail-panel class-members-panel"><header><div><small>CHI TIẾT LỚP</small><h2>{classroom.name}</h2><span>{classroom.code} · {gradeLabel} · {schoolYear}</span><p>{students.length} học sinh · {teachers.length} giáo viên · {statusLabel}</p></div><button aria-label="Đóng panel" onClick={onClose}>×</button></header>
+  <nav className="class-section-tabs"><button className={section==="members"?"active":""} onClick={()=>setSection("members")}>Thành viên lớp</button><button className={section==="curriculum"?"active":""} onClick={()=>setSection("curriculum")}>Chương trình học</button><button className={section==="schedule"?"active":""} onClick={()=>setSection("schedule")}>Thời khóa biểu</button><button className={section==="materials"?"active":""} onClick={()=>setSection("materials")}>Học liệu</button></nav>
+  {error&&<div className="accounts-error">{error}</div>}
+  {section==="members"?<div className="class-members-content"><div className="member-filter-tabs"><button className={filter==="all"?"active":""} onClick={()=>setFilter("all")}>Tất cả <b>{rows.length}</b></button><button className={filter==="students"?"active":""} onClick={()=>setFilter("students")}>Học sinh <b>{students.length}</b></button><button className={filter==="teachers"?"active":""} onClick={()=>setFilter("teachers")}>Giáo viên <b>{teachers.length}</b></button></div><div className="member-toolbar"><input aria-label="Tìm thành viên" placeholder="Tìm kiếm thành viên..." value={search} onChange={e=>setSearch(e.target.value)}/><button className="roster-print-button" disabled={!roster.length} onClick={printRoster}><Printer size={15}/> In danh sách lớp</button><div className="add-member"><button className="primary-action" onClick={()=>setAddOpen(x=>!x)}><Plus size={15}/> Thêm thành viên</button>{addOpen&&<div className="add-member-menu"><button onClick={()=>{setAddKind("student");setCandidateId(0);setSelectedStudentIds([]);setCandidateSearch("");setAddOpen(false)}}>Thêm học sinh</button><button onClick={()=>{setAddKind("teacher");setCandidateId(0);setSelectedStudentIds([]);setCandidateSearch("");setAddOpen(false)}}>Phân công giáo viên</button></div>}</div></div>
+   {addKind==="student"?<section className="member-student-picker"><header><div><b>Thêm học sinh vào {classroom.name}</b><small>Có thể chọn và thêm nhiều học sinh cùng lúc.</small></div><button aria-label="Đóng" onClick={()=>{setAddKind(null);setSelectedStudentIds([]);setCandidateSearch("")}}>×</button></header><label className="member-candidate-search"><Search size={15}/><input autoFocus placeholder="Tìm theo họ tên, tài khoản hoặc email..." value={candidateSearch} onChange={e=>setCandidateSearch(e.target.value)}/></label><div className="member-picker-controls"><label><input type="checkbox" checked={visibleStudentCandidates.length>0&&visibleStudentCandidates.every(user=>selectedStudentIds.includes(user.id))} onChange={e=>setSelectedStudentIds(current=>e.target.checked?[...new Set([...current,...visibleStudentCandidates.map(user=>user.id)])]:current.filter(id=>!visibleStudentCandidates.some(user=>user.id===id)))}/> Chọn tất cả kết quả</label><span>{visibleStudentCandidates.length} học sinh có thể thêm</span></div><div className="member-candidate-list">{visibleStudentCandidates.map(user=><label key={user.id} className={selectedStudentIds.includes(user.id)?"selected":""}><input type="checkbox" checked={selectedStudentIds.includes(user.id)} onChange={()=>setSelectedStudentIds(current=>current.includes(user.id)?current.filter(id=>id!==user.id):[...current,user.id])}/><span><b>{user.fullName}</b><small>{user.username||"Chưa có tài khoản"} · {user.email}</small></span></label>)}{!visibleStudentCandidates.length&&<p>Không còn học sinh phù hợp để thêm.</p>}</div><footer><span>Đã chọn <b>{selectedStudentIds.length}</b> học sinh</span><div><button onClick={()=>{setAddKind(null);setSelectedStudentIds([]);setCandidateSearch("")}}>Hủy</button><button className="primary-action" disabled={!selectedStudentIds.length||addMutation.isPending} onClick={()=>addMutation.mutate({kind:"student",ids:selectedStudentIds})}>{addMutation.isPending?"Đang thêm…":`Thêm ${selectedStudentIds.length||""} học sinh`}</button></div></footer></section>:addKind==="teacher"?<div className="member-add-form"><select value={candidateId} onChange={e=>setCandidateId(Number(e.target.value))}><option value={0}>Chọn giáo viên</option>{candidates.map(user=><option key={user.id} value={user.id}>{user.fullName} · {user.username}</option>)}</select><button disabled={!candidateId||addMutation.isPending} onClick={()=>addMutation.mutate({kind:"teacher",ids:[candidateId]})}>{addMutation.isPending?"Đang thêm…":"Xác nhận"}</button><button onClick={()=>setAddKind(null)}>Hủy</button></div>:null}
+   <div className="member-table"><table><thead><tr><th>Tên</th><th>Vai trò</th><th>Phân công / Lớp</th><th>Trạng thái</th><th aria-label="Thao tác"/></tr></thead><tbody>{visible.map(row=><tr key={row.key}><td><b>{row.name}</b><small>{users.find(user=>user.id===row.userId)?.username??"—"}</small></td><td><span className={`member-role ${row.isHomeroom?"homeroom":""}`}>{row.role}</span></td><td>{row.assignment}</td><td><span className="member-active"><i/> {row.status}</span></td><td className="member-row-action"><button aria-label={`Thao tác với ${row.name}`} onClick={()=>setRowMenu(rowMenu===row.key?null:row.key)}>⋯</button>{rowMenu===row.key&&<div className="member-row-menu"><button onClick={()=>alert(`${row.name}\n${row.role}\n${row.assignment}`)}>Xem thông tin</button><button onClick={()=>alert(row.kind==="student"?"Chọn lớp đích tại màn quản lý lớp để chuyển học sinh.":"Có thể cập nhật phân công môn học khi dữ liệu bộ môn được cấu hình.")}>{row.kind==="student"?"Chuyển lớp":"Sửa phân công"}</button><button className="danger" onClick={()=>{if(confirm(`${row.kind==="student"?"Xóa":"Gỡ"} ${row.name} khỏi lớp ${classroom.name}?`))removeMutation.mutate({kind:row.kind,id:row.id})}}>{row.kind==="student"?"Xóa khỏi lớp":"Gỡ khỏi lớp"}</button></div>}</td></tr>)}</tbody></table>{!visible.length&&<p className="member-empty">Không có thành viên phù hợp.</p>}</div></div>:section==="curriculum"?<CourseAssignments courses={courses} allCourses={allCourses} gradeLabel={gradeLabel} onAssign={()=>setCourseDialog(true)} onRemove={id=>{if(confirm("Gỡ khóa học khỏi lớp này?"))removeCourse.mutate(id)}}/>:<div className="class-section-placeholder"><h3>{section==="schedule"?"Thời khóa biểu":"Học liệu"}</h3><p>Khu vực này sử dụng dữ liệu của lớp hiện tại.</p></div>}
+ </aside><section className="class-roster-print" aria-hidden="true"><header><h1>DANH SÁCH HỌC SINH</h1><p><b>Lớp:</b> {classroom.name} ({classroom.code})</p><p><b>Khối:</b> {gradeLabel} · <b>Năm học:</b> {schoolYear} · <b>Sĩ số:</b> {roster.length}</p></header><table><thead><tr><th>STT</th><th>Họ và tên</th><th>Ngày sinh</th><th>Giới tính</th><th>Lớp học</th></tr></thead><tbody>{roster.map((student:RosterStudent,index:number)=><tr key={student.id}><td>{index+1}</td><td>{student.full_name}</td><td>{dateOfBirth(student.date_of_birth)}</td><td>{genderLabel(student.gender)}</td><td>{classroom.name}</td></tr>)}</tbody></table><footer>Ngày in: {new Date().toLocaleDateString("vi-VN")}</footer></section>{courseDialog&&<div className="course-assign-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCourseDialog(false)}}><section className="course-assign-dialog"><header><div><small>GÁN KHÓA HỌC CHO LỚP</small><h2>{classroom.name}</h2></div><button aria-label="Đóng" onClick={()=>setCourseDialog(false)}>×</button></header><div className="course-assign-filters"><label>Tìm khóa học<input autoFocus placeholder="Tìm theo tên hoặc mã..." value={courseSearch} onChange={e=>setCourseSearch(e.target.value)}/></label><label>Khối<select><option>{gradeLabel}</option></select></label><label>Môn học<select><option>Tất cả môn</option></select></label></div><div className="course-choice-list">{availableCourses.map(course=><label key={course.id}><input type="checkbox" checked={chosenCourses.includes(course.id)} onChange={()=>setChosenCourses(current=>current.includes(course.id)?current.filter(id=>id!==course.id):[...current,course.id])}/><span><b>{course.name}</b><small>Mã: {course.template_name} · {gradeLabel} · {course.school_year}</small></span></label>)}{!availableCourses.length&&<p>Không có khóa học phù hợp để gán.</p>}</div><footer><button onClick={()=>setCourseDialog(false)}>Hủy</button><button disabled={!chosenCourses.length||assignCourses.isPending} onClick={()=>assignCourses.mutate()}>{assignCourses.isPending?"Đang gán…":"Gán khóa học"}</button></footer></section></div>}</>;
+}
+
+function CourseAssignments({courses,allCourses,gradeLabel,onAssign,onRemove}:{courses:Enrollment[];allCourses:CourseInstance[];gradeLabel:string;onAssign:()=>void;onRemove:(id:number)=>void}){
+ return <div className="course-assignments"><header><div><h3>Chương trình học</h3><p>{courses.length?`${courses.length} khóa học đang được gán cho lớp.`:"Chưa có chương trình học"}</p></div><button className="primary-action" onClick={onAssign}>+ {courses.length?"Gán thêm":"Gán khóa học"}</button></header>{!courses.length?<div className="course-empty"><h4>Lớp này chưa được gán khóa học nào.</h4><p>Gán khóa học để học sinh có thể truy cập chương trình học.</p><button className="primary-action" onClick={onAssign}>+ Gán khóa học</button></div>:<div className="assigned-course-list">{courses.map(link=>{const course=allCourses.find(item=>item.id===link.courseInstanceId);return <article key={link.id}><div><h4>{course?.name??link.label}</h4><p>{course?.template_name??"Chưa có mã"} · {gradeLabel} · {course?.status==="PUBLISHED"?"Đang áp dụng":course?.status??"Đã gán"}</p><small>{course?.school_year??"Chưa có năm học"}</small></div><div className="assigned-course-actions"><button onClick={()=>alert(`Khóa học: ${course?.name??link.label}`)}>Xem chương trình</button><button onClick={()=>onRemove(link.id)}>Gỡ khỏi lớp</button></div></article>})}</div>}</div>;
+}
+
+function LegacyClassEnrollmentPanel({session,classroom,gradeLabel,statusLabel,onClose}:{session:AuthSession;classroom:Classroom;gradeLabel:string;statusLabel:string;onClose:()=>void}){
+ const queryClient=useQueryClient();
+ const [teacherId,setTeacherId]=useState(0),[studentId,setStudentId]=useState(0),[courseInstanceId,setCourseInstanceId]=useState(0);
  const [tab,setTab]=useState<"students"|"assignments"|"settings">("students"),[search,setSearch]=useState("");
  const ENROLLMENT_QUERY_KEY=["class-enrollment",session.accessToken,classroom.id];
- const enrollmentQuery=useQuery({queryKey:ENROLLMENT_QUERY_KEY,queryFn:async()=>{const [t,st,c,u,allCourses,g]=await Promise.all([getEnrollments(session,"class-teachers",classroom.id),getEnrollments(session,"class-students",classroom.id),getEnrollments(session,"class-courses",classroom.id),getUsers(session),getCourses(session),getGradebook(session,classroom.id)]);return {teachers:t,students:st,assignedCourses:c,users:u,courses:allCourses,gradebook:g}}});
+ const enrollmentQuery=useQuery({queryKey:ENROLLMENT_QUERY_KEY,queryFn:async()=>{const [t,st,c,u,allCourses,g]=await Promise.all([getEnrollments(session,"class-teachers",classroom.id),getEnrollments(session,"class-students",classroom.id),getEnrollments(session,"class-courses",classroom.id),getUsers(session),getCourseInstances(session),getGradebook(session,classroom.id)]);return {teachers:t,students:st,assignedCourses:c,users:u,courses:allCourses,gradebook:g}}});
  const teachers=enrollmentQuery.data?.teachers??[],students=enrollmentQuery.data?.students??[],assignedCourses=enrollmentQuery.data?.assignedCourses??[];
  const users=enrollmentQuery.data?.users??[],courses=enrollmentQuery.data?.courses??[],gradebook=enrollmentQuery.data?.gradebook??[];
  const invalidate=()=>queryClient.invalidateQueries({queryKey:ENROLLMENT_QUERY_KEY});
- const addMutation=useMutation({mutationFn:({type,id}:{type:"class-teachers"|"class-students"|"class-courses";id:number})=>addEnrollment(session,type,{classId:classroom.id,...(type==="class-courses"?{courseId:id}:{userId:id})}),onSuccess:invalidate});
+ const addMutation=useMutation({mutationFn:({type,id}:{type:"class-teachers"|"class-students"|"class-courses";id:number})=>addEnrollment(session,type,{classId:classroom.id,...(type==="class-courses"?{courseInstanceId:id}:{userId:id})}),onSuccess:invalidate});
  const removeMutation=useMutation({mutationFn:({type,id}:{type:"class-teachers"|"class-students"|"class-courses";id:number})=>removeEnrollment(session,type,id),onSuccess:invalidate});
  const error=enrollmentQuery.isError?messageOf(enrollmentQuery.error):addMutation.isError?messageOf(addMutation.error):removeMutation.isError?messageOf(removeMutation.error):"";
  const add=(type:"class-teachers"|"class-students"|"class-courses",id:number)=>{if(!id)return;addMutation.mutate({type,id})};
  const progress=new Map<number,{sum:number;count:number}>();gradebook.forEach(row=>{const value=progress.get(row.student_id)??{sum:0,count:0};value.sum+=Number(row.completion_percent)||0;value.count+=1;progress.set(row.student_id,value)});
  const visibleStudents=students.filter(x=>x.label.toLocaleLowerCase("vi").includes(search.toLocaleLowerCase("vi")));
- return <aside className="class-detail-panel"><header><div><h2>{classroom.name}</h2><span>{classroom.code} · {classroom.status}</span></div><button aria-label="Đóng panel" onClick={onClose}>×</button></header><nav><button className={tab==="students"?"active":""} onClick={()=>setTab("students")}>Học sinh <b>{students.length}</b></button><button className={tab==="assignments"?"active":""} onClick={()=>setTab("assignments")}>Phân công</button><button className={tab==="settings"?"active":""} onClick={()=>setTab("settings")}>Cài đặt</button></nav>{error&&<div className="accounts-error">{error}</div>}{tab==="students"&&<div className="class-detail-content"><div className="detail-toolbar"><input placeholder="Tìm học sinh…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh để thêm</option>{users.filter(x=>x.roleCode==="STUDENT"&&!students.some(s=>s.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button className="primary-action" disabled={!studentId} onClick={()=>void add("class-students",studentId)}>Thêm học sinh</button></div><div className="detail-table"><table><thead><tr><th>STT</th><th>Họ và tên</th><th>Tiến độ</th><th>Thao tác</th></tr></thead><tbody>{visibleStudents.map((row,index)=>{const p=progress.get(row.userId??0),percent=p?Math.round(p.sum/Math.max(p.count,1)):0;return <tr key={row.id}><td className="numeric">{index+1}</td><td><b>{row.label}</b><small>{users.find(x=>x.id===row.userId)?.username??"—"}</small></td><td><div className="student-progress"><span style={{width:`${Math.min(percent,100)}%`}}/><b>{percent}%</b></div></td><td><button onClick={()=>removeMutation.mutate({type:"class-students",id:row.id})}>Gỡ</button></td></tr>})}</tbody></table>{!visibleStudents.length&&<EmptyState text="Chưa có học sinh phù hợp."/>}</div></div>}{tab==="assignments"&&<div className="class-detail-content assignment-groups"><article><h3>Giáo viên phụ trách</h3><div className="detail-add"><select value={teacherId} onChange={e=>setTeacherId(Number(e.target.value))}><option value={0}>Chọn giáo viên</option>{users.filter(x=>x.roleCode==="TEACHER"&&!teachers.some(t=>t.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button onClick={()=>void add("class-teachers",teacherId)}>Phân công</button></div>{teachers.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-teachers",id:x.id})}>Gỡ</button></div>)}</article><article><h3>Khóa học</h3><div className="detail-add"><select value={courseId} onChange={e=>setCourseId(Number(e.target.value))}><option value={0}>Chọn khóa học</option>{courses.filter(x=>!assignedCourses.some(c=>c.courseId===x.id)).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select><button onClick={()=>void add("class-courses",courseId)}>Gán khóa</button></div>{assignedCourses.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-courses",id:x.id})}>Gỡ</button></div>)}</article></div>}{tab==="settings"&&<div className="class-detail-content privacy-note"><h3>Quyền riêng tư</h3><p>Quản trị viên chỉ xem tiến độ tổng hợp. Câu trả lời cá nhân và ghi chú riêng của giáo viên không được hiển thị.</p><h3>Dữ liệu lớp</h3><dl><div><dt>Giáo viên</dt><dd>{teachers.length}</dd></div><div><dt>Học sinh</dt><dd>{students.length}</dd></div><div><dt>Khóa học</dt><dd>{assignedCourses.length}</dd></div></dl></div>}</aside>;
+ return <aside className="class-detail-panel"><header><div><h2>{classroom.name}</h2><span>{classroom.code} · {classroom.status}</span></div><button aria-label="Đóng panel" onClick={onClose}>×</button></header><nav><button className={tab==="students"?"active":""} onClick={()=>setTab("students")}>Học sinh <b>{students.length}</b></button><button className={tab==="assignments"?"active":""} onClick={()=>setTab("assignments")}>Phân công</button><button className={tab==="settings"?"active":""} onClick={()=>setTab("settings")}>Cài đặt</button></nav>{error&&<div className="accounts-error">{error}</div>}{tab==="students"&&<div className="class-detail-content"><div className="detail-toolbar"><input placeholder="Tìm học sinh…" value={search} onChange={e=>setSearch(e.target.value)}/><select value={studentId} onChange={e=>setStudentId(Number(e.target.value))}><option value={0}>Chọn học sinh để thêm</option>{users.filter(x=>x.roleCode==="STUDENT"&&!students.some(s=>s.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button className="primary-action" disabled={!studentId} onClick={()=>void add("class-students",studentId)}>Thêm học sinh</button></div><div className="detail-table"><table><thead><tr><th>STT</th><th>Họ và tên</th><th>Tiến độ</th><th>Thao tác</th></tr></thead><tbody>{visibleStudents.map((row,index)=>{const p=progress.get(row.userId??0),percent=p?Math.round(p.sum/Math.max(p.count,1)):0;return <tr key={row.id}><td className="numeric">{index+1}</td><td><b>{row.label}</b><small>{users.find(x=>x.id===row.userId)?.username??"—"}</small></td><td><div className="student-progress"><span style={{width:`${Math.min(percent,100)}%`}}/><b>{percent}%</b></div></td><td><button onClick={()=>removeMutation.mutate({type:"class-students",id:row.id})}>Gỡ</button></td></tr>})}</tbody></table>{!visibleStudents.length&&<EmptyState text="Chưa có học sinh phù hợp."/>}</div></div>}{tab==="assignments"&&<div className="class-detail-content assignment-groups"><article><h3>Giáo viên phụ trách</h3><div className="detail-add"><select value={teacherId} onChange={e=>setTeacherId(Number(e.target.value))}><option value={0}>Chọn giáo viên</option>{users.filter(x=>x.roleCode==="TEACHER"&&!teachers.some(t=>t.userId===x.id)).map(x=><option key={x.id} value={x.id}>{x.fullName}</option>)}</select><button onClick={()=>void add("class-teachers",teacherId)}>Phân công</button></div>{teachers.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-teachers",id:x.id})}>Gỡ</button></div>)}</article><article><h3>Khóa học</h3><div className="detail-add"><select value={courseInstanceId} onChange={e=>setCourseInstanceId(Number(e.target.value))}><option value={0}>Chọn khóa</option>{courses.filter(x=>!assignedCourses.some(c=>c.courseInstanceId===x.id)).map(x=><option key={x.id} value={x.id}>{x.name} · {x.school_year}{x.status==="DRAFT"?" (nháp)":""}</option>)}</select><button onClick={()=>void add("class-courses",courseInstanceId)}>Gán khóa</button></div>{assignedCourses.map(x=><div className="assignment-row" key={x.id}><b>{x.label}</b><button onClick={()=>removeMutation.mutate({type:"class-courses",id:x.id})}>Gỡ</button></div>)}</article></div>}{tab==="settings"&&<div className="class-detail-content privacy-note"><h3>Quyền riêng tư</h3><p>Quản trị viên chỉ xem tiến độ tổng hợp. Câu trả lời cá nhân và ghi chú riêng của giáo viên không được hiển thị.</p><h3>Dữ liệu lớp</h3><dl><div><dt>Giáo viên</dt><dd>{teachers.length}</dd></div><div><dt>Học sinh</dt><dd>{students.length}</dd></div><div><dt>Khóa học</dt><dd>{assignedCourses.length}</dd></div></dl></div>}</aside>;
 }
 
 
@@ -1109,7 +1218,8 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
 
       {activeSection === "teacher-settings" && <>
         <div id="teacher-settings" data-teacher-section data-search="Cài đặt tài khoản" className="section-anchor" />
-        <div className="flex flex-col gap-4">
+        <ProfileSettings session={session}/>
+        <div className="flex flex-col gap-4" style={{display:"none"}}>
          <header>
           <h1 className="text-2xl font-bold text-on-surface">Cài đặt</h1>
           <p className="text-sm text-on-surface-variant">Quản lý thông tin tài khoản và tùy chọn không gian làm việc.</p>
@@ -1382,21 +1492,45 @@ function LessonWorksheetManager({session,lesson,onClose}:{session:AuthSession;le
 }
 
 function ResourceManager({session,lesson,onClose}:{session:AuthSession;lesson:Lesson;onClose:()=>void}){
- const metadata=useMetadata(session);
  const queryClient=useQueryClient();
- const [title,setTitle]=useState(""),[url,setUrl]=useState(""),[type,setType]=useState(""),[file,setFile]=useState<File|null>(null),[editing,setEditing]=useState<LessonResource|null>(null);
- const rowsQuery=useQuery({queryKey:["lesson-resources",session.accessToken,lesson.id],queryFn:()=>getResources(session,lesson.id)});
+ // Ba lựa chọn của người soạn, hai loại của luồng nội dung: tệp và đoạn văn đều thành tài liệu.
+ // Danh sách này không lấy từ metadata "resourceTypes" nữa — sáu giá trị ở đó tả bảng cũ, bảng
+ // giờ không còn cửa đọc nào, nên chọn trúng một giá trị ở đó là gắn vào chỗ không ai đọc.
+ const kieu=[["FILE","Tệp PDF / ảnh"],["VIDEO","Video"],["TEXT","Đoạn văn bản"]] as const;
+ const [title,setTitle]=useState(""),[url,setUrl]=useState(""),[type,setType]=useState<"FILE"|"VIDEO"|"TEXT">("FILE"),[file,setFile]=useState<File|null>(null);
+ const [status,setStatus]=useState("PUBLISHED"),[audience,setAudience]=useState("STUDENT_ALLOWED"),[editing,setEditing]=useState<LessonProgramResource|null>(null);
+ const rowsQuery=useQuery({queryKey:["lesson-resources",session.accessToken,lesson.id],queryFn:()=>getLessonResources(session,lesson.id)});
  const rows=rowsQuery.data??[];
  const invalidate=()=>queryClient.invalidateQueries({queryKey:["lesson-resources"]});
- const saveMutation=useMutation({mutationFn:async(input:{title:string;type:string;url:string;file:File|null;editing:LessonResource|null;orderIndex:number})=>{let fileAssetId:null|number=input.editing?.fileAssetId||null;if(input.file)fileAssetId=(await uploadFile(session,input.file)).id;return saveResource(session,{lessonId:lesson.id,type:input.type,title:input.title,externalUrl:input.type==="VIDEO"?input.url:"",fileAssetId,textContent:input.type==="TEXT"?input.url:"",orderIndex:input.orderIndex},input.editing?.id)},onSuccess:invalidate});
- const reorderMutation=useMutation({mutationFn:(ids:number[])=>reorderResources(session,ids),onSuccess:invalidate});
- const deleteMutation=useMutation({mutationFn:(id:number)=>deleteResource(session,id),onSuccess:invalidate});
+ // Tải tệp lên trước rồi mới gắn: hai lượt gọi, nhưng lượt đầu chỉ sinh ra một tệp trong kho tệp,
+ // không sinh ra học liệu mồ côi. Việc dựng nội dung và trỏ vào nó thì server làm trong một giao dịch.
+ const saveMutation=useMutation({mutationFn:async()=>{
+  if(editing)return updateLessonResource(session,editing.id,{title,status,audience});
+  const fileAssetId=file?(await uploadFile(session,file)).id:null;
+  return addLessonResource(session,lesson.id,{resourceType:type==="VIDEO"?"VIDEO":"DOCUMENT",title,
+   videoUrl:type==="VIDEO"?url:undefined,fileAssetId:type==="FILE"?fileAssetId:undefined,
+   textContent:type==="TEXT"?url:undefined,orderIndex:rows.length+1,status,audience});
+ },onSuccess:invalidate});
+ const reorderMutation=useMutation({mutationFn:(a:LessonProgramResource[])=>reorderLessonResources(session,lesson.id,a.map((x,i)=>({id:x.id,orderIndex:i+1}))),onSuccess:invalidate});
+ const deleteMutation=useMutation({mutationFn:(id:number)=>deleteLessonResource(session,id),onSuccess:invalidate});
  const error=rowsQuery.isError?messageOf(rowsQuery.error):saveMutation.isError?messageOf(saveMutation.error):reorderMutation.isError?messageOf(reorderMutation.error):deleteMutation.isError?messageOf(deleteMutation.error):"";
- useEffect(()=>{setType(current=>current||firstMetadataValue(metadata,"resourceTypes"))},[metadata]);
- const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveMutation.mutateAsync({title,type,url,file,editing,orderIndex:editing?.orderIndex||rows.length+1});setTitle("");setUrl("");setFile(null);setEditing(null)}catch{/* lỗi đã có trong mutation state */}};
- const edit=(x:LessonResource)=>{setEditing(x);setTitle(x.title);setType(x.type);setUrl(x.type==="TEXT"?x.textContent:x.externalUrl||"");setFile(null)};
- const move=async(index:number,delta:number)=>{const a=[...rows],to=index+delta;if(to<0||to>=a.length)return;[a[index],a[to]]=[a[to],a[index]];try{await reorderMutation.mutateAsync(a.map(x=>x.id))}catch{/* lỗi đã có trong mutation state */}};
- return <div className="dialog-backdrop"><section className="dialog-card resource-dialog"><div className="panel-head"><h2>Tài liệu · {lesson.title}</h2><button onClick={onClose}>Đóng</button></div>{error&&<div className="api-error">{error}</div>}<form className="live-form" onSubmit={save}><label>Loại<select required value={type} onChange={e=>setType(e.target.value)}>{metadataOptions(metadata,"resourceTypes").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Tên tài liệu<input required value={title} onChange={e=>setTitle(e.target.value)}/></label>{type==="VIDEO"?<label>YouTube/Drive URL<input type="url" required value={url} onChange={e=>setUrl(e.target.value)}/></label>:type!=="TEXT"?<label>File PDF/Image<input type="file" accept=".pdf,image/png,image/jpeg,image/webp" required={!editing?.fileAssetId} onChange={e=>setFile(e.target.files?.[0]||null)}/></label>:<label>Nội dung<input value={url} onChange={e=>setUrl(e.target.value)}/></label>}<button className="primary">{editing?"Cập nhật":"Thêm tài liệu"}</button></form>{rows.map((x,i)=><div className="live-row" key={x.id}><div><b>{x.title}</b><small>{x.type} · {x.externalUrl||`File #${x.fileAssetId}`}</small></div><div className="row-actions"><button onClick={()=>void move(i,-1)}>↑</button><button onClick={()=>void move(i,1)}>↓</button><button onClick={()=>edit(x)}>Sửa</button><button onClick={()=>deleteMutation.mutate(x.id)}>Xóa</button></div></div>)}</section></div>
+ const thoi=()=>{setEditing(null);setTitle("");setUrl("");setFile(null);setStatus("PUBLISHED");setAudience("STUDENT_ALLOWED")};
+ const save=async(e:React.FormEvent)=>{e.preventDefault();try{await saveMutation.mutateAsync();thoi()}catch{/* lỗi đã có trong mutation state */}};
+ const edit=(x:LessonProgramResource)=>{setEditing(x);setTitle(x.title);setStatus(x.status);setAudience(x.audience);setUrl("");setFile(null)};
+ const move=async(index:number,delta:number)=>{const a=[...rows],to=index+delta;if(to<0||to>=a.length)return;[a[index],a[to]]=[a[to],a[index]];try{await reorderMutation.mutateAsync(a)}catch{/* lỗi đã có trong mutation state */}};
+ return <div className="dialog-backdrop"><section className="dialog-card resource-dialog"><div className="panel-head"><h2>Tài liệu · {lesson.title}</h2><button onClick={onClose}>Đóng</button></div>{error&&<div className="api-error">{error}</div>}<form className="live-form" onSubmit={save}>
+  {!editing&&<label>Loại<select required value={type} onChange={e=>setType(e.target.value as typeof type)}>{kieu.map(([value,nhan])=><option key={value} value={value}>{nhan}</option>)}</select></label>}
+  <label>Tên tài liệu<input required value={title} onChange={e=>setTitle(e.target.value)}/></label>
+  {!editing&&(type==="VIDEO"?<label>YouTube/Drive URL<input type="url" required value={url} onChange={e=>setUrl(e.target.value)}/></label>
+   :type==="FILE"?<label>File PDF/Image<input type="file" accept=".pdf,image/png,image/jpeg,image/webp" required onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
+   :<label>Nội dung<input required value={url} onChange={e=>setUrl(e.target.value)}/></label>)}
+  <label>Trạng thái<select value={status} onChange={e=>setStatus(e.target.value)}><option value="PUBLISHED">Đã xuất bản</option><option value="DRAFT">Bản nháp</option></select></label>
+  <label>Phát cho<select value={audience} onChange={e=>setAudience(e.target.value)}><option value="STUDENT_ALLOWED">Học sinh và giáo viên</option><option value="TEACHER_ONLY">Chỉ giáo viên</option></select></label>
+  <button className="primary">{editing?"Cập nhật":"Thêm tài liệu"}</button>{editing&&<button type="button" onClick={thoi}>Thôi</button>}
+ </form>
+ {editing&&<p className="hint">Đang sửa dòng gắn: đổi được tên, trạng thái và người đọc. Tệp và đường dẫn nằm trong kho, sửa ở màn kho tài liệu.</p>}
+ {rows.map((x,i)=><div className="live-row" key={x.id}><div><b>{x.title}</b><small>{x.resource_type} · {x.status==="PUBLISHED"?"đã xuất bản":"nháp"} · {x.audience==="TEACHER_ONLY"?"chỉ giáo viên":"học sinh đọc được"}</small></div><div className="row-actions"><button onClick={()=>void move(i,-1)}>↑</button><button onClick={()=>void move(i,1)}>↓</button><button onClick={()=>edit(x)}>Sửa</button><button onClick={()=>deleteMutation.mutate(x.id)}>Xóa</button></div></div>)}
+ {!rows.length&&<EmptyState text="Bài này chưa có học liệu nào."/>}</section></div>
 }
 
 function PageHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
@@ -1489,6 +1623,545 @@ function ClassResultsView({ session }: { session: AuthSession }) {
   );
 }
 
+const BANG_TRANG_THAI_KHOA=[["DRAFT","Nháp"],["ACTIVE","Đang chạy"],["ARCHIVED","Lưu trữ"]] as const;
+const nhanTrangThaiKhoa=(v:string)=>BANG_TRANG_THAI_KHOA.find(([x])=>x===v)?.[1]??v;
+const DAI_LICH:Record<CourseScheduleRow["time_group"],string>={CURRENT:"Tuần này",UPCOMING:"Sắp tới",PAST:"Đã học"};
+
+function ThongSo({nhan,gt}:{nhan:string;gt:string}){
+ return <div style={{border:"1px solid var(--line)",borderRadius:8,padding:"10px 12px"}}>
+  <div style={{fontSize:11,color:"var(--muted)",textTransform:"uppercase",letterSpacing:"0.04em"}}>{nhan}</div>
+  <div style={{fontSize:15,fontWeight:700,marginTop:2}}>{gt}</div>
+ </div>;
+}
+
+/**
+ * PP-7 TẦNG 3 — admin chọn nhịp dạy (số tiết mỗi tuần) cho một khóa; hệ thống tự tính số tuần
+ * cần và ngày dự kiến học xong, cảnh báo nếu lệch ngày kết thúc khóa. Để trống ô nhịp = theo SGK
+ * (max week_no của chương trình) — không nén cũng không giãn.
+ *
+ * Xem trước không đụng gì. "Sinh lịch tuần" ghi `course_instances.tiet_moi_tuan`, dựng lại
+ * `course_weeks`, và (nếu có nhịp) cập nhật `ends_on` + neo lại bài giao theo buổi mới — luật ở
+ * máy chủ (`CourseWeekController`), panel chỉ hiện lại câu trả lời.
+ */
+function NhipDayPanel({session,khoaId,ketThucKhoa}:{session:AuthSession;khoaId:number;ketThucKhoa:string}){
+ const queryClient=useQueryClient();
+ const [nhipDraft,setNhipDraft]=useState("");
+ const nhipRaw=nhipDraft.trim();
+ const nhipNum=/^\d+$/.test(nhipRaw)?Number(nhipRaw):null;
+ const nhipHopLe=nhipNum!=null&&nhipNum>=1&&nhipNum<=20;
+ const yeuCau:{tietMoiTuan?:number}=nhipNum!=null&&nhipNum>=1&&nhipNum<=20?{tietMoiTuan:nhipNum}:{};
+
+ const xemQuery=useQuery({
+  queryKey:["nhip-xem",session.accessToken,khoaId,nhipHopLe?nhipNum:"sgk"],
+  queryFn:()=>xemTruocLichTuan(session,khoaId,yeuCau),
+ });
+ const kq=xemQuery.data;
+
+ const [loi,setLoi]=useState("");
+ const [xong,setXong]=useState<{ketThuc?:string;baiGiao?:number}|null>(null);
+ useEffect(()=>{setXong(null);setLoi("");setNhipDraft("");},[khoaId]);
+
+ const sinh=useMutation({
+  mutationFn:()=>sinhLichTuan(session,khoaId,yeuCau),
+  onSuccess:r=>{
+   setLoi("");setXong({ketThuc:r.ngayKetThucKhoaDaCapNhat,baiGiao:r.baiGiaoDaDoi});
+   void queryClient.invalidateQueries({queryKey:["admin-course-instances"]});
+   void queryClient.invalidateQueries({queryKey:["nhip-xem"]});
+  },
+  onError:(e:Error)=>setLoi(e.message),
+ });
+
+ return <div className="km-table-box" style={{marginTop:16}}>
+  <div className="km-table-title-row">
+   <span className="km-label-caps">NHỊP DẠY & DỰ KIẾN HỌC XONG</span>
+   <span className="km-table-hint">Chọn số tiết mỗi tuần; hệ thống tự tính số tuần cần và ngày học xong. Để trống = theo SGK.</span>
+  </div>
+
+  <div style={{display:"flex",gap:16,alignItems:"flex-end",flexWrap:"wrap",padding:"4px 0 12px"}}>
+   <label style={{display:"grid",gap:4,fontSize:12,color:"var(--muted)"}}>
+    Số tiết mỗi tuần
+    <input type="number" min={1} max={20} className="km-input-date" style={{width:120}}
+     placeholder="Theo SGK" value={nhipDraft} onChange={e=>setNhipDraft(e.target.value)}/>
+   </label>
+   {nhipRaw&&!nhipHopLe&&<span style={{fontSize:12,color:"#dc2626"}}>Nhập số nguyên 1–20.</span>}
+  </div>
+
+  {xemQuery.isLoading?<div className="km-empty-msg">Đang tính…</div>
+   :xemQuery.isError?<div className="km-form-error">{messageOf(xemQuery.error)}</div>
+   :kq?<>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+     <ThongSo nhan="Nhịp áp dụng" gt={kq.nhipMoiTuan?`${kq.nhipMoiTuan} tiết/tuần`:"Theo SGK"}/>
+     <ThongSo nhan="Số tuần cần" gt={`${kq.soTuanCanThiet} tuần`}/>
+     <ThongSo nhan="Dự kiến học xong" gt={kq.ngayHoanThanhDuKien?ngayVN(kq.ngayHoanThanhDuKien):"—"}/>
+     <ThongSo nhan="Khóa kết thúc" gt={ngayVN(ketThucKhoa)}/>
+     {kq.soTuanKhaDung!=null&&<ThongSo nhan="Số tuần khả dụng" gt={`${kq.soTuanKhaDung} tuần`}/>}
+    </div>
+
+    {kq.canhBao&&<div className="km-form-error" style={{marginTop:12}}>{kq.canhBao}</div>}
+    {xong&&<div className="km-form-success" style={{marginTop:12}}>
+     Đã sinh lại lịch tuần.{xong.ketThuc?` Ngày kết thúc khóa cập nhật thành ${ngayVN(xong.ketThuc)}.`:""}{xong.baiGiao?` ${xong.baiGiao} bài giao được neo lại theo buổi mới.`:""}
+    </div>}
+    {loi&&<div className="km-form-error" style={{marginTop:12}}>{loi}</div>}
+
+    <div className="km-table-footer">
+     <button type="button" className="km-btn-primary" disabled={sinh.isPending||(!!nhipRaw&&!nhipHopLe)}
+      onClick={()=>{if(window.confirm("Sinh lại toàn bộ lịch tuần của khóa theo nhịp này? Bài giao đang neo theo buổi sẽ được cập nhật."))sinh.mutate();}}>
+      {sinh.isPending?"Đang sinh…":"Sinh lịch tuần theo nhịp"}
+     </button>
+    </div>
+   </>:null}
+ </div>;
+}
+
+/**
+ * "Khóa học" (course_instances) là TẦNG 3 — lần chạy một mẫu chương trình theo năm học, tầng
+ * duy nhất có ngày. Lịch chương (program_schedules) neo mỗi chương vào một khoảng ngày của khóa.
+ *
+ * Mẫu chương trình (program_templates) là điều kiện cần: không có mẫu thì không tạo được khóa.
+ * Panel tạo mẫu ở đây chỉ ghi phần khung (chương trình + tên); cấu hình chương của mẫu
+ * (program_template_chapters) là việc riêng, lịch chương không đọc tới nó.
+ *
+ * Luật (ngày ngược, chồng lấp, chương lạ chương trình) để nguyên ở máy chủ — panel chỉ gửi các
+ * hàng có đủ hai ngày rồi hiện lại câu trả lời. Chép luật sang đây là có hai bản, bản ở đây mục trước.
+ */
+function KhoaHocManagement({session}:{session:AuthSession}){
+ const queryClient=useQueryClient();
+ const [activeTab,setActiveTab]=useState<"khoa"|"mau"|"ky-nghi">("khoa");
+
+ const khoaQuery=useQuery({queryKey:["admin-course-instances",session.accessToken],queryFn:()=>getCourseInstances(session)});
+ const khoaList=khoaQuery.data??[];
+ const mauQuery=useQuery({queryKey:["admin-program-templates",session.accessToken],queryFn:()=>getProgramTemplates(session)});
+ const mauList=mauQuery.data??[];
+ const ctQuery=useQuery({queryKey:["admin-curriculum-courses",session.accessToken],queryFn:()=>getCourses(session)});
+ const ctList=ctQuery.data??[];
+ const tenChuongTrinh=(programId:number)=>ctList.find(c=>c.id===programId)?.name??`#${programId}`;
+
+ const [filterYear,setFilterYear]=useState<string>("ALL");
+ const schoolYears=Array.from(new Set(khoaList.map(x=>x.school_year))).filter(Boolean);
+ const filteredKhoaList=filterYear==="ALL"?khoaList:khoaList.filter(x=>x.school_year===filterYear);
+
+ const [selectedId,setSelectedId]=useState<number|null>(null);
+ const khoa=khoaList.find(x=>x.id===selectedId)||null;
+
+ useEffect(()=>{
+  if(selectedId===null&&khoaList.length>0){
+   setSelectedId(khoaList[0].id);
+  }
+ },[khoaList,selectedId]);
+
+ const emptyMauDraft={programId:0,name:"",description:"",status:"DRAFT"};
+ const [mauDraft,setMauDraft]=useState(emptyMauDraft);
+ const [loiMau,setLoiMau]=useState("");
+ const [showMauForm,setShowMauForm]=useState(false);
+ const taoMau=useMutation({
+  mutationFn:()=>createProgramTemplate(session,{...mauDraft,programId:Number(mauDraft.programId)}),
+  onSuccess:()=>{setMauDraft(emptyMauDraft);setLoiMau("");setShowMauForm(false);void queryClient.invalidateQueries({queryKey:["admin-program-templates"]})},
+  onError:(e:Error)=>setLoiMau(e.message),
+ });
+
+ const emptyDraft={templateId:0,name:"",schoolYear:"",startsOn:"",endsOn:"",status:"DRAFT"};
+ const [draft,setDraft]=useState(emptyDraft);
+ const [loiTao,setLoiTao]=useState("");
+ const [showKhoaForm,setShowKhoaForm]=useState(false);
+ const tao=useMutation({
+  mutationFn:()=>createCourseInstance(session,{...draft,templateId:Number(draft.templateId)}),
+  onSuccess:(created:CourseInstance)=>{
+   setDraft(emptyDraft);setLoiTao("");setShowKhoaForm(false);
+   void queryClient.invalidateQueries({queryKey:["admin-course-instances"]});
+   if(created?.id)setSelectedId(created.id);
+  },
+  onError:(e:Error)=>setLoiTao(e.message),
+ });
+
+ const mau=khoa?mauList.find(x=>x.id===khoa.template_id)||null:null;
+ const programId=mau?.program_id??null;
+ const chuongQuery=useQuery({queryKey:["course-program-chapters",programId],queryFn:()=>getChapters(session,programId!),enabled:!!programId});
+ const chuongList=(chuongQuery.data??[]).slice().sort((a,b)=>a.orderIndex-b.orderIndex);
+ const lichQuery=useQuery({queryKey:["course-schedule",selectedId],queryFn:()=>getCourseSchedule(session,selectedId!),enabled:!!selectedId});
+ const lichRows=lichQuery.data??[];
+
+ const [lichDraft,setLichDraft]=useState<Record<number,{startsOn:string;endsOn:string}>>({});
+ const [loiLich,setLoiLich]=useState("");
+ const [lichSuccess,setLichSuccess]=useState(false);
+ useEffect(()=>{
+  const map:Record<number,{startsOn:string;endsOn:string}>={};
+  for(const r of lichRows)map[r.chapter_id]={startsOn:r.starts_on,endsOn:r.ends_on};
+  setLichDraft(map);setLoiLich("");setLichSuccess(false);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[selectedId,lichQuery.data]);
+
+ const luuLich=useMutation({
+  mutationFn:()=>saveCourseSchedule(session,selectedId!,chuongList.map(c=>({chapterId:c.id,...(lichDraft[c.id]||{startsOn:"",endsOn:""})})).filter(r=>r.startsOn&&r.endsOn)),
+  onSuccess:()=>{
+   setLoiLich("");setLichSuccess(true);
+   setTimeout(()=>setLichSuccess(false),3000);
+   void queryClient.invalidateQueries({queryKey:["course-schedule",selectedId]});
+  },
+  onError:(e:Error)=>setLoiLich(e.message),
+ });
+ const daiCuaChuong=(chapterId:number)=>lichRows.find(r=>r.chapter_id===chapterId)?.time_group??null;
+
+ const scheduledCount=chuongList.filter(c=>lichDraft[c.id]?.startsOn&&lichDraft[c.id]?.endsOn).length;
+
+ const BADGE_CLASS:Record<string,string>={
+  DRAFT:"km-tag-draft",
+  ACTIVE:"km-tag-active",
+  ARCHIVED:"km-tag-archived"
+ };
+
+ return <div className="page admin-page-section km-root">
+  <PageHeading eyebrow="CHƯƠNG TRÌNH" title="Khóa học" text="Quản lý lần chạy theo năm học của các chương trình đào tạo và thiết lập lịch phân phối từng chương."/>
+
+  {/* Thanh điều hướng Tab chính */}
+  <div className="km-nav-bar">
+   <div className="km-tabs">
+    <button type="button" className={`km-tab-btn ${activeTab==="khoa"?"active":""}`} onClick={()=>setActiveTab("khoa")}>
+     Khóa học & Lịch phân phối <span className="km-pill">{khoaList.length}</span>
+    </button>
+    <button type="button" className={`km-tab-btn ${activeTab==="mau"?"active":""}`} onClick={()=>setActiveTab("mau")}>
+     Mẫu chương trình <span className="km-pill">{mauList.length}</span>
+    </button>
+    <button type="button" className={`km-tab-btn ${activeTab==="ky-nghi"?"active":""}`} onClick={()=>setActiveTab("ky-nghi")}>
+     Kỳ nghỉ của khóa
+    </button>
+   </div>
+
+   <div className="km-actions">
+    {activeTab==="khoa"&&<button type="button" className="km-btn-primary" onClick={()=>{setShowKhoaForm(true);setLoiTao("")}}>+ Tạo khóa học mới</button>}
+    {activeTab==="mau"&&<button type="button" className="km-btn-primary" onClick={()=>{setShowMauForm(true);setLoiMau("")}}>+ Tạo mẫu chương trình</button>}
+   </div>
+  </div>
+
+  {/* NỘI DUNG TAB 1: KHÓA HỌC & LỊCH */}
+  {activeTab==="khoa"&&<div className="km-workspace">
+   {/* Cột trái: Danh sách khóa */}
+   <div className="km-sidebar">
+    <div className="km-sidebar-head">
+     <span className="km-label-caps">DANH SÁCH KHÓA</span>
+     {schoolYears.length>1&&<select className="km-select-sm" value={filterYear} onChange={e=>setFilterYear(e.target.value)}>
+      <option value="ALL">Tất cả năm học</option>
+      {schoolYears.map(y=><option key={y} value={y}>{y}</option>)}
+     </select>}
+    </div>
+
+    <div className="km-list">
+     {khoaQuery.isLoading&&<div className="km-empty-msg">Đang tải danh sách…</div>}
+     {!khoaQuery.isLoading&&!filteredKhoaList.length&&<div className="km-empty-msg">Chưa có khóa học nào. Bấm &ldquo;+ Tạo khóa học mới&rdquo; để thêm.</div>}
+     {filteredKhoaList.map(x=>{
+      const isSelected=x.id===selectedId;
+      return <button type="button" key={x.id} className={`km-item-card ${isSelected?"active":""}`} onClick={()=>setSelectedId(x.id)}>
+       <div className="km-item-top">
+        <b className="km-item-name">{x.name}</b>
+        <span className={`km-tag ${BADGE_CLASS[x.status]??""}`}>{nhanTrangThaiKhoa(x.status)}</span>
+       </div>
+       <div className="km-item-meta">
+        <span>{x.school_year}</span>
+        <span className="km-dot">·</span>
+        <span>{ngayVN(x.starts_on)} → {ngayVN(x.ends_on)}</span>
+       </div>
+       <div className="km-item-sub">{x.template_name}</div>
+      </button>;
+     })}
+    </div>
+   </div>
+
+   {/* Cột phải: Chi tiết & Lịch chương */}
+   <div className="km-main">
+    {!khoa?<div className="km-empty-state">
+     <p>Chọn một khóa học từ danh sách bên trái để xem và cập nhật lịch phân phối chương trình.</p>
+    </div>:<div>
+     <div className="km-detail-banner">
+      <div className="km-detail-header">
+       <div>
+        <div className="km-eyebrow">KHÓA ĐANG CHỌN</div>
+        <h2 className="km-detail-title">{khoa.name}</h2>
+        <div className="km-detail-meta">
+         <span>Năm học: <b>{khoa.school_year}</b></span>
+         <span className="km-dot">·</span>
+         <span>Thời gian: <b>{ngayVN(khoa.starts_on)} – {ngayVN(khoa.ends_on)}</b></span>
+         <span className="km-dot">·</span>
+         <span>Mẫu: <b>{khoa.template_name}</b> ({tenChuongTrinh(mau?.program_id??0)})</span>
+        </div>
+       </div>
+       <span className={`km-tag ${BADGE_CLASS[khoa.status]??""}`}>{nhanTrangThaiKhoa(khoa.status)}</span>
+      </div>
+
+      {chuongList.length>0&&<div className="km-progress-bar-wrap">
+       <div className="km-progress-label">
+        <span>Tiến độ xếp lịch chương</span>
+        <b>{scheduledCount} / {chuongList.length} chương ({Math.round((scheduledCount/chuongList.length)*100)}%)</b>
+       </div>
+       <div className="km-progress-track">
+        <div className="km-progress-fill" style={{width:`${(scheduledCount/chuongList.length)*100}%`}}/>
+       </div>
+      </div>}
+     </div>
+
+     {/* Bảng phân phối lịch chương */}
+     <div className="km-table-box">
+      <div className="km-table-title-row">
+       <span className="km-label-caps">LỊCH PHÂN PHỐI TỪNG CHƯƠNG</span>
+       <span className="km-table-hint">Ngày phân phối phải nằm trong khoảng hoạt động của khóa.</span>
+      </div>
+
+      {chuongQuery.isLoading&&<div className="km-empty-msg">Đang tải danh sách chương…</div>}
+      {!chuongQuery.isLoading&&!chuongList.length&&<div className="km-empty-msg">Chương trình liên kết chưa có chương nào. Hãy cấu hình chương trước tại mục Chương trình.</div>}
+
+      {chuongList.length>0&&<form onSubmit={e=>{e.preventDefault();luuLich.mutate()}}>
+       <table className="km-schedule-table">
+        <thead>
+         <tr>
+          <th style={{width:56}}>STT</th>
+          <th>Tên chương</th>
+          <th style={{width:130}}>Trạng thái</th>
+          <th style={{width:160}}>Từ ngày</th>
+          <th style={{width:160}}>Đến ngày</th>
+         </tr>
+        </thead>
+        <tbody>
+         {chuongList.map((c,idx)=>{
+          const d=lichDraft[c.id]||{startsOn:"",endsOn:""};
+          const dai=daiCuaChuong(c.id);
+          const DAI_BADGE:Record<string,{cls:string;txt:string}>={
+           CURRENT:{cls:"km-time-cur",txt:"Tuần này"},
+           UPCOMING:{cls:"km-time-up",txt:"Sắp tới"},
+           PAST:{cls:"km-time-past",txt:"Đã học"}
+          };
+          const daiInfo=dai?DAI_BADGE[dai]:null;
+          return <tr key={c.id}>
+           <td className="km-td-idx">{idx+1}</td>
+           <td>
+            <div className="km-chapter-title">{c.title}</div>
+           </td>
+           <td>
+            {daiInfo?<span className={`km-time-pill ${daiInfo.cls}`}>{daiInfo.txt}</span>:<span className="km-time-pill km-time-none">Chưa học</span>}
+           </td>
+           <td>
+            <input type="date" className="km-input-date" value={d.startsOn} onChange={e=>setLichDraft({...lichDraft,[c.id]:{...d,startsOn:e.target.value}})}/>
+           </td>
+           <td>
+            <input type="date" className="km-input-date" value={d.endsOn} onChange={e=>setLichDraft({...lichDraft,[c.id]:{...d,endsOn:e.target.value}})}/>
+           </td>
+          </tr>;
+         })}
+        </tbody>
+       </table>
+
+       {loiLich&&<div className="km-form-error">{loiLich}</div>}
+       {lichSuccess&&<div className="km-form-success">Đã lưu lịch phân phối thành công.</div>}
+
+       <div className="km-table-footer">
+        <button type="submit" className="km-btn-primary" disabled={luuLich.isPending}>{luuLich.isPending?"Đang lưu…":"Lưu lịch phân phối"}</button>
+       </div>
+      </form>}
+     </div>
+
+     <NhipDayPanel session={session} khoaId={khoa.id} ketThucKhoa={khoa.ends_on}/>
+    </div>}
+   </div>
+  </div>}
+
+  {/* NỘI DUNG TAB 2: MẪU CHƯƠNG TRÌNH */}
+  {activeTab==="mau"&&<div className="km-mau-section">
+   <div className="km-table-box">
+    <div className="km-table-title-row">
+     <span className="km-label-caps">DANH SÁCH MẪU CHƯƠNG TRÌNH ({mauList.length})</span>
+     <span className="km-table-hint">Mỗi khóa học được tạo dựa trên một mẫu chương trình định sẵn.</span>
+    </div>
+
+    {mauQuery.isLoading&&<div className="km-empty-msg">Đang tải danh sách mẫu…</div>}
+    {!mauQuery.isLoading&&!mauList.length&&<div className="km-empty-msg">Chưa có mẫu nào. Nhấn &ldquo;+ Tạo mẫu chương trình&rdquo; để bắt đầu.</div>}
+
+    {mauList.length>0&&<table className="km-schedule-table">
+     <thead>
+      <tr>
+       <th style={{width:60}}>ID</th>
+       <th>Tên mẫu chương trình</th>
+       <th>Thuộc chương trình gốc</th>
+       <th style={{width:140}}>Trạng thái</th>
+       <th style={{width:160}}>Số khóa đang chạy</th>
+      </tr>
+     </thead>
+     <tbody>
+      {mauList.map(m=>{
+       const countUsed=khoaList.filter(k=>k.template_id===m.id).length;
+       return <tr key={m.id}>
+        <td className="km-td-idx">#{m.id}</td>
+        <td><b className="km-chapter-title">{m.name}</b></td>
+        <td>{tenChuongTrinh(m.program_id)}</td>
+        <td><span className={`km-tag ${BADGE_CLASS[m.status]??""}`}>{nhanTrangThaiKhoa(m.status)}</span></td>
+        <td><span className="km-num-badge">{countUsed} khóa</span></td>
+       </tr>;
+      })}
+     </tbody>
+    </table>}
+   </div>
+  </div>}
+
+  {/* NỘI DUNG TAB 3: KỲ NGHỈ CỦA KHÓA */}
+  {activeTab==="ky-nghi"&&<div className="km-workspace" style={{padding:20,display:"block",background:"#fff"}}>
+   <KyNghiPanel session={session}/>
+  </div>}
+
+  {/* MODAL TẠO KHÓA HỌC */}
+  {showKhoaForm&&<div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowKhoaForm(false)}}>
+   <div className="km-dialog">
+    <div className="km-dialog-head">
+     <div>
+      <div className="km-eyebrow">THIẾT LẬP MỚI</div>
+      <h3 className="km-dialog-title">Tạo khóa học</h3>
+     </div>
+     <button type="button" className="km-close-btn" onClick={()=>setShowKhoaForm(false)}>✕</button>
+    </div>
+
+    <form onSubmit={e=>{e.preventDefault();tao.mutate()}}>
+     <div className="km-dialog-body">
+      <div className="km-field">
+       <span className="km-field-label">MẪU CHƯƠNG TRÌNH</span>
+       <select required className="km-field-input" value={draft.templateId} onChange={e=>{setDraft({...draft,templateId:Number(e.target.value)});setLoiTao("")}}>
+        <option value={0}>Chọn mẫu chương trình…</option>
+        {mauList.map(m=><option key={m.id} value={m.id}>{m.name} · {tenChuongTrinh(m.program_id)}</option>)}
+       </select>
+      </div>
+
+      <div className="km-field">
+       <span className="km-field-label">TÊN KHÓA HỌC</span>
+       <input required maxLength={255} className="km-field-input" placeholder="Ví dụ: Toán 10 — Khối sáng" value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/>
+      </div>
+
+      <div className="km-field">
+       <span className="km-field-label">NĂM HỌC</span>
+       <input required maxLength={20} className="km-field-input" placeholder="Ví dụ: 2025–2026" value={draft.schoolYear} onChange={e=>setDraft({...draft,schoolYear:e.target.value})}/>
+      </div>
+
+      <div className="km-field-row">
+       <div className="km-field">
+        <span className="km-field-label">NGÀY BẮT ĐẦU</span>
+        <input required type="date" className="km-field-input" value={draft.startsOn} onChange={e=>setDraft({...draft,startsOn:e.target.value})}/>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">NGÀY KẾT THÚC</span>
+        <input required type="date" className="km-field-input" value={draft.endsOn} onChange={e=>setDraft({...draft,endsOn:e.target.value})}/>
+       </div>
+      </div>
+
+      <div className="km-field">
+       <span className="km-field-label">TRẠNG THÁI</span>
+       <select className="km-field-input" value={draft.status} onChange={e=>setDraft({...draft,status:e.target.value})}>
+        {BANG_TRANG_THAI_KHOA.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+       </select>
+      </div>
+
+      {loiTao&&<div className="km-form-error">{loiTao}</div>}
+     </div>
+
+     <div className="km-dialog-foot">
+      <button type="button" className="km-btn-ghost" onClick={()=>{setShowKhoaForm(false);setDraft(emptyDraft)}}>Hủy</button>
+      <button type="submit" className="km-btn-primary" disabled={tao.isPending||!mauList.length}>{tao.isPending?"Đang tạo…":"Tạo khóa học"}</button>
+     </div>
+    </form>
+   </div>
+  </div>}
+
+  {/* MODAL TẠO MẪU CHƯƠNG TRÌNH */}
+  {showMauForm&&<div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowMauForm(false)}}>
+   <div className="km-dialog">
+    <div className="km-dialog-head">
+     <div>
+      <div className="km-eyebrow">THIẾT LẬP MỚI</div>
+      <h3 className="km-dialog-title">Tạo mẫu chương trình</h3>
+     </div>
+     <button type="button" className="km-close-btn" onClick={()=>setShowMauForm(false)}>✕</button>
+    </div>
+
+    <form onSubmit={e=>{e.preventDefault();taoMau.mutate()}}>
+     <div className="km-dialog-body">
+      <div className="km-field">
+       <span className="km-field-label">CHƯƠNG TRÌNH GỐC</span>
+       <select required className="km-field-input" value={mauDraft.programId} onChange={e=>{setMauDraft({...mauDraft,programId:Number(e.target.value)});setLoiMau("")}}>
+        <option value={0}>Chọn chương trình…</option>
+        {ctList.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+       </select>
+      </div>
+
+      <div className="km-field">
+       <span className="km-field-label">TÊN MẪU CHƯƠNG TRÌNH</span>
+       <input required maxLength={255} className="km-field-input" placeholder="Ví dụ: Toán 10 — Chuẩn" value={mauDraft.name} onChange={e=>setMauDraft({...mauDraft,name:e.target.value})}/>
+      </div>
+
+      <div className="km-field">
+       <span className="km-field-label">TRẠNG THÁI</span>
+       <select className="km-field-input" value={mauDraft.status} onChange={e=>setMauDraft({...mauDraft,status:e.target.value})}>
+        {BANG_TRANG_THAI_KHOA.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+       </select>
+      </div>
+
+      {loiMau&&<div className="km-form-error">{loiMau}</div>}
+     </div>
+
+     <div className="km-dialog-foot">
+      <button type="button" className="km-btn-ghost" onClick={()=>{setShowMauForm(false);setMauDraft(emptyMauDraft)}}>Hủy</button>
+      <button type="submit" className="km-btn-primary" disabled={taoMau.isPending||!ctList.length}>{taoMau.isPending?"Đang tạo…":"Tạo mẫu chương trình"}</button>
+     </div>
+    </form>
+   </div>
+  </div>}
+
+ </div>;
+}
+
+/**
+ * Kỳ nghỉ gắn vào khóa chứ không vào chương trình: hai khóa của cùng một chương trình vẫn có thể
+ * nghỉ khác nhau. Nên panel này bắt chọn khóa trước, không mượn chương trình đang mở ở cây bên trên
+ * — mượn thì Admin tưởng đang đặt lịch nghỉ cho khóa mình nhìn thấy, mà thật ra đặt cho cái khác.
+ *
+ * Việc kiểm tra (ngày ngược, thiếu lý do, nghỉ nằm ngoài khoảng của khóa) để nguyên ở máy chủ và
+ * panel chỉ hiện lại câu trả lời: chép luật sang đây là có hai bản luật, và bản ở đây sẽ mục trước.
+ */
+function KyNghiPanel({session}:{session:AuthSession}){
+ const queryClient=useQueryClient();
+ const khoaQuery=useQuery({queryKey:["admin-course-instances",session.accessToken],queryFn:()=>getCourseInstances(session)});
+ const khoaList=khoaQuery.data??[];
+ const [khoaId,setKhoaId]=useState(0);
+ const khoa=khoaList.find(x=>x.id===khoaId)||null;
+ const [draft,setDraft]=useState({startsOn:"",endsOn:"",reason:""});
+ const [loi,setLoi]=useState("");
+ const breaksQuery=useQuery({queryKey:["academic-breaks",khoaId],queryFn:()=>getAcademicBreaks(session,khoaId),enabled:khoaId>0});
+ const breaks=breaksQuery.data??[];
+ const lamMoi=()=>{setLoi("");void queryClient.invalidateQueries({queryKey:["academic-breaks",khoaId]})};
+ const them=useMutation({mutationFn:()=>addAcademicBreak(session,khoaId,draft),onSuccess:()=>{setDraft({startsOn:"",endsOn:"",reason:""});lamMoi()},onError:(e:Error)=>setLoi(e.message)});
+ const go=useMutation({mutationFn:(id:number)=>removeAcademicBreak(session,id),onSuccess:lamMoi,onError:(e:Error)=>setLoi(e.message)});
+ return <section className="live-grid teacher-live">
+  <article>
+   <h2>Đặt kỳ nghỉ</h2>
+   <form className="live-form" onSubmit={event=>{event.preventDefault();them.mutate()}}>
+    <label>Khóa<select required value={khoaId} onChange={event=>{setKhoaId(Number(event.target.value));setLoi("")}}>
+     <option value={0}>Chọn khóa</option>
+     {khoaList.map(x=><option key={x.id} value={x.id}>{x.name} · {x.school_year}</option>)}
+    </select></label>
+    {/* Nêu sẵn khoảng của khóa: kỳ nghỉ phải nằm trong đó, biết trước thì không phải đoán rồi bị chặn. */}
+    {khoa&&<p className="text-sm text-on-surface-variant">Khóa chạy {ngayVN(khoa.starts_on)} – {ngayVN(khoa.ends_on)}.</p>}
+    <label>Từ ngày<input required type="date" value={draft.startsOn} onChange={event=>setDraft({...draft,startsOn:event.target.value})}/></label>
+    <label>Đến hết ngày<input required type="date" value={draft.endsOn} onChange={event=>setDraft({...draft,endsOn:event.target.value})}/></label>
+    {/* Lý do là dòng chữ học sinh đọc trên màn hình "đang nghỉ", nên không để trống được. */}
+    <label>Lý do<input required maxLength={200} placeholder="Nghỉ Tết Nguyên đán" value={draft.reason} onChange={event=>setDraft({...draft,reason:event.target.value})}/></label>
+    <div className="live-actions"><button className="primary" disabled={!khoaId||them.isPending}>{them.isPending?"Đang lưu…":"Thêm kỳ nghỉ"}</button></div>
+    {loi&&<p className="text-sm font-semibold text-error">{loi}</p>}
+   </form>
+  </article>
+  <article>
+   <h2>Kỳ nghỉ đã đặt ({breaks.length})</h2>
+   {!khoaId&&<EmptyState text="Chọn một khóa để xem kỳ nghỉ."/>}
+   {khoaId>0&&breaksQuery.isLoading&&<p>Đang tải dữ liệu…</p>}
+   {khoaId>0&&!breaksQuery.isLoading&&!breaks.length&&<EmptyState text="Khóa này chưa đặt kỳ nghỉ nào."/>}
+   {breaks.map(x=><div className="live-row" key={x.id}>
+    <div><small>{ngayVN(x.starts_on)} – {ngayVN(x.ends_on)}</small><b>{x.reason}</b><span>Học lại {ngayDiHocLai(x.ends_on)}</span></div>
+    <div className="row-actions"><button className="danger-link" disabled={go.isPending} onClick={()=>{if(confirm(`Gỡ kỳ nghỉ “${x.reason}”? Những ngày này sẽ tính là ngày học.`))go.mutate(x.id)}}>Gỡ</button></div>
+   </div>)}
+  </article>
+ </section>;
+}
+
 function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Metadata|null}){
  const queryClient=useQueryClient();
  const coursesQuery=useQuery({queryKey:["curriculum-courses",session.accessToken],queryFn:()=>getCourses(session)});
@@ -1498,7 +2171,7 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
  const [selectedLessonId,setSelectedLessonId]=useState<number|null>(null);
  const [expandedChapters,setExpandedChapters]=useState<Set<number>>(new Set());
  const [treeSearch,setTreeSearch]=useState("");
- const [detailTab,setDetailTab]=useState<"overview"|"questions"|"documents"|"results">("overview");
+ const [detailTab,setDetailTab]=useState<"overview"|"questions"|"documents">("overview");
  const [showNewCourseForm,setShowNewCourseForm]=useState(false);
  const [showNewChapterForm,setShowNewChapterForm]=useState(false);
  const [showNewLessonForm,setShowNewLessonForm]=useState(false);
@@ -1508,8 +2181,14 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
  const [courseDraft,setCourseDraft]=useState<CourseInput>({code:"",name:"",description:"",status:"ACTIVE"});
  const [chapterDraft,setChapterDraft]=useState<ChapterInput>({courseId:0,title:"",orderIndex:1,status:"DRAFT"});
  const [lessonDraft,setLessonDraft]=useState<LessonInput>({chapterId:0,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:1,status:"DRAFT"});
+ const [showPpctImportModal,setShowPpctImportModal]=useState(false);
+ const [showPhanPhoiTiet,setShowPhanPhoiTiet]=useState(false);
+ const [bulkImport,setBulkImport]=useState(false);
+ const [documentLesson,setDocumentLesson]=useState<Lesson|null>(null);
+ const [worksheetLesson,setWorksheetLesson]=useState<Lesson|null>(null);
+ const [resourceLesson,setResourceLesson]=useState<Lesson|null>(null);
 
- // Auto-select first course / chapter / lesson
+ // Auto-select first course / chapter
  useEffect(()=>{
   if(selectedCourseId===null&&courses.length>0){setSelectedCourseId(courses[0].id);setCourseDraft(emptyCourse(metadata));}
  },[courses,selectedCourseId,metadata]);
@@ -1519,17 +2198,17 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
 
  const chaptersQuery=useQuery({queryKey:["workspace-chapters",session.accessToken,selectedCourseId],queryFn:()=>getChapters(session,selectedCourseId!),enabled:!!selectedCourseId});
  const chapters=chaptersQuery.data??[];
+ const ppctTreeQuery=useQuery({queryKey:["workspace-ppct-tree",session.accessToken,selectedCourseId],queryFn:()=>getProgramCourseTree(session,selectedCourseId!),enabled:!!selectedCourseId});
+ const ppctStrands=ppctTreeQuery.data?.strands??[];
  useEffect(()=>{
-  if(selectedChapterId===null&&chapters.length>0){setSelectedChapterId(chapters[0].id);setChapterDraft({courseId:selectedCourseId!,title:"",orderIndex:chapters.length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}
   if(selectedChapterId!==null&&!chapters.some(x=>x.id===selectedChapterId)){setSelectedChapterId(null);setSelectedLessonId(null);}
- },[chapters,selectedChapterId,selectedCourseId,metadata]);
+ },[chapters,selectedChapterId]);
 
  const lessonsQuery=useQuery({queryKey:["workspace-lessons",session.accessToken,selectedChapterId],queryFn:()=>getLessons(session,selectedChapterId!),enabled:!!selectedChapterId});
  const lessons=lessonsQuery.data??[];
  useEffect(()=>{
-  if(selectedLessonId===null&&lessons.length>0){setSelectedLessonId(lessons[0].id);setLessonDraft({chapterId:selectedChapterId!,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:lessons.length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}
   if(selectedLessonId!==null&&!lessons.some(x=>x.id===selectedLessonId)){setSelectedLessonId(null);}
- },[lessons,selectedLessonId,selectedChapterId,metadata]);
+ },[lessons,selectedLessonId]);
 
  const allLessonsQuery=useQuery({queryKey:["workspace-all-lessons",session.accessToken,chapters.map(x=>x.id)],queryFn:async()=>{
   const result=await Promise.all(chapters.map(async chapter=>[chapter.id,await getLessons(session,chapter.id)] as const));
@@ -1539,20 +2218,20 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
  const topicsQuery=useQuery({queryKey:["workspace-topics",session.accessToken],queryFn:()=>getTopics(session)});
  const topics=topicsQuery.data??[];
  const selectedChapter=chapters.find(x=>x.id===selectedChapterId)||null;
- const selectedLesson=lessons.find(x=>x.id===selectedLessonId)||null;
+ const selectedLesson=(selectedChapterId?(allLessonsQuery.data?.[selectedChapterId]??lessons):[]).find(x=>x.id===selectedLessonId)||null;
 
  const courseStatusOptions=metadataOptions(metadata,"courseStatuses");
  const publishStatusOptions=metadataOptions(metadata,"publishStatuses");
  const statusLabel=(value:string)=>publishStatusOptions.find(option=>option.value===value)?.label||value;
  const courseStatusLabel=(value:string)=>courseStatusOptions.find(option=>option.value===value)?.label||value;
 
- const invalidateAll=()=>{queryClient.invalidateQueries({queryKey:["workspace-chapters"]});queryClient.invalidateQueries({queryKey:["workspace-lessons"]});queryClient.invalidateQueries({queryKey:["workspace-all-lessons"]});queryClient.invalidateQueries({queryKey:["curriculum-courses"]});};
+ const invalidateAll=()=>{queryClient.invalidateQueries({queryKey:["workspace-chapters"]});queryClient.invalidateQueries({queryKey:["workspace-lessons"]});queryClient.invalidateQueries({queryKey:["workspace-all-lessons"]});queryClient.invalidateQueries({queryKey:["workspace-ppct-tree"]});queryClient.invalidateQueries({queryKey:["curriculum-courses"]});};
 
  const saveCourse=async(e:React.FormEvent)=>{e.preventDefault();try{if(editingCourse){await updateCourse(session,editingCourse.id,courseDraft)}else{await createCourse(session,courseDraft)}setCourseDraft(emptyCourse(metadata));setEditingCourse(null);setShowNewCourseForm(false);invalidateAll();}catch{}};
  const saveChapter=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedCourseId)return;try{if(editingChapter){await updateChapter(session,editingChapter.id,chapterDraft)}else{await createChapter(session,{...chapterDraft,courseId:selectedCourseId})}setChapterDraft({courseId:selectedCourseId,title:"",orderIndex:chapters.length+2,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});setEditingChapter(null);setShowNewChapterForm(false);invalidateAll();}catch{}};
  const saveLesson=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedChapterId)return;try{if(editingLesson){await updateLesson(session,editingLesson.id,lessonDraft)}else{await createLesson(session,{...lessonDraft,chapterId:selectedChapterId})}setLessonDraft({chapterId:selectedChapterId,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:lessons.length+2,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});setEditingLesson(null);setShowNewLessonForm(false);invalidateAll();}catch{}};
 
- const removeCourse=async(course:Course)=>{const count=await getChapters(session,course.id).catch(()=>[]);if(count.length>0){alert(`Khóa học "${course.name}" còn ${count.length} chương. Xóa hết chương trước.`);return;}if(!window.confirm(`Xóa khóa học "${course.name}"?`))return;try{await deleteCourse(session,course.id);setSelectedCourseId(null);invalidateAll();}catch{}};
+ const removeCourse=async(course:Course)=>{const count=await getChapters(session,course.id).catch(()=>[]);if(count.length>0){alert(`Chương trình "${course.name}" còn ${count.length} chương. Xóa hết các chương trước.`);return;}if(!window.confirm(`Xóa chương trình "${course.name}"?`))return;try{await deleteCourse(session,course.id);setSelectedCourseId(null);invalidateAll();}catch{}};
  const removeChapter=async(chapter:Chapter)=>{const items=await getLessons(session,chapter.id).catch(()=>[]);if(items.length>0){alert(`Chương "${chapter.title}" còn ${items.length} bài học. Xóa hết bài học trước.`);return;}if(!window.confirm(`Xóa chương "${chapter.title}"?`))return;try{await deleteChapter(session,chapter.id);setSelectedChapterId(null);invalidateAll();}catch{}};
  const removeLesson=async(lesson:Lesson)=>{if(!window.confirm(`Xóa bài học "${lesson.title}"?`))return;try{await deleteLesson(session,lesson.id);setSelectedLessonId(null);invalidateAll();}catch{}};
 
@@ -1566,13 +2245,12 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
 
  const breadcrumb=useMemo(()=>{
   const list:{label:string;onClick?:()=>void}[]=[];
-  if(selectedCourse){list.push({label:selectedCourse.name,onClick:()=>{}});}
+  if(selectedCourse){list.push({label:selectedCourse.name,onClick:()=>{setSelectedChapterId(null);setSelectedLessonId(null);}});}
   if(selectedChapter){list.push({label:`Chương ${selectedChapter.orderIndex}: ${selectedChapter.title}`,onClick:()=>setSelectedLessonId(null)});}
   if(selectedLesson){list.push({label:selectedLesson.title});}
   return list;
  },[selectedCourse,selectedChapter,selectedLesson]);
 
- // Approximate problem count: count topics that have at least one lesson whose name matches (data-driven, not hard-coded)
  const questionCountForLesson=useMemo(()=>{
   if(!selectedLesson)return 0;
   return topics.filter(topic=>selectedLesson.title&&topic.name&&selectedLesson.title.toLocaleLowerCase("vi").includes(topic.name.toLocaleLowerCase("vi").slice(0,4))).length;
@@ -1581,134 +2259,677 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
  return <section className="curriculum-workspace">
   {error&&<div className="api-error">{error}</div>}
   <div className="cw-shell">
+   {/* Left panel: danh sách chương trình dạng card */}
    <aside className="cw-tree">
-    <header className="cw-tree-header">
-     <div>
-      <p className="eyebrow">CẤU TRÚC CHƯƠNG TRÌNH</p>
-      <h3>{selectedCourse?.name||"Chưa có khóa học"}</h3>
-      <small>{chapters.length} chương · {chapters.reduce((sum,c)=>sum+((allLessonsQuery.data?.[c.id]||[]).length),0)} bài học</small>
-     </div>
-     <div className="cw-tree-actions">
-      <button title="Lọc" aria-label="Lọc"><Filter size={15}/></button>
-      <button title="Thêm mới" aria-label="Thêm mới" onClick={()=>{setShowNewCourseForm(v=>!v);setShowNewChapterForm(false);setShowNewLessonForm(false);}}><Plus size={15}/></button>
-     </div>
-    </header>
-    <div className="cw-tree-search"><Search size={14}/><input placeholder="Tìm trong chương trình…" value={treeSearch} onChange={e=>setTreeSearch(e.target.value)}/></div>
-
-    {showNewCourseForm&&<form className="cw-quick-form" onSubmit={saveCourse}>
-     <input required placeholder="Mã khóa học" maxLength={50} value={courseDraft.code} onChange={e=>setCourseDraft({...courseDraft,code:e.target.value})}/>
-     <input required placeholder="Tên khóa học" maxLength={255} value={courseDraft.name} onChange={e=>setCourseDraft({...courseDraft,name:e.target.value})}/>
-     <textarea placeholder="Mô tả" value={courseDraft.description} onChange={e=>setCourseDraft({...courseDraft,description:e.target.value})}/>
-     <select value={courseDraft.status} onChange={e=>setCourseDraft({...courseDraft,status:e.target.value})}>{courseStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>
-     <div><button className="primary" type="submit">Lưu khóa học</button><button type="button" onClick={()=>{setShowNewCourseForm(false);setEditingCourse(null);setCourseDraft(emptyCourse(metadata));}}>Hủy</button></div>
-    </form>}
-
-    <div className="cw-tree-courses">
-     {courses.map(course=><div key={course.id} className={`cw-course-chip ${selectedCourseId===course.id?"active":""}`}><button onClick={()=>{setSelectedCourseId(course.id);setShowNewCourseForm(false);}}><span><BookOpen size={13}/></span><b>{course.name}</b><small>{courseStatusLabel(course.status)}</small></button><button className="cw-chip-remove" title="Xóa" onClick={()=>void removeCourse(course)}>×</button></div>)}
-     {!courses.length&&!coursesQuery.isLoading&&<p className="muted-copy">Chưa có khóa học nào.</p>}
+    <div className="cw-tree-top">
+     <button type="button" className="cw-prog-add-btn" onClick={()=>{setEditingCourse(null);setCourseDraft(emptyCourse(metadata));setShowNewCourseForm(true);}}><Plus size={15}/>Thêm chương trình</button>
     </div>
-
-    {selectedCourseId&&showNewChapterForm&&<form className="cw-quick-form" onSubmit={saveChapter}>
-     <input required placeholder="Tên chương" value={chapterDraft.title} onChange={e=>setChapterDraft({...chapterDraft,title:e.target.value})}/>
-     <input required type="number" min="1" placeholder="Thứ tự" value={chapterDraft.orderIndex} onChange={e=>setChapterDraft({...chapterDraft,orderIndex:Number(e.target.value)})}/>
-     <select value={chapterDraft.status} onChange={e=>setChapterDraft({...chapterDraft,status:e.target.value})}>{publishStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>
-     <div><button className="primary" type="submit">{editingChapter?"Cập nhật":"Thêm chương"}</button><button type="button" onClick={()=>{setShowNewChapterForm(false);setEditingChapter(null);}}>Hủy</button></div>
-    </form>}
-
-    <div className="cw-tree-list">
-     {chapters.length===0&&!chaptersQuery.isLoading&&selectedCourseId&&<p className="muted-copy">Chưa có chương. Nhấn + để thêm.</p>}
-     {chapters.filter(chapter=>matchesTree(chapter.title)).map(chapter=>{
-      const isExpanded=expandedChapters.has(chapter.id)||selectedChapterId===chapter.id;
-      const chapterLessons=(allLessonsQuery.data?.[chapter.id]??[]).filter(lesson=>matchesTree(lesson.title));
-      return <div key={chapter.id} className={`cw-chapter ${selectedChapterId===chapter.id?"active":""}`}>
-       <div className="cw-chapter-row">
-        <button className="cw-chevron" onClick={()=>toggleChapter(chapter.id)} aria-label={isExpanded?"Thu gọn":"Mở rộng"}>{isExpanded?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>
-        <button className="cw-chapter-main" onClick={()=>{setSelectedChapterId(chapter.id);setSelectedLessonId(null);}}>
-         <span className="cw-icon"><LibraryBig size={13}/></span>
-         <div><b>Chương {chapter.orderIndex}: {chapter.title}</b><small>{statusLabel(chapter.status)} · {chapterLessons.length} bài</small></div>
-        </button>
-        <div className="cw-row-actions">
-         <button onClick={()=>void moveChapter(chapters.indexOf(chapter),-1)} title="Lên">↑</button>
-         <button onClick={()=>void moveChapter(chapters.indexOf(chapter),1)} title="Xuống">↓</button>
-         <button onClick={()=>{setEditingChapter(chapter);setChapterDraft({courseId:chapter.courseId,title:chapter.title,orderIndex:chapter.orderIndex,status:chapter.status});setShowNewChapterForm(true);}} title="Sửa">Sửa</button>
-         <button className="danger-link" onClick={()=>void removeChapter(chapter)} title="Xóa">×</button>
-        </div>
+    <div className="cw-prog-search-wrap">
+     <Search size={13}/><input placeholder="Tìm chương trình..." value={treeSearch} onChange={e=>setTreeSearch(e.target.value)}/>
+    </div>
+    <div className="cw-prog-list">
+     {courses.filter(c=>!treeSearch.trim()||c.name.toLocaleLowerCase("vi").includes(treeSearch.trim().toLocaleLowerCase("vi"))||c.code.toLocaleLowerCase("vi").includes(treeSearch.trim().toLocaleLowerCase("vi"))).map(c=>{
+      const chCount=chapters.length&&selectedCourseId===c.id?chapters.length:0;
+      const lCount=chapters.length&&selectedCourseId===c.id?chapters.reduce((sum,ch)=>sum+((allLessonsQuery.data?.[ch.id]||[]).length),0):0;
+      const isActive=selectedCourseId===c.id;
+      return <div key={c.id} className={`cw-prog-item ${isActive?"active":""}`} onClick={()=>{setSelectedCourseId(c.id);setSelectedChapterId(null);setSelectedLessonId(null);}}>
+       <div className="cw-prog-icon"><BookOpen size={16}/></div>
+       <div className="cw-prog-info">
+        <b>{c.name}</b>
+        <small>Mã: {c.code}{isActive&&chCount!==undefined?` · ${chCount} chương · ${lCount} bài học`:""}</small>
        </div>
-       {isExpanded&&<div className="cw-lessons">
-        {chapterLessons.map((lesson,index)=><div key={lesson.id} className={`cw-lesson ${selectedLessonId===lesson.id?"active":""}`}>
-         <button className="cw-lesson-main" onClick={()=>{setSelectedChapterId(chapter.id);setSelectedLessonId(lesson.id);}}>
-          <span className="cw-dot" aria-hidden="true"/>
-          <div><b>{lesson.title}</b><small>{lesson.publicCode?`#${lesson.publicCode} · `:""}{statusLabel(lesson.status)}</small></div>
-         </button>
-         <div className="cw-row-actions">
-          <button onClick={()=>void moveLesson(chapter.id,index,-1)} title="Lên">↑</button>
-          <button onClick={()=>void moveLesson(chapter.id,index,1)} title="Xuống">↓</button>
-          <button onClick={()=>{setEditingLesson(lesson);setLessonDraft({chapterId:lesson.chapterId,title:lesson.title,publicCode:lesson.publicCode||"",summary:lesson.summary||"",contentHtml:lesson.contentHtml||"",orderIndex:lesson.orderIndex,status:lesson.status});setShowNewLessonForm(true);setSelectedChapterId(chapter.id);setSelectedLessonId(lesson.id);}} title="Sửa">Sửa</button>
-          <button className="danger-link" onClick={()=>void removeLesson(lesson)} title="Xóa">×</button>
-         </div>
-        </div>)}
-        {selectedChapterId===chapter.id&&showNewLessonForm&&<form className="cw-quick-form cw-quick-form-inline" onSubmit={saveLesson}>
-         <input required placeholder="Tên bài học" value={lessonDraft.title} onChange={e=>setLessonDraft({...lessonDraft,title:e.target.value})}/>
-         <input placeholder="Public code" value={lessonDraft.publicCode} onChange={e=>setLessonDraft({...lessonDraft,publicCode:e.target.value})}/>
-         <input required type="number" min="1" placeholder="Thứ tự" value={lessonDraft.orderIndex} onChange={e=>setLessonDraft({...lessonDraft,orderIndex:Number(e.target.value)})}/>
-         <select value={lessonDraft.status} onChange={e=>setLessonDraft({...lessonDraft,status:e.target.value})}>{publishStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select>
-         <div><button className="primary" type="submit">{editingLesson?"Cập nhật":"Thêm bài học"}</button><button type="button" onClick={()=>{setShowNewLessonForm(false);setEditingLesson(null);}}>Hủy</button></div>
-        </form>}
-        <button className="cw-add-row" onClick={()=>{setShowNewChapterForm(false);setShowNewCourseForm(false);setShowNewLessonForm(true);setSelectedChapterId(chapter.id);setSelectedLessonId(null);setLessonDraft({chapterId:chapter.id,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:(allLessonsQuery.data?.[chapter.id]||[]).length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});setEditingLesson(null);}}><Plus size={13}/> Thêm bài học</button>
-       </div>}
+       <span className={`cw-prog-badge ${c.status==="ACTIVE"?"pub":"dft"}`}>{courseStatusLabel(c.status)}</span>
+       {isActive&&<CheckCircle size={15} className="cw-prog-check"/>}
       </div>;
      })}
-     {selectedCourseId&&!showNewChapterForm&&<button className="cw-add-row cw-add-chapter" onClick={()=>{setShowNewCourseForm(false);setShowNewLessonForm(false);setShowNewChapterForm(true);setEditingChapter(null);setChapterDraft({courseId:selectedCourseId,title:"",orderIndex:chapters.length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}><Plus size={13}/> Thêm chương</button>}
+     {!courses.length&&<div className="cw-prog-empty">Chưa có chương trình nào</div>}
     </div>
    </aside>
 
-   <main className="cw-detail">
-    {selectedLesson? <>
-     <nav className="cw-breadcrumb" aria-label="Breadcrumb">{breadcrumb.map((item,index)=><span key={index}><button disabled={!item.onClick||index===breadcrumb.length-1} onClick={item.onClick}>{item.label}</button>{index<breadcrumb.length-1&&<span className="cw-breadcrumb-sep">›</span>}</span>)}</nav>
-     <header className="cw-detail-head">
-      <div>
-       <small className="eyebrow">CHỦ ĐỀ HỌC</small>
-       <h1>{selectedLesson.title}</h1>
-       <p>Thuộc {selectedCourse?.name} · {selectedChapter?`Chương ${selectedChapter.orderIndex}: ${selectedChapter.title}`:""}</p>
+   {/* Cột phải: Khung Canvas liền mạch, thông minh, không vụn */}
+   <main className="cw-canvas">
+    {selectedLesson ? (
+     /* TRƯỜNG HỢP 1: ĐANG CHỌN BÀI HỌC */
+     <>
+      <div className="cw-canvas-header">
+       <div className="cw-canvas-title-area">
+        <nav className="cw-canvas-breadcrumb" aria-label="Breadcrumb">
+         {breadcrumb.map((item,index)=><span key={index}>
+          <button type="button" className={index===breadcrumb.length-1?"current":""} disabled={!item.onClick||index===breadcrumb.length-1} onClick={item.onClick}>{item.label}</button>
+          {index<breadcrumb.length-1&&<span className="sep">/</span>}
+         </span>)}
+        </nav>
+
+        <h1 className="cw-canvas-title" title={selectedLesson.title}>{selectedLesson.title}</h1>
+
+        <div className="cw-smart-meta-bar">
+         <span className="cw-meta-pill primary">Bài {selectedLesson.orderIndex}</span>
+         {selectedLesson.publicCode && <span className="cw-meta-pill">SGK: #{selectedLesson.publicCode}</span>}
+         <span className="cw-meta-dot"/>
+         <span>Chương {selectedChapter?.orderIndex}: <b>{selectedChapter?.title}</b></span>
+         <span className="cw-meta-dot"/>
+         <span>Chủ đề: <b>{questionCountForLesson}</b></span>
+         <span className="cw-meta-dot"/>
+         <span className={`cw-badge ${selectedLesson.status==="PUBLISHED"?"cw-badge-active":"cw-badge-draft"}`}>{statusLabel(selectedLesson.status)}</span>
+        </div>
+       </div>
+
+       <div className="cw-canvas-actions">
+        <button type="button" onClick={()=>{setEditingLesson(selectedLesson);setLessonDraft({chapterId:selectedLesson.chapterId,title:selectedLesson.title,publicCode:selectedLesson.publicCode||"",summary:selectedLesson.summary||"",contentHtml:selectedLesson.contentHtml||"",orderIndex:selectedLesson.orderIndex,status:selectedLesson.status});setShowNewLessonForm(true);}} className="cw-btn-primary">
+         <Edit3 size={14}/> Sửa bài
+        </button>
+        <button type="button" onClick={()=>setDocumentLesson(selectedLesson)} className="cw-btn-outline" title="Quản lý tài liệu học tập">
+         <FileText size={14}/> Tài liệu
+        </button>
+        <button type="button" onClick={()=>setWorksheetLesson(selectedLesson)} className="cw-btn-outline" title="Gắn phiếu bài tập cho bài học">
+         <ClipboardList size={14}/> Phiếu bài
+        </button>
+        <button type="button" onClick={()=>setResourceLesson(selectedLesson)} className="cw-btn-outline" title="Quản lý khối tài nguyên bài giảng">
+         <Database size={14}/> Học liệu
+        </button>
+       </div>
       </div>
-      <div className="cw-detail-actions">
-       <button onClick={()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-worksheets"}))} className="cw-btn-outline"><ClipboardList size={15}/> Soạn phiếu</button>
-       <button onClick={()=>window.dispatchEvent(new CustomEvent("math10:navigate",{detail:"teacher-tasks"}))} className="cw-btn-primary"><Plus size={15}/> Tạo nhiệm vụ</button>
-       <button className="cw-icon-btn" title="Thao tác khác" aria-label="Thao tác khác"><MoreVertical size={16}/></button>
+
+      {selectedLesson.summary && (
+       <p className="cw-lead-text">{selectedLesson.summary}</p>
+      )}
+
+      <nav className="cw-canvas-tabs" role="tablist">
+       <button type="button" role="tab" aria-selected={detailTab==="overview"} className={`cw-canvas-tab ${detailTab==="overview"?"active":""}`} onClick={()=>setDetailTab("overview")}>Lý thuyết & Nội dung bài học</button>
+       <button type="button" role="tab" aria-selected={detailTab==="documents"} className={`cw-canvas-tab ${detailTab==="documents"?"active":""}`} onClick={()=>setDetailTab("documents")}>Tài liệu đính kèm</button>
+       <button type="button" role="tab" aria-selected={detailTab==="questions"} className={`cw-canvas-tab ${detailTab==="questions"?"active":""}`} onClick={()=>setDetailTab("questions")}>Chuyên đề liên quan ({questionCountForLesson})</button>
+      </nav>
+
+      <div className="cw-canvas-body">
+       {detailTab==="overview"&&(
+        <section>
+         {selectedLesson.contentHtml ? (
+          <article className="cw-lesson-preview" dangerouslySetInnerHTML={{__html:katex.renderToString(selectedLesson.contentHtml.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:false})}}/>
+         ) : (
+          <div className="cw-empty-state" style={{padding:"36px 16px"}}>
+           <p>Bài học này chưa có nội dung lý thuyết.</p>
+           <button type="button" className="cw-btn-primary" style={{marginTop:8}} onClick={()=>{setEditingLesson(selectedLesson);setLessonDraft({chapterId:selectedLesson.chapterId,title:selectedLesson.title,publicCode:selectedLesson.publicCode||"",summary:selectedLesson.summary||"",contentHtml:selectedLesson.contentHtml||"",orderIndex:selectedLesson.orderIndex,status:selectedLesson.status});setShowNewLessonForm(true);}}>
+            <Edit3 size={13}/> Soạn thảo lý thuyết ngay
+           </button>
+          </div>
+         )}
+        </section>
+       )}
+
+       {detailTab==="documents"&&(
+        <section style={{display:"flex",flexDirection:"column",gap:12}}>
+         <p style={{margin:0,fontSize:13,color:"#64748b"}}>Phân phối các bài giảng điện tử, video, tệp PDF đính kèm phục vụ học sinh tự học theo bài học này.</p>
+         <div>
+          <button type="button" className="cw-btn-primary" onClick={()=>setDocumentLesson(selectedLesson)}><FileText size={14}/> Mở cửa sổ quản lý tài liệu bài học</button>
+         </div>
+        </section>
+       )}
+
+       {detailTab==="questions"&&(
+        <section style={{display:"flex",flexDirection:"column",gap:12}}>
+         <p style={{margin:0,fontSize:13,color:"#64748b"}}>Chủ đề câu hỏi trong ngân hàng đề tương ứng với bài học:</p>
+         <div className="cw-topic-grid">
+          {topics.map(topic=><div key={topic.id} className="cw-topic-item">
+           <b>{topic.name}</b>
+           <small>{topic.description||"Chưa có mô tả chi tiết"}</small>
+          </div>)}
+         </div>
+        </section>
+       )}
       </div>
-     </header>
-     <section className="cw-info-cards">
-      <article><div className="cw-info-icon"><BookOpen size={18}/></div><small>TRANG SGK</small><b>{selectedLesson.publicCode?`#${selectedLesson.publicCode}`:"Chưa gắn mã"}</b></article>
-      <article><div className="cw-info-icon cw-info-icon-green"><Clock3 size={18}/></div><small>THỜI LƯỢNG</small><b>—</b><small className="cw-info-sub">Cập nhật sau</small></article>
-      <article><div className="cw-info-icon cw-info-icon-orange"><Database size={18}/></div><small>SỐ CÂU HỎI NH</small><b>{questionCountForLesson} chủ đề</b><small className="cw-info-sub">{topics.length} chủ đề Toán đang có</small></article>
-      <article><div className="cw-info-icon cw-info-icon-blue"><BookOpenCheck size={18}/></div><small>TÀI LIỆU LIÊN KẾT</small><b>{selectedLesson.contentHtml?"Đã nội dung":"Chưa có"}</b><small className="cw-info-sub">{selectedLesson.summary?"Đã có tóm tắt":"Chưa có tóm tắt"}</small></article>
-     </section>
-     <article className="cw-description">
-      <header><CircleAlert size={16}/><h3>Mô tả chuyên đề</h3></header>
-      <div>{selectedLesson.summary||selectedLesson.contentHtml?.replace(/<[^>]+>/g,"").slice(0,400)||"Chưa có mô tả cho bài học này. Bổ sung ở khung bên trái."}</div>
-     </article>
-     <nav className="cw-detail-tabs" role="tablist">
-      <button role="tab" aria-selected={detailTab==="overview"} className={detailTab==="overview"?"active":""} onClick={()=>setDetailTab("overview")}>Tổng quan</button>
-      <button role="tab" aria-selected={detailTab==="questions"} className={detailTab==="questions"?"active":""} onClick={()=>setDetailTab("questions")}>Câu hỏi</button>
-      <button role="tab" aria-selected={detailTab==="documents"} className={detailTab==="documents"?"active":""} onClick={()=>setDetailTab("documents")}>Tài liệu</button>
-      <button role="tab" aria-selected={detailTab==="results"} className={detailTab==="results"?"active":""} onClick={()=>setDetailTab("results")}>Kết quả lớp</button>
-     </nav>
-     {detailTab==="overview"&&<section className="cw-overview">
-      <ClassResultsView session={session}/>
-     </section>}
-     {detailTab==="questions"&&<section className="cw-questions">
-      <p className="muted-copy">Các chủ đề Toán có thể gắn với bài học này. Mở tab <b>Ngân hàng câu hỏi</b> ở trên để tạo câu hỏi cho từng chủ đề.</p>
-      <div className="cw-topic-grid">{topics.map(topic=><article key={topic.id}><b>{topic.name}</b><small>{topic.description||"Chưa có mô tả"}</small></article>)}</div>
-     </section>}
-     {detailTab==="documents"&&<section className="cw-documents">
-      <p className="muted-copy">Quản lý tài liệu trong mục <b>Sách giáo khoa</b> hoặc qua nút <b>Tài liệu</b> của từng bài học trong cây chương trình.</p>
-      {selectedLesson.contentHtml&&<article className="cw-lesson-preview" dangerouslySetInnerHTML={{__html:katex.renderToString(selectedLesson.contentHtml.replace(/^\$|\$$/g,""),{throwOnError:false,displayMode:false})}}/>}
-     </section>}
-     {detailTab==="results"&&<section className="cw-results"><ClassResultsView session={session}/></section>}
-    </> : <div className="cw-empty"><h2>Chọn một bài học</h2><p>Bấm vào node trong cây chương trình bên trái để xem chi tiết, câu hỏi và kết quả các lớp.</p></div>}
+     </>
+    ) : selectedChapter ? (
+     /* TRƯỜNG HỢP 2: ĐANG CHỌN CHƯƠNG */
+     <>
+      <div className="cw-canvas-header">
+       <div className="cw-canvas-title-area">
+        <nav className="cw-canvas-breadcrumb" aria-label="Breadcrumb">
+         {breadcrumb.map((item,index)=><span key={index}>
+          <button type="button" className={index===breadcrumb.length-1?"current":""} disabled={!item.onClick||index===breadcrumb.length-1} onClick={item.onClick}>{item.label}</button>
+          {index<breadcrumb.length-1&&<span className="sep">/</span>}
+         </span>)}
+        </nav>
+
+        <h1 className="cw-canvas-title" title={`Chương ${selectedChapter.orderIndex}: ${selectedChapter.title}`}>Chương {selectedChapter.orderIndex}: {selectedChapter.title}</h1>
+
+        <div className="cw-smart-meta-bar">
+         <span className="cw-meta-pill primary">Chương {selectedChapter.orderIndex}</span>
+         <span className="cw-meta-dot"/>
+         <span>Thuộc: <b>{selectedCourse?.name}</b></span>
+         <span className="cw-meta-dot"/>
+         <span>Số bài học: <b>{(allLessonsQuery.data?.[selectedChapter.id]||[]).length} bài</b></span>
+         <span className="cw-meta-dot"/>
+         <span className={`cw-badge ${selectedChapter.status==="PUBLISHED"?"cw-badge-active":"cw-badge-draft"}`}>{statusLabel(selectedChapter.status)}</span>
+        </div>
+       </div>
+
+       <div className="cw-canvas-actions">
+        <button type="button" className="cw-btn-primary" onClick={()=>{setShowNewLessonForm(true);setEditingLesson(null);setLessonDraft({chapterId:selectedChapter.id,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:(allLessonsQuery.data?.[selectedChapter.id]||[]).length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}>
+         <Plus size={14}/> Thêm bài học
+        </button>
+        <button type="button" className="cw-btn-outline" onClick={()=>{setEditingChapter(selectedChapter);setChapterDraft({courseId:selectedChapter.courseId,title:selectedChapter.title,orderIndex:selectedChapter.orderIndex,status:selectedChapter.status});setShowNewChapterForm(true);}}>
+         <Edit3 size={14}/> Sửa chương
+        </button>
+        <button type="button" className="cw-btn-danger" onClick={()=>void removeChapter(selectedChapter)}>
+         Xóa chương
+        </button>
+       </div>
+      </div>
+
+      <div className="cw-canvas-body">
+       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#334155"}}>DANH SÁCH BÀI HỌC ({(allLessonsQuery.data?.[selectedChapter.id]||[]).length})</span>
+        <button type="button" className="cw-btn-outline" style={{height:28,fontSize:11.5}} onClick={()=>{setShowNewLessonForm(true);setEditingLesson(null);setLessonDraft({chapterId:selectedChapter.id,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:(allLessonsQuery.data?.[selectedChapter.id]||[]).length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}>
+         <Plus size={12}/> Thêm bài
+        </button>
+       </div>
+
+       {!(allLessonsQuery.data?.[selectedChapter.id]||[]).length ? (
+        <div className="cw-empty-state" style={{padding:"36px 16px"}}>
+         <p>Chương này chưa có bài học nào.</p>
+         <button type="button" className="cw-btn-primary" style={{marginTop:8}} onClick={()=>{setShowNewLessonForm(true);setEditingLesson(null);setLessonDraft({chapterId:selectedChapter.id,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}>
+          <Plus size={13}/> Tạo bài học đầu tiên
+         </button>
+        </div>
+       ) : (
+        <div className="cw-clean-table-wrap">
+         <table className="cw-clean-table">
+          <thead>
+           <tr>
+            <th style={{width:65}}>THỨ TỰ</th>
+            <th>TÊN BÀI HỌC</th>
+            <th style={{width:105}}>MÃ SGK</th>
+            <th style={{width:115}}>TRẠNG THÁI</th>
+            <th style={{width:215,textAlign:"right"}}>THAO TÁC</th>
+           </tr>
+          </thead>
+          <tbody>
+           {(allLessonsQuery.data?.[selectedChapter.id]||[]).map(l=><tr key={l.id}>
+            <td style={{fontWeight:600,color:"#64748b"}}>Bài {l.orderIndex}</td>
+            <td>
+             <button type="button" className="row-title-btn" onClick={()=>setSelectedLessonId(l.id)} title={l.title}>{l.title}</button>
+            </td>
+            <td style={{fontFamily:"var(--font-mono, monospace)",fontSize:12}}>{l.publicCode?`#${l.publicCode}`:"—"}</td>
+            <td><span className={`cw-badge ${l.status==="PUBLISHED"?"cw-badge-active":"cw-badge-draft"}`}>{statusLabel(l.status)}</span></td>
+            <td className="col-actions">
+             <div className="cw-table-actions">
+              <button type="button" className="cw-btn-outline" onClick={()=>setSelectedLessonId(l.id)}>Xem</button>
+              <button type="button" className="cw-btn-outline" onClick={()=>setDocumentLesson(l)}>Tài liệu</button>
+              <button type="button" className="cw-btn-outline" onClick={()=>{setEditingLesson(l);setLessonDraft({chapterId:l.chapterId,title:l.title,publicCode:l.publicCode||"",summary:l.summary||"",contentHtml:l.contentHtml||"",orderIndex:l.orderIndex,status:l.status});setShowNewLessonForm(true);}}>Sửa</button>
+              <button type="button" className="cw-btn-danger" onClick={()=>void removeLesson(l)}>Xóa</button>
+             </div>
+            </td>
+           </tr>)}
+          </tbody>
+         </table>
+        </div>
+       )}
+      </div>
+     </>
+    ) : selectedCourse ? (
+     /* TRƯỜNG HỢP 3: ĐANG CHỌN CHƯƠNG TRÌNH HỌC */
+     <>
+      <div className="cw-canvas-header">
+       <div className="cw-canvas-title-area">
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.05em",color:"#64748b",textTransform:"uppercase"}}>CHƯƠNG TRÌNH ĐÀO TẠO</div>
+        <h1 className="cw-canvas-title" title={selectedCourse.name}>{selectedCourse.name}</h1>
+
+        <div className="cw-smart-meta-bar">
+         <span className="cw-meta-pill primary">Mã: {selectedCourse.code}</span>
+         <span className="cw-meta-dot"/>
+         <span>Tổng số: <b>{chapters.length} chương</b></span>
+         <span className="cw-meta-dot"/>
+         <span>Tổng số bài: <b>{chapters.reduce((sum,c)=>sum+((allLessonsQuery.data?.[c.id]||[]).length),0)} bài học</b></span>
+         <span className="cw-meta-dot"/>
+         <span className={`cw-badge ${selectedCourse.status==="ACTIVE"?"cw-badge-active":"cw-badge-draft"}`}>{courseStatusLabel(selectedCourse.status)}</span>
+        </div>
+       </div>
+
+       <div className="cw-canvas-actions">
+        <button type="button" className="cw-btn-primary" onClick={()=>{setShowNewChapterForm(true);setEditingChapter(null);setChapterDraft({courseId:selectedCourse.id,title:"",orderIndex:chapters.length+1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}>
+         <Plus size={14}/> Thêm chương
+        </button>
+        <button type="button" className="cw-btn-outline" onClick={()=>setBulkImport(true)}>
+         <FileText size={14}/> Nạp nhanh
+        </button>
+        <button type="button" className="cw-btn-outline" onClick={()=>setShowPpctImportModal(true)}>
+         <FileText size={14}/> PPCT
+        </button>
+        <button type="button" className="cw-btn-outline" onClick={()=>setShowPhanPhoiTiet(true)}>
+         <LayoutList size={14}/> Phân phối tiết
+        </button>
+        <button type="button" className="cw-btn-outline" onClick={()=>{setEditingCourse(selectedCourse);setCourseDraft({code:selectedCourse.code,name:selectedCourse.name,description:selectedCourse.description||"",status:selectedCourse.status});setShowNewCourseForm(true);}}>
+         <Edit3 size={14}/> Sửa
+        </button>
+        <button type="button" className="cw-btn-danger" onClick={()=>void removeCourse(selectedCourse)}>
+         Xóa
+        </button>
+       </div>
+      </div>
+
+      {selectedCourse.description && (
+       <p className="cw-lead-text">{selectedCourse.description}</p>
+      )}
+
+      <div className="cw-canvas-body">
+       <span style={{fontSize:13,fontWeight:700,color:"#334155"}}>DANH MỤC CÁC CHƯƠNG ({chapters.length})</span>
+
+
+       {!chapters.length ? (
+        <div className="cw-empty-state" style={{padding:"36px 16px"}}>
+         <p>Chương trình chưa có chương nào. Bạn có thể thêm chương mới hoặc nạp nhanh hàng loạt.</p>
+         <div style={{display:"flex",gap:8,marginTop:8}}>
+          <button type="button" className="cw-btn-primary" onClick={()=>setBulkImport(true)}><FileText size={13}/> Nhập hàng loạt</button>
+          <button type="button" className="cw-btn-outline" onClick={()=>{setShowNewChapterForm(true);setEditingChapter(null);setChapterDraft({courseId:selectedCourse.id,title:"",orderIndex:1,status:firstMetadataValue(metadata,"publishStatuses")||"DRAFT"});}}><Plus size={13}/> Thêm chương</button>
+         </div>
+        </div>
+       ) : (
+        <div className="cw-clean-table-wrap">
+         <table className="cw-clean-table">
+          <thead>
+           <tr>
+            <th style={{width:80}}>THỨ TỰ</th>
+            <th>TÊN CHƯƠNG</th>
+            <th style={{width:110}}>SỐ BÀI HỌC</th>
+            <th style={{width:115}}>TRẠNG THÁI</th>
+            <th style={{width:190,textAlign:"right"}}>THAO TÁC</th>
+           </tr>
+          </thead>
+          <tbody>
+           {chapters.map(c=><tr key={c.id}>
+            <td style={{fontWeight:600,color:"#64748b"}}>Chương {c.orderIndex}</td>
+            <td>
+             <button type="button" className="row-title-btn" onClick={()=>setSelectedChapterId(c.id)} title={c.title}>{c.title}</button>
+            </td>
+            <td>{(allLessonsQuery.data?.[c.id]||[]).length} bài</td>
+            <td><span className={`cw-badge ${c.status==="PUBLISHED"?"cw-badge-active":"cw-badge-draft"}`}>{statusLabel(c.status)}</span></td>
+            <td className="col-actions">
+             <div className="cw-table-actions">
+              <button type="button" className="cw-btn-outline" onClick={()=>setSelectedChapterId(c.id)}>Mở xem</button>
+              <button type="button" className="cw-btn-outline" onClick={()=>{setEditingChapter(c);setChapterDraft({courseId:c.courseId,title:c.title,orderIndex:c.orderIndex,status:c.status});setShowNewChapterForm(true);}}>Sửa</button>
+              <button type="button" className="cw-btn-danger" onClick={()=>void removeChapter(c)}>Xóa</button>
+             </div>
+            </td>
+           </tr>)}
+          </tbody>
+         </table>
+        </div>
+       )}
+      </div>
+     </>
+    ) : (
+     /* TRƯỜNG HỢP 4: CHƯA CHỌN CHƯƠNG TRÌNH */
+     <div className="cw-empty-state">
+      <h3>Chưa chọn chương trình học</h3>
+      <p>Chọn một chương trình học ở thanh bên trái hoặc tạo chương trình mới để bắt đầu quản trị.</p>
+      <div style={{marginTop:12}}>
+       <button type="button" className="cw-btn-primary" onClick={()=>{setEditingCourse(null);setCourseDraft(emptyCourse(metadata));setShowNewCourseForm(true);}}>
+        <Plus size={14}/> Tạo chương trình mới
+       </button>
+      </div>
+     </div>
+    )}
    </main>
   </div>
+
+  {/* MODAL TẠO/SỬA CHƯƠNG TRÌNH */}
+  {showNewCourseForm && (
+   <div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowNewCourseForm(false)}}>
+    <div className="km-dialog" style={{width:"min(520px, 95vw)"}}>
+     <div className="km-dialog-head">
+      <div>
+       <div className="km-eyebrow">{editingCourse?"CHỈNH SỬA CHƯƠNG TRÌNH":"THIẾT LẬP MỚI"}</div>
+       <h3 className="km-dialog-title">{editingCourse?"Cập nhật chương trình":"Tạo chương trình đào tạo mới"}</h3>
+      </div>
+      <button type="button" className="km-close-btn" onClick={()=>{setShowNewCourseForm(false);setEditingCourse(null);setCourseDraft(emptyCourse(metadata));}}>✕</button>
+     </div>
+     <form onSubmit={saveCourse}>
+      <div className="km-dialog-body">
+       <div className="km-field">
+        <span className="km-field-label">MÃ CHƯƠNG TRÌNH</span>
+        <input required className="km-field-input" placeholder="Ví dụ: TOAN10_KNTT" maxLength={50} value={courseDraft.code} onChange={e=>setCourseDraft({...courseDraft,code:e.target.value})}/>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">TÊN CHƯƠNG TRÌNH HỌC</span>
+        <input required className="km-field-input" placeholder="Ví dụ: Toán 10 — Kết nối tri thức" maxLength={255} value={courseDraft.name} onChange={e=>setCourseDraft({...courseDraft,name:e.target.value})}/>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">MÔ TẢ TỔNG QUAN</span>
+        <textarea className="km-field-input" style={{minHeight:65,resize:"vertical"}} placeholder="Mô tả tóm lược về chương trình học này…" value={courseDraft.description} onChange={e=>setCourseDraft({...courseDraft,description:e.target.value})}/>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">TRẠNG THÁI</span>
+        <select className="km-field-input" value={courseDraft.status} onChange={e=>setCourseDraft({...courseDraft,status:e.target.value})}>
+         {courseStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+       </div>
+      </div>
+      <div className="km-dialog-foot">
+       <button type="button" className="km-btn-ghost" onClick={()=>{setShowNewCourseForm(false);setEditingCourse(null);setCourseDraft(emptyCourse(metadata));}}>Hủy</button>
+       <button type="submit" className="km-btn-primary">{editingCourse?"Lưu thay đổi":"Tạo chương trình"}</button>
+      </div>
+     </form>
+    </div>
+   </div>
+  )}
+
+  {/* MODAL TẠO/SỬA CHƯƠNG */}
+  {showNewChapterForm && (
+   <div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowNewChapterForm(false)}}>
+    <div className="km-dialog" style={{width:"min(520px, 95vw)"}}>
+     <div className="km-dialog-head">
+      <div>
+       <div className="km-eyebrow">{editingChapter?"CHỈNH SỬA CHƯƠNG":"THÊM CHƯƠNG MỚI"}</div>
+       <h3 className="km-dialog-title">{editingChapter?"Cập nhật chương":"Thêm chương vào chương trình"}</h3>
+      </div>
+      <button type="button" className="km-close-btn" onClick={()=>{setShowNewChapterForm(false);setEditingChapter(null);}}>✕</button>
+     </div>
+     <form onSubmit={saveChapter}>
+      <div className="km-dialog-body">
+       <div className="km-field">
+        <span className="km-field-label">TÊN CHƯƠNG</span>
+        <input required className="km-field-input" placeholder="Ví dụ: Mệnh đề và tập hợp" value={chapterDraft.title} onChange={e=>setChapterDraft({...chapterDraft,title:e.target.value})}/>
+       </div>
+       <div className="km-field-row">
+        <div className="km-field">
+         <span className="km-field-label">THỨ TỰ HIỂN THỊ</span>
+         <input required type="number" min="1" className="km-field-input" value={chapterDraft.orderIndex} onChange={e=>setChapterDraft({...chapterDraft,orderIndex:Number(e.target.value)})}/>
+        </div>
+        <div className="km-field">
+         <span className="km-field-label">TRẠNG THÁI</span>
+         <select className="km-field-input" value={chapterDraft.status} onChange={e=>setChapterDraft({...chapterDraft,status:e.target.value})}>
+          {publishStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+         </select>
+        </div>
+       </div>
+      </div>
+      <div className="km-dialog-foot">
+       <button type="button" className="km-btn-ghost" onClick={()=>{setShowNewChapterForm(false);setEditingChapter(null);}}>Hủy</button>
+       <button type="submit" className="km-btn-primary">{editingChapter?"Lưu thay đổi":"Thêm chương"}</button>
+      </div>
+     </form>
+    </div>
+   </div>
+  )}
+
+  {/* MODAL TẠO/SỬA BÀI HỌC */}
+  {showNewLessonForm && (
+   <div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowNewLessonForm(false)}}>
+    <div className="km-dialog" style={{width:"min(620px, 95vw)"}}>
+     <div className="km-dialog-head">
+      <div>
+       <div className="km-eyebrow">{editingLesson?"CHỈNH SỬA BÀI HỌC":"THÊM BÀI HỌC MỚI"}</div>
+       <h3 className="km-dialog-title">{editingLesson?"Cập nhật bài học":"Soạn thảo bài học mới"}</h3>
+      </div>
+      <button type="button" className="km-close-btn" onClick={()=>{setShowNewLessonForm(false);setEditingLesson(null);}}>✕</button>
+     </div>
+     <form onSubmit={saveLesson}>
+      <div className="km-dialog-body">
+       <div className="km-field">
+        <span className="km-field-label">TÊN BÀI HỌC</span>
+        <input required className="km-field-input" placeholder="Ví dụ: Mệnh đề toán học" value={lessonDraft.title} onChange={e=>setLessonDraft({...lessonDraft,title:e.target.value})}/>
+       </div>
+       <div className="km-field-row">
+        <div className="km-field">
+         <span className="km-field-label">MÃ SGK / ĐỊNH DANH BÀI</span>
+         <input className="km-field-input" placeholder="Ví dụ: 12-15" value={lessonDraft.publicCode} onChange={e=>setLessonDraft({...lessonDraft,publicCode:e.target.value})}/>
+        </div>
+        <div className="km-field">
+         <span className="km-field-label">THỨ TỰ BÀI TRONG CHƯƠNG</span>
+         <input required type="number" min="1" className="km-field-input" value={lessonDraft.orderIndex} onChange={e=>setLessonDraft({...lessonDraft,orderIndex:Number(e.target.value)})}/>
+        </div>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">TRẠNG THÁI XUẤT BẢN</span>
+        <select className="km-field-input" value={lessonDraft.status} onChange={e=>setLessonDraft({...lessonDraft,status:e.target.value})}>
+         {publishStatusOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">TÓM TẮT BÀI HỌC</span>
+        <textarea className="km-field-input" style={{minHeight:55,resize:"vertical"}} placeholder="Tóm tắt ngắn gọn mục tiêu, nội dung trọng tâm của bài học…" value={lessonDraft.summary} onChange={e=>setLessonDraft({...lessonDraft,summary:e.target.value})}/>
+       </div>
+       <div className="km-field">
+        <span className="km-field-label">NỘI DUNG LÝ THUYẾT (HỖ TRỢ HTML & CÔNG THỨC KATEX $...$)</span>
+        <textarea className="km-field-input" style={{minHeight:100,resize:"vertical",fontFamily:"var(--font-mono, monospace)",fontSize:12.5}} placeholder="Nhập nội dung bài giảng lý thuyết, ví dụ định lý $a^2 + b^2 = c^2$..." value={lessonDraft.contentHtml} onChange={e=>setLessonDraft({...lessonDraft,contentHtml:e.target.value})}/>
+       </div>
+      </div>
+      <div className="km-dialog-foot">
+       <button type="button" className="km-btn-ghost" onClick={()=>{setShowNewLessonForm(false);setEditingLesson(null);}}>Hủy</button>
+       <button type="submit" className="km-btn-primary">{editingLesson?"Lưu thay đổi":"Tạo bài học"}</button>
+      </div>
+     </form>
+    </div>
+   </div>
+  )}
+
+  {/* Modal nạp hàng loạt Chương/Bài */}
+  {bulkImport && selectedCourse && (
+   <BulkChapterImport
+    session={session}
+    course={selectedCourse}
+    chapters={chapters}
+    metadata={metadata}
+    onDone={()=>{setBulkImport(false);invalidateAll();}}
+    onClose={()=>setBulkImport(false)}
+   />
+  )}
+
+  {/* Modal quản lý tài liệu liên kết bài học */}
+  {documentLesson && (
+   <LessonDocumentManager
+    session={session}
+    lesson={documentLesson}
+    onClose={()=>setDocumentLesson(null)}
+   />
+  )}
+
+  {/* Modal gắn phiếu bài tập */}
+  {worksheetLesson && (
+   <LessonWorksheetManager
+    session={session}
+    lesson={worksheetLesson}
+    onClose={()=>setWorksheetLesson(null)}
+   />
+  )}
+
+  {/* Modal khối nội dung */}
+  {resourceLesson && (
+   <ResourceManager
+    session={session}
+    lesson={resourceLesson}
+    onClose={()=>setResourceLesson(null)}
+   />
+  )}
+
+  {/* Modal phân tách PPCT */}
+  {selectedCourseId && selectedCourse && (
+   <PpctCauTrucModal
+    session={session}
+    programId={selectedCourseId}
+    programName={selectedCourse.name}
+    isOpen={showPpctImportModal}
+    onClose={()=>setShowPpctImportModal(false)}
+    onSuccess={(courseId)=>{invalidateAll();if(courseId)setSelectedCourseId(courseId);}}
+   />
+  )}
+
+  {/* Modal nhập PPCT thật → phân phối tiết vào mạch (PP-7) */}
+  {showPhanPhoiTiet && selectedCourseId && selectedCourse && (
+   <PhanPhoiTietDialog
+    session={session}
+    programId={selectedCourseId}
+    programName={selectedCourse.name}
+    onClose={()=>setShowPhanPhoiTiet(false)}
+    onDone={()=>{setShowPhanPhoiTiet(false);invalidateAll();}}
+   />
+  )}
  </section>;
+}
+
+/**
+ * PP-7 — nhập PPCT thật (PDF hoặc Excel, một đường) rồi phân phối tiết vào mạch.
+ * Server tách bảng + suy mạch; panel chỉ hiện bản nháp cho admin sửa chỗ máy đoán chưa chắc.
+ * Luật ghi (đụng dòng nhập tay, giữ id tiết cũ) ở máy chủ — panel gửi cả hàng đã sửa rồi hiện lại câu trả lời.
+ */
+function PhanPhoiTietDialog({session,programId,programName,onClose,onDone}:{session:AuthSession;programId:number;programName:string;onClose:()=>void;onDone:()=>void}){
+ const strandsQuery=useQuery({queryKey:["ppct-strands",session.accessToken,programId],queryFn:()=>getProgramStrands(session,programId)});
+ const strands=strandsQuery.data??[];
+ const tongTiet=strands.reduce((n,s)=>n+s.so_tiet,0);
+ const tongTuan=strands.reduce((n,s)=>Math.max(n,s.tuan_cuoi??0),0);
+
+ const [draft,setDraft]=useState<PpctPreview|null>(null);
+ const [rows,setRows]=useState<PpctRow[]>([]);
+ const [daDuyet,setDaDuyet]=useState<Set<number>>(new Set());
+ const [busy,setBusy]=useState(false);
+ const [error,setError]=useState("");
+ const [ketQua,setKetQua]=useState<{soMach:number;soTiet:number;soTuan:number}|null>(null);
+
+ const PHAN_LOAI=[["BAI_MOI","Bài mới"],["ON_TAP","Ôn tập"],["KIEM_TRA","Kiểm tra"],["THUC_HANH","Thực hành"]] as const;
+
+ const machOptions=useMemo(()=>{
+  const m=new Map<string,string>();
+  for(const s of strands)m.set(s.code,s.name);
+  for(const r of draft?.dong??[])if(!m.has(r.maMach))m.set(r.maMach,r.tenMach);
+  return [...m.entries()];
+ },[strands,draft]);
+
+ const upload=async(file:File)=>{
+  setBusy(true);setError("");
+  try{
+   const preview=await uploadPpctPreview(session,programId,file);
+   setDraft(preview);setRows(preview.dong.map(r=>({...r})));setDaDuyet(new Set());setKetQua(null);
+  }catch(e){setError(messageOf(e));}finally{setBusy(false);}
+ };
+ const chonTepKhac=()=>{setDraft(null);setRows([]);setDaDuyet(new Set());setError("");setKetQua(null);};
+
+ const patch=(i:number,p:Partial<PpctRow>)=>setRows(rs=>rs.map((r,idx)=>idx===i?{...r,...p}:r));
+ const duyet=(i:number)=>setDaDuyet(s=>{const n=new Set(s);n.add(i);return n;});
+
+ const sig=(r:PpctRow)=>`${r.maMach}|${r.hocKy}|${r.soTiet}`;
+ const trung=useMemo(()=>{
+  const seen=new Set<string>(),dup=new Set<string>();
+  for(const r of rows){const k=sig(r);if(seen.has(k))dup.add(k);seen.add(k);}
+  return dup;
+ },[rows]);
+ const canhBaoCua=(r:PpctRow,i:number)=>{
+  const list:string[]=[];
+  if(r.canhBao.length>0&&!daDuyet.has(i))list.push(...r.canhBao);
+  if(trung.has(sig(r)))list.push(`Trùng tiết ${r.soTiet} (HK${r.hocKy}) trong mạch ${r.maMach}`);
+  return list;
+ };
+ const dongVuong=(r:PpctRow,i:number)=>{
+  if(!r.maMach.trim()||!r.tenMach.trim()||!r.tieuDe.trim())return true;
+  if(r.soTiet<1||r.tuan<1||r.hocKy<1||r.hocKy>2)return true;
+  if(trung.has(sig(r)))return true;
+  if(r.canhBao.length>0&&!daDuyet.has(i))return true;
+  return false;
+ };
+ const soVuong=rows.filter((r,i)=>dongVuong(r,i)).length;
+
+ const xacNhan=async()=>{
+  if(!draft||soVuong>0)return;
+  setBusy(true);setError("");
+  try{
+   setKetQua(await confirmPpct(session,programId,{objectKey:draft.objectKey,dong:rows}));
+  }catch(e){setError(messageOf(e));}finally{setBusy(false);}
+ };
+
+ return <div className="dialog-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose();}}>
+  <section className="dialog-card resource-dialog" style={{width:"min(1040px,100%)"}}>
+   <div className="panel-head"><div><p className="eyebrow">PHÂN PHỐI CHƯƠNG TRÌNH</p><h2>Nhập PPCT · {programName}</h2></div><button onClick={onClose} disabled={busy}>Đóng</button></div>
+
+   {error&&<div className="api-error">{error}</div>}
+
+   {ketQua?(
+    <div style={{textAlign:"center",padding:"28px 12px"}}>
+     <CheckCircle size={40} style={{color:"#16a34a"}}/>
+     <h3 style={{margin:"12px 0 4px"}}>Đã phân phối theo PPCT</h3>
+     <p style={{color:"var(--muted)"}}>{ketQua.soMach} mạch · {ketQua.soTiet} tiết · {ketQua.soTuan} tuần</p>
+     <div className="row-actions" style={{justifyContent:"center"}}><button className="primary" onClick={onDone}>Xong</button></div>
+    </div>
+   ):!draft?(
+    <>
+     <p>Chọn tệp PPCT (Word, PDF hoặc Excel). Hệ thống tự tách bảng, suy mạch cho từng tiết để bạn xem trước và sửa.</p>
+     <div className="live-row"><div>
+      <b>Phân phối hiện tại</b>
+      {strandsQuery.isLoading?<small>Đang tải…</small>
+       :strands.length?<small>{strands.length} mạch · {tongTiet} tiết · {tongTuan} tuần</small>
+       :<small>Chưa phân phối.</small>}
+     </div></div>
+     <label style={{display:"inline-flex",marginTop:14,padding:"9px 16px",borderRadius:8,background:"var(--primary)",color:"#fff",fontWeight:600,cursor:busy?"progress":"pointer"}}>
+      <input type="file" accept=".docx,.pdf,.xlsx,.xls" style={{display:"none"}} disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f);e.currentTarget.value="";}}/>
+      {busy?"Đang đọc tệp…":"Chọn tệp PPCT"}
+     </label>
+    </>
+   ):draft.trangThai==="UNSUPPORTED_SCAN"?(
+    <>
+     <div className="api-error">{draft.thongDiep}</div>
+     <div className="row-actions"><button type="button" onClick={chonTepKhac}>Chọn tệp khác</button></div>
+    </>
+   ):(
+    <>
+     <div style={{display:"flex",gap:16,alignItems:"center",fontSize:13,margin:"6px 0 10px"}}>
+      <span>{draft.thongDiep}</span>
+      <span style={{color:soVuong?"#dc2626":"#16a34a",fontWeight:600}}>{soVuong} dòng cần xử lý</span>
+     </div>
+     <div style={{overflowX:"auto",border:"1px solid var(--line)",borderRadius:8}}>
+      <table className="cw-clean-table" style={{minWidth:900}}>
+       <thead><tr>
+        <th style={{width:52}}>Tuần</th><th style={{width:48}}>Tiết</th><th style={{width:44}}>HK</th>
+        <th style={{width:160}}>Mạch</th><th style={{width:120}}>Phân loại</th><th>Tiêu đề</th><th style={{width:140}}>Máy đoán</th>
+       </tr></thead>
+       <tbody>
+        {rows.map((r,i)=>{
+         const cb=canhBaoCua(r,i);
+         return <tr key={r.chiSo} style={dongVuong(r,i)?{background:"#fef2f2"}:undefined}>
+          <td><input type="number" className="km-input-date" value={r.tuan} onChange={e=>patch(i,{tuan:Number(e.target.value)||0})}/></td>
+          <td><input type="number" className="km-input-date" value={r.soTiet} onChange={e=>patch(i,{soTiet:Number(e.target.value)||0})}/></td>
+          <td><input type="number" className="km-input-date" value={r.hocKy} onChange={e=>patch(i,{hocKy:Number(e.target.value)||0})}/></td>
+          <td><select className="km-input-date" value={r.maMach} onChange={e=>{const c=e.target.value;const n=machOptions.find(([code])=>code===c)?.[1]??c;patch(i,{maMach:c,tenMach:n});duyet(i);}}>
+           {machOptions.map(([code,name])=><option key={code} value={code}>{name}</option>)}
+          </select></td>
+          <td><select className="km-input-date" value={r.phanLoai} onChange={e=>patch(i,{phanLoai:e.target.value})}>
+           {PHAN_LOAI.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+          </select></td>
+          <td><input className="km-input-date" value={r.tieuDe} onChange={e=>patch(i,{tieuDe:e.target.value})}/></td>
+          <td style={{fontSize:11.5}}>
+           <span className={r.doTinCay==="CAO"?"km-time-pill km-time-cur":r.doTinCay==="VUA"?"km-time-pill km-time-up":"km-time-pill km-time-none"}>{r.doTinCay}</span>
+           {r.canhBao.length>0&&<label style={{display:"flex",gap:4,marginTop:4,color:"#b45309",alignItems:"center"}}>
+            <input type="checkbox" checked={daDuyet.has(i)} onChange={()=>setDaDuyet(s=>{const n=new Set(s);n.has(i)?n.delete(i):n.add(i);return n;})}/> đã kiểm
+           </label>}
+          </td>
+         </tr>;
+        })}
+       </tbody>
+      </table>
+     </div>
+     {rows.some((r,i)=>canhBaoCua(r,i).length>0)&&<ul style={{margin:"10px 0 0",paddingLeft:18,fontSize:12,color:"#b45309"}}>
+      {rows.flatMap((r,i)=>canhBaoCua(r,i).map((c,j)=><li key={`${i}-${j}`}>Tuần {r.tuan} · tiết {r.soTiet}: {c}</li>))}
+     </ul>}
+     <div className="row-actions">
+      <button type="button" onClick={chonTepKhac} disabled={busy}>Chọn tệp khác</button>
+      <button className="primary" onClick={()=>void xacNhan()} disabled={busy||soVuong>0}>{busy?"Đang phân phối…":soVuong>0?`Còn ${soVuong} dòng cần xử lý`:"Xác nhận & phân phối"}</button>
+     </div>
+    </>
+   )}
+  </section>
+ </div>;
+}
+
+function PpctStrandTree({strand}:{strand:ProgramImportStrand}){
+ const [expanded,setExpanded]=useState(false);
+ const [chapters,setChapters]=useState<Set<number>>(new Set());
+ return <div className="cw-chapter">
+  <div className="cw-chapter-row">
+   <button type="button" className="cw-chevron" onClick={()=>setExpanded(x=>!x)}>{expanded?<ChevronDown size={14}/>:<ChevronRight size={14}/>}</button>
+   <button type="button" className="cw-chapter-main" onClick={()=>setExpanded(x=>!x)}><span className="cw-icon"><LibraryBig size={14}/></span><span className="cw-chapter-title">{strand.name}</span><span className="cw-count-badge">{strand.totalPeriods} tiết · {strand.chapters.reduce((n,c)=>n+c.lessons.length,0)} bài</span></button>
+  </div>
+  {expanded&&<div className="cw-lessons">{strand.chapters.map((chapter,index)=>{const opened=chapters.has(index);return <div key={`${chapter.numeral}-${index}`}>
+   <div className="cw-chapter-row" style={{paddingLeft:14}}><button type="button" className="cw-chevron" onClick={()=>setChapters(old=>{const next=new Set(old);next.has(index)?next.delete(index):next.add(index);return next})}>{opened?<ChevronDown size={13}/>:<ChevronRight size={13}/>}</button><button type="button" className="cw-chapter-main" onClick={()=>setChapters(old=>{const next=new Set(old);next.has(index)?next.delete(index):next.add(index);return next})}><span className="cw-chapter-title">{chapter.numeral?`Chương ${chapter.numeral} · `:""}{chapter.name||"Không thuộc chương"}</span><span className="cw-count-badge">{chapter.totalPeriods} tiết</span></button></div>
+   {opened&&<div className="cw-lessons">{chapter.lessons.map(lesson=><div className="cw-lesson" key={lesson.normalizedName}><div className="cw-lesson-main"><span className="cw-dot"/><span className="cw-lesson-title">{lesson.name}</span><span className="cw-lesson-code">{lesson.totalPeriods} tiết · tuần {lesson.firstWeek===lesson.lastWeek?lesson.firstWeek:`${lesson.firstWeek}–${lesson.lastWeek}`}</span></div></div>)}</div>}
+  </div>})}</div>}
+ </div>;
 }
 
 function messageOf(reason: unknown) {

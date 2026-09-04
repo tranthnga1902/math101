@@ -69,11 +69,11 @@ public class ProgramStructureController {
     public ApiResponse<Void> deleteExerciseType(@PathVariable Long id) { ExerciseType row=exerciseTypes.findById(id).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy dạng bài"));exerciseTypes.delete(row);return ApiResponse.ok("Đã xoá dạng bài",null); }
 
     private Course program(Long id){return programs.findById(id).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy chương trình"));}
-    private void apply(Course row,ProgramRequest x){row.setCode(x.code());row.setName(x.name());row.setDescription(x.description());row.setStatus(x.status()==null?CourseStatus.DRAFT:x.status());}
+    private void apply(Course row,ProgramRequest x){row.setCode(x.code());row.setName(x.name());row.setDescription(x.description());row.setBookSeriesId(x.bookSeriesId());row.setStatus(x.status()==null?CourseStatus.DRAFT:x.status());}
     private void apply(ExerciseType row,ExerciseTypeRequest x){row.setName(x.name());row.setDescription(x.description());row.setOrderIndex(x.orderIndex());row.setStatus(x.status()==null?PublishStatus.DRAFT:x.status());}
 
-    public record ProgramRequest(@NotBlank String code,@NotBlank String name,String description,CourseStatus status){}
-    public record ProgramView(Long id,String code,String name,String description,CourseStatus status,LocalDateTime publishedAt){static ProgramView of(Course x){return new ProgramView(x.getId(),x.getCode(),x.getName(),x.getDescription(),x.getStatus(),x.getPublishedAt());}}
+    public record ProgramRequest(@NotBlank String code,@NotBlank String name,String description,Long bookSeriesId,CourseStatus status){}
+    public record ProgramView(Long id,String code,String name,String description,Long bookSeriesId,CourseStatus status,LocalDateTime publishedAt){static ProgramView of(Course x){return new ProgramView(x.getId(),x.getCode(),x.getName(),x.getDescription(),x.getBookSeriesId(),x.getStatus(),x.getPublishedAt());}}
     public record ExerciseTypeRequest(@NotBlank String name,String description,@NotNull Integer orderIndex,PublishStatus status){}
     public record ExerciseTypeView(Long id,Long lessonId,String name,String description,Integer orderIndex,PublishStatus status){static ExerciseTypeView of(ExerciseType x){return new ExerciseTypeView(x.getId(),x.getLessonId(),x.getName(),x.getDescription(),x.getOrderIndex(),x.getStatus());}}
 }

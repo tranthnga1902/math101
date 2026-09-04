@@ -86,3 +86,21 @@ export function assignmentGate(item: StudentAssignment): {
 export function formatPercent(value: number): string {
   return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 }
+
+/** Ngày trần "2092-02-14" đọc theo giờ địa phương, không qua UTC — lệch múi giờ là lệch một ngày. */
+export function ngayVN(ngay: string): string {
+  return new Date(`${ngay}T00:00:00`).toLocaleDateString("vi-VN");
+}
+
+/**
+ * Ngày đi học lại là ngày kế sau ngày nghỉ cuối cùng.
+ *
+ * <p>Hiện thẳng ngày nghỉ cuối thì nửa lớp hiểu hôm đó còn nghỉ, nửa lớp hiểu đã đi học. Cộng ngày
+ * bằng {@code Date} chứ không qua chuỗi ISO: {@code toISOString} quy về UTC nên ở múi giờ +7 nó trả
+ * lại đúng ngày vừa cộng thêm, tức là mất luôn phép cộng.
+ */
+export function ngayDiHocLai(ngayNghiCuoi: string): string {
+  const ngay = new Date(`${ngayNghiCuoi}T00:00:00`);
+  ngay.setDate(ngay.getDate() + 1);
+  return ngay.toLocaleDateString("vi-VN");
+}

@@ -30,6 +30,9 @@ public class Course extends BaseEntity {
     @Column(nullable = false, length = 30)
     private CourseStatus status = CourseStatus.DRAFT;
 
+    @Column(name = "book_series_id")
+    private Long bookSeriesId;
+
     @Column(name = "published_by")
     private Long publishedBy;
 

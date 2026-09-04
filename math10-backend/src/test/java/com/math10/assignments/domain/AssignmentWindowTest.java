@@ -23,6 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Thời gian được truyền vào chứ không đọc {@code LocalDateTime.now()}, nên "quá hạn" hay
  * "chưa mở" kiểm được thật, không phải chờ đồng hồ.
+ *
+ * <p>Hai nhóm cuối ghim hai nhánh mới và cả hai đều là nhánh <em>mở nhầm</em>: bài neo vào buổi mà
+ * lớp chưa chốt phải kín, và đáp án chỉ hé đúng mức giáo viên chọn. Sai theo chiều này thì không có
+ * lỗi nào bật ra — chỉ là học sinh thấy thứ chưa được thấy.
  */
 class AssignmentWindowTest {
 
@@ -288,6 +292,131 @@ class AssignmentWindowTest {
         bai.setPublishScoreAt(TRUOC_MOT_GIO);
 
         assertThat(AssignmentWindow.scoreVisible(bai, moi(), BAY_GIO)).isFalse();
+    }
+
+    // --- Neo vào buổi --------------------------------------------------------
+
+    @Test
+    void baiNeoBuoiMaLopChuaChotThiVanKin() {
+        // Ranh giới dễ vỡ nhất của lát này: theo javadoc của Assignment.openAt thì open_at rỗng
+        // nghĩa là "mở ngay". Bài neo buổi cũng để open_at rỗng cho tới lúc lớp chốt buổi, nên
+        // thiếu nhánh neo là mọi bài neo hở ra ngay khi giáo viên bấm phát hành.
+        Assignment bai = bai("PUBLISHED", null, null);
+        bai.setAnchorPeriodId(7L);
+
+        assertThat(AssignmentWindow.waitingForAnchor(bai))
+                .as("có tiết neo mà chưa có giờ mở nghĩa là đang chờ lớp chốt buổi")
+                .isTrue();
+        assertThat(AssignmentWindow.stateOf(bai, BAY_GIO)).isEqualTo(AssignmentState.SCHEDULED);
+        assertThat(AssignmentState.SCHEDULED.contentVisibleToStudent())
+                .as("chờ chốt buổi thì thấy tên bài chứ không thấy đề")
+                .isFalse();
+    }
+
+    @Test
+    void chuaChotBuoiThiKhongNopDuocVaLyDoNoiDungChuyenPhaiCho() {
+        Assignment bai = bai("PUBLISHED", null, null);
+        bai.setAnchorPeriodId(7L);
+
+        assertThatThrownBy(() -> AssignmentWindow.requireSubmittable(bai, moi(), BAY_GIO))
+                .isInstanceOf(BusinessException.class)
+                .as("""
+                        Chờ buổi khác hẳn chờ đồng hồ: câu "chưa tới giờ mở (null)" vừa vô nghĩa vừa
+                        khiến học sinh đi hỏi giáo viên xem mấy giờ, trong khi thứ đang thiếu là buổi học.""")
+                .hasMessageContaining("sau khi lớp hoàn thành buổi học");
+    }
+
+    @Test
+    void chotBuoiXongThiBaiNeoMoNhuMoiBaiKhac() {
+        // Chốt buổi vật hóa open_at; từ đó trở đi bài neo không còn gì đặc biệt.
+        Assignment bai = bai("PUBLISHED", TRUOC_MOT_GIO, SAU_MOT_GIO);
+        bai.setAnchorPeriodId(7L);
+
+        assertThat(AssignmentWindow.waitingForAnchor(bai)).isFalse();
+        assertThat(AssignmentWindow.stateOf(bai, BAY_GIO)).isEqualTo(AssignmentState.OPEN);
+        assertThatCode(() -> AssignmentWindow.requireSubmittable(bai, moi(), BAY_GIO))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void baiKhongNeoVanGiuNguyenNghiaCuCuaGioMoRong() {
+        // Nhánh neo không được lấn sang bài thường: giáo viên giao tay không đặt giờ mở thì vẫn là
+        // "mở ngay", đúng như trước lát này.
+        Assignment bai = bai("PUBLISHED", null, null);
+
+        assertThat(AssignmentWindow.waitingForAnchor(bai)).isFalse();
+        assertThat(AssignmentWindow.stateOf(bai, BAY_GIO)).isEqualTo(AssignmentState.OPEN);
+    }
+
+    @Test
+    void baiNeoConLaBanNhapThiVanLaBanNhap() {
+        // Thứ tự hai nhánh có thật: nháp phải thắng chờ-buổi, nếu không bài đang soạn hiện ra ở
+        // danh sách học sinh dưới dạng "sắp mở".
+        Assignment bai = bai("DRAFT", null, null);
+        bai.setAnchorPeriodId(7L);
+
+        assertThat(AssignmentWindow.stateOf(bai, BAY_GIO)).isEqualTo(AssignmentState.DRAFT);
+    }
+
+    // --- Ba mức công bố đáp án -----------------------------------------------
+
+    @Test
+    void mucIMMEDIATEThiLamXongThayNgay() {
+        Assignment bai = bai("PUBLISHED", null, SAU_MOT_GIO);
+        bai.setAnswerReveal("IMMEDIATE");
+
+        assertThat(AssignmentWindow.scoreVisible(bai, moi(), BAY_GIO))
+                .as("luyện tự do thì tự chấm ngay là điểm mấu chốt, chờ trả bài thì luyện làm gì")
+                .isTrue();
+    }
+
+    @Test
+    void mucAFTER_SUBMITThiKinTruocKhiNopVaMoNgaySauKhiNop() {
+        Assignment bai = bai("PUBLISHED", null, SAU_MOT_GIO);
+        bai.setAnswerReveal("AFTER_SUBMIT");
+        AssignmentProgress daNop = moi();
+        daNop.setSubmittedAt(TRUOC_MOT_GIO);
+
+        assertThat(AssignmentWindow.scoreVisible(bai, moi(), BAY_GIO))
+                .as("chưa nộp mà thấy đáp án thì cả lớp chép")
+                .isFalse();
+        assertThat(AssignmentWindow.scoreVisible(bai, daNop, BAY_GIO))
+                .as("nộp rồi là thấy, không phải chờ giáo viên chấm")
+                .isTrue();
+    }
+
+    @Test
+    void mucAFTER_RETURNVanLaLuatCuVaCungLaMacDinh() {
+        Assignment ghiRo = bai("PUBLISHED", null, TRUOC_MOT_GIO);
+        ghiRo.setAnswerReveal("AFTER_RETURN");
+        Assignment boTrong = bai("PUBLISHED", null, TRUOC_MOT_GIO);
+        boTrong.setAnswerReveal(null);
+        AssignmentProgress daNop = moi();
+        daNop.setSubmittedAt(TRUOC_MOT_GIO);
+        AssignmentProgress daTra = moi();
+        daTra.setSubmittedAt(TRUOC_MOT_GIO);
+        daTra.setGradedAt(TRUOC_MOT_GIO);
+        daTra.setReturnedAt(TRUOC_MOT_GIO);
+
+        assertThat(AssignmentWindow.scoreVisible(ghiRo, daNop, BAY_GIO)).isFalse();
+        assertThat(AssignmentWindow.scoreVisible(ghiRo, daTra, BAY_GIO)).isTrue();
+        assertThat(AssignmentWindow.scoreVisible(boTrong, daNop, BAY_GIO))
+                .as("""
+                        Cột answer_reveal thêm vào sau nên hàng cũ đọc lên có thể rỗng. Rỗng phải rơi
+                        về AFTER_RETURN — mặc định nào khác cũng là bật đáp án cho toàn bộ bài đã giao
+                        từ trước, không ai bấm gì cả.""")
+                .isFalse();
+        assertThat(AssignmentWindow.scoreVisible(boTrong, daTra, BAY_GIO)).isTrue();
+    }
+
+    @Test
+    void chuaLamBaiThiKhongMucNaoHienDiem() {
+        // p == null nghĩa là em chưa mở bài lần nào; ba mức đều không có gì để hiện.
+        for (String muc : new String[]{"IMMEDIATE", "AFTER_SUBMIT", "AFTER_RETURN"}) {
+            Assignment bai = bai("PUBLISHED", null, SAU_MOT_GIO);
+            bai.setAnswerReveal(muc);
+            assertThat(AssignmentWindow.scoreVisible(bai, null, BAY_GIO)).as("mức %s", muc).isFalse();
+        }
     }
 
     // --- helpers -------------------------------------------------------------

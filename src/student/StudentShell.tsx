@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { AuthSession } from "../api";
 
-export type StudentTab = "today" | "classes" | "lessons" | "videos" | "textbooks" | "materials" | "exercises" | "topics" | "assignments" | "profile";
+export type StudentTab = "today" | "classes" | "lessons" | "videos" | "textbooks" | "materials" | "exercises" | "topics" | "assignments" | "profile" | "settings";
 
 type StudentShellProps = {
   session: AuthSession;
@@ -30,6 +30,7 @@ const navSections: Array<{ label?: string; items: Array<{ key: StudentTab; label
   { label: "Cá nhân", items: [
     { key: "classes", label: "Lớp của em", icon: "school" },
     { key: "profile", label: "Kết quả học tập", icon: "monitoring" },
+    { key: "settings", label: "Cài đặt", icon: "settings" },
   ] },
 ];
 const tabs = navSections.flatMap((section) => section.items);
