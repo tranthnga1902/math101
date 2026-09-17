@@ -6,3 +6,4 @@ export { AdminModal } from "./AdminModal";
 export { AdminEmptyState } from "./AdminEmptyState";
 export { SkeletonRow, SkeletonTable, SkeletonCard } from "./AdminSkeleton";
 export { SearchInput, FilterSelect, FilterBar } from "./AdminFilterBar";
+export { LessonPreviewModal } from "./LessonPreviewModal";

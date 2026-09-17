@@ -25,6 +25,7 @@ import { KhoaHocDetailPanel } from "./admin/KhoaHocDetailPanel";
 import { StudentExperience } from "./student/StudentExperience";
 import { LoginPage } from "./auth/LoginPage";
 import { LessonEditorModal, LessonContentRenderer } from "./components/lesson-editor";
+import { LessonPreviewModal } from "./admin/components/LessonPreviewModal";
 import { ngayDiHocLai, ngayVN } from "./student/format";
 import { TeacherDocumentLibrary } from "./teacher/TeacherDocumentLibrary";
 import { TeacherSubmissionView } from "./teacher/TeacherSubmissionView";
@@ -2577,6 +2578,22 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
   queryClient.invalidateQueries({queryKey:["curriculum-courses"]});
  };
 
+ const handleUpdateLessonHtml=async(lessonId:number,contentHtml:string,newTitle?:string,newSummary?:string)=>{
+  const target=previewLesson?.id===lessonId?previewLesson:null;
+  if(!target)return;
+  const updated=await updateLesson(session,lessonId,{
+   chapterId:target.chapterId,
+   title:newTitle&&newTitle.trim()?newTitle.trim():target.title,
+   publicCode:target.publicCode||"",
+   orderIndex:target.orderIndex,
+   status:target.status||"PUBLISHED",
+   summary:newSummary!==undefined?newSummary:(target.summary||""),
+   contentHtml,
+  });
+  setPreviewLesson(updated);
+  invalidateAll();
+ };
+
  const saveCourse=async(e:React.FormEvent)=>{e.preventDefault();try{if(editingCourse){await updateCourse(session,editingCourse.id,courseDraft)}else{await createCourse(session,courseDraft)}setCourseDraft(emptyCourse(metadata));setEditingCourse(null);setShowNewCourseForm(false);invalidateAll();}catch{}};
  const saveChapter=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedCourseId)return;try{if(editingChapter){await updateChapter(session,editingChapter.id,{...chapterDraft,status:"ACTIVE"})}else{await createChapter(session,{...chapterDraft,courseId:selectedCourseId,status:"ACTIVE"})}setChapterDraft({courseId:selectedCourseId,title:"",orderIndex:chapters.length+2,status:"ACTIVE"});setEditingChapter(null);setShowNewChapterForm(false);invalidateAll();}catch{}};
  const saveLesson=async(e:React.FormEvent)=>{e.preventDefault();if(!editingLesson&&!chapterDraft.courseId&&chapters.length>0)return;try{if(editingLesson){await updateLesson(session,editingLesson.id,{...lessonDraft,status:editingLesson.status||"PUBLISHED"})}else{await createLesson(session,{...lessonDraft,status:"PUBLISHED"})}setLessonDraft({chapterId:0,title:"",publicCode:"",summary:"",contentHtml:"",orderIndex:1,status:"PUBLISHED"});setEditingLesson(null);setShowNewLessonForm(false);invalidateAll();}catch{}};
@@ -2977,7 +2994,19 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
         <table className="w-full text-left text-sm text-gray-600">
          <thead className="text-xs uppercase bg-gray-50 text-gray-500 font-semibold border-b border-gray-200">
           <tr>
-           <th className="w-12 px-4 py-3 text-center whitespace-nowrap"></th>
+           <th className="w-12 px-4 py-3 text-center whitespace-nowrap">
+            <button
+             type="button"
+             onClick={()=>setExpandedChapters(allChaptersExpanded?new Set():new Set(chapters.map(chapter=>chapter.id)))}
+             disabled={!chapters.length}
+             title={allChaptersExpanded?"Thu gọn tất cả chương":"Mở tất cả chương"}
+             aria-label={allChaptersExpanded?"Thu gọn tất cả chương":"Mở tất cả chương"}
+             aria-expanded={allChaptersExpanded}
+             className="inline-flex items-center justify-center rounded p-1 text-primary transition-colors hover:bg-primary-container focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+             {allChaptersExpanded?<ChevronDown size={18}/>:<ChevronRight size={18}/>}
+            </button>
+           </th>
            <th className="w-12 px-4 py-3 text-center whitespace-nowrap">#</th>
            <th className="px-4 py-3 whitespace-nowrap">TÊN CHƯƠNG</th>
            <th className="px-4 py-3 text-center whitespace-nowrap">SỐ BÀI HỌC</th>
@@ -3222,96 +3251,21 @@ function CurriculumWorkspace({session,metadata}:{session:AuthSession;metadata:Me
   </main>
 
 
-  {/* PREVIEW BÀI HỌC QUA ADMIN DRAWER (KHÔNG RỜI TRANG CHƯƠNG TRÌNH) */}
+  {/* KHUNG LỚN CHÍNH XEM BÀI HỌC (TOÀN MÀN HÌNH, CÂY BÊN TRÁI GIỮ NGUYÊN) */}
   {previewLesson && (
-   <AdminDrawer
-    open={!!previewLesson}
+   <LessonPreviewModal
+    open={Boolean(previewLesson)}
     onClose={()=>setPreviewLesson(null)}
-    size="lg"
-    eyebrow={`BÀI ${previewLesson.orderIndex} · ${selectedCourse?.name}`}
-    title={previewLesson.title}
-    subtitle={previewLesson.publicCode?`Mã bài học: #${previewLesson.publicCode}`:undefined}
-    footer={
-     <div className="flex justify-end gap-2">
-      <Button variant="outline" size="sm" onClick={()=>setPreviewLesson(null)}>
-       Đóng
-      </Button>
-      <Button
-       size="sm"
-       onClick={()=>{
-        setEditingLesson(previewLesson);
-        setLessonDraft({
-         chapterId:previewLesson.chapterId,
-         title:previewLesson.title,
-         publicCode:previewLesson.publicCode||"",
-         summary:previewLesson.summary||"",
-         contentHtml:previewLesson.contentHtml||"",
-         orderIndex:previewLesson.orderIndex,
-         status:previewLesson.status
-        });
-        setShowNewLessonForm(true);
-       }}
-      >
-       <Edit3 size={14} className="mr-1"/> Sửa bài học
-      </Button>
-     </div>
-    }
-   >
-    <div className="flex flex-col gap-5">
-     <div className="flex flex-wrap gap-2 pb-3 border-b border-slate-100">
-      <Button
-       variant="outline"
-       size="sm"
-       onClick={()=>setDocumentLesson(previewLesson)}
-      >
-       <FileText size={14} className="mr-1 text-slate-500"/> Tài liệu đính kèm
-      </Button>
-      <Button
-       variant="outline"
-       size="sm"
-       onClick={()=>setWorksheetLesson(previewLesson)}
-      >
-       <ClipboardList size={14} className="mr-1 text-slate-500"/> Phiếu bài tập
-      </Button>
-      <Button
-       variant="outline"
-       size="sm"
-       onClick={()=>setResourceLesson(previewLesson)}
-      >
-       <Database size={14} className="mr-1 text-slate-500"/> Khối học liệu
-      </Button>
-     </div>
-
-     {previewLesson.summary&&(
-      <div className="p-3 bg-slate-50 rounded-lg border-l-3 border-[#176b50] text-sm text-slate-700">
-       <b className="block text-xs uppercase text-slate-500 mb-1">Mục tiêu & Tóm tắt</b>
-       {previewLesson.summary}
-      </div>
-     )}
-
-     <div>
-      <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-2">
-       Nội dung lý thuyết
-      </h4>
-       {previewLesson.contentHtml ? (
-        <article className="p-4 rounded-lg border border-slate-200 bg-white text-sm leading-relaxed overflow-x-auto">
-         <LessonContentRenderer content={previewLesson.contentHtml} fallbackSummary={previewLesson.summary} />
-        </article>
-       ) : (
-       <div className="p-6 text-center border border-dashed border-slate-200 rounded-lg text-slate-400 text-sm">
-        Bài học này chưa có nội dung lý thuyết.
-       </div>
-      )}
-     </div>
-
-     <div>
-      <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-2">
-       Tài liệu đã gắn
-      </h4>
-      <LessonAttachments session={session} lessonId={previewLesson.id}/>
-     </div>
-    </div>
-   </AdminDrawer>
+    lesson={previewLesson}
+    courseName={selectedCourse?.name}
+    chapterTitle={chapters.find(c=>c.id===previewLesson.chapterId)?.title}
+    session={session}
+    onEditLesson={(l)=>{setPreviewLesson(null);setEditingLesson(l);setLessonDraft({chapterId:l.chapterId,title:l.title,publicCode:l.publicCode||"",summary:l.summary||"",contentHtml:l.contentHtml||"",orderIndex:l.orderIndex,status:l.status});setShowNewLessonForm(true);}}
+    onUpdateLessonHtml={handleUpdateLessonHtml}
+    onOpenDocuments={(l)=>setDocumentLesson(l)}
+    onOpenWorksheets={(l)=>setWorksheetLesson(l)}
+    onOpenResources={(l)=>setResourceLesson(l)}
+   />
   )}
 
   {/* MODAL TẠO/SỬA CHƯƠNG TRÌNH */}

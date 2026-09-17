@@ -166,12 +166,15 @@ export function convertLegacyHtmlToStructured(html: string): JSONContent {
   // Sử dụng DOMParser để bóc tách cấu trúc HTML
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
+  // Dọn dẹp các thẻ không phải nội dung sư phạm
+  doc.querySelectorAll("script, style, noscript, link, meta").forEach((el) => el.remove());
   const body = doc.body;
 
   const content: JSONContent[] = [];
 
   function processElement(el: HTMLElement) {
     const tagName = el.tagName.toLowerCase();
+    if (tagName === "script" || tagName === "style" || tagName === "noscript") return;
     const className = (el.className || "").toLowerCase();
     const textContent = (el.textContent || "").trim();
 
@@ -295,7 +298,46 @@ export function convertLegacyHtmlToStructured(html: string): JSONContent {
       return;
     }
 
-    // 6. Thẻ Đoạn văn (Paragraph) hoặc thẻ khác
+    // 6. Thẻ Bảng dữ liệu (Table)
+    if (tagName === "table") {
+      const rows: JSONContent[] = [];
+      el.querySelectorAll("tr").forEach((tr) => {
+        const cells: JSONContent[] = [];
+        tr.querySelectorAll("th, td").forEach((cell) => {
+          const isHeader = cell.tagName.toLowerCase() === "th";
+          cells.push({
+            type: isHeader ? "tableHeader" : "tableCell",
+            content: [
+              {
+                type: "paragraph",
+                content: parseInlineContent(cell),
+              },
+            ],
+          });
+        });
+        if (cells.length > 0) {
+          rows.push({ type: "tableRow", content: cells });
+        }
+      });
+      if (rows.length > 0) {
+        content.push({ type: "table", content: rows });
+        return;
+      }
+    }
+
+    // 7. Thẻ Ảnh (Image)
+    if (tagName === "img") {
+      const src = (el as HTMLImageElement).src || el.getAttribute("src");
+      if (src) {
+        content.push({
+          type: "image",
+          attrs: { src, alt: (el as HTMLImageElement).alt || "" },
+        });
+        return;
+      }
+    }
+
+    // 8. Thẻ Đoạn văn (Paragraph) hoặc thẻ khác
     if (textContent) {
       content.push({
         type: "paragraph",
@@ -316,5 +358,30 @@ export function convertLegacyHtmlToStructured(html: string): JSONContent {
     type: "doc",
     content,
   };
+}
+
+/**
+ * Trích xuất tiêu đề và tóm tắt sơ bộ từ file HTML (nếu có).
+ */
+export function extractHtmlMetadata(html: string): { title?: string; summary?: string } {
+  if (!html) return {};
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const metaTitle = doc.querySelector("title")?.textContent?.trim();
+    const h1Title = doc.querySelector("h1")?.textContent?.trim();
+    const metaDesc = doc.querySelector("meta[name='description']")?.getAttribute("content")?.trim();
+    const firstP = doc.querySelector("p")?.textContent?.trim();
+
+    const title = h1Title || metaTitle;
+    const summary = metaDesc || (firstP && firstP.length < 300 ? firstP : undefined);
+
+    return {
+      title: title ? title.slice(0, 200) : undefined,
+      summary: summary ? summary.slice(0, 500) : undefined,
+    };
+  } catch {
+    return {};
+  }
 }
 

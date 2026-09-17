@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Table } from "@tiptap/extension-table";
@@ -23,6 +23,7 @@ import {
   convertLegacyHtmlToStructured,
   serializeLessonDoc,
   createEmptyLessonDoc,
+  extractHtmlMetadata,
 } from "./converter";
 import { LessonContentRenderer } from "./LessonContentRenderer";
 import type { Lesson, LessonInput } from "../../api";
@@ -50,6 +51,11 @@ import {
   Undo,
   Redo,
   Sparkles,
+  Upload,
+  FileCode,
+  Download,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import "./lesson-editor.css";
 
@@ -78,7 +84,7 @@ export function LessonEditorModal({
   ],
   onSave,
 }: LessonEditorModalProps) {
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "code" | "preview">("edit");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -90,6 +96,13 @@ export function LessonEditorModal({
   const [summary, setSummary] = useState("");
   const [chapterId, setChapterId] = useState(defaultChapterId);
   const [isLegacy, setIsLegacy] = useState(false);
+
+  // HTML Import / Raw Code states
+  const [rawHtml, setRawHtml] = useState("");
+  const [uploadedFileInfo, setUploadedFileInfo] = useState<{ name: string; size: number } | null>(null);
+  const [importStrategy, setImportStrategy] = useState<"structured" | "raw">("structured");
+  const [uploadMessage, setUploadMessage] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tiptap editor setup
   const editor = useEditor({
@@ -139,6 +152,10 @@ export function LessonEditorModal({
       const raw = lesson.contentHtml || "";
       const isStruct = isStructuredLesson(raw);
       setIsLegacy(!isStruct && Boolean(raw.trim()));
+      setRawHtml(raw);
+      setUploadedFileInfo(null);
+      setUploadMessage("");
+      setImportStrategy(isStruct ? "structured" : "raw");
 
       if (editor) {
         if (isStruct) {
@@ -160,6 +177,10 @@ export function LessonEditorModal({
       setSummary("");
       setChapterId(defaultChapterId);
       setIsLegacy(false);
+      setRawHtml("");
+      setUploadedFileInfo(null);
+      setUploadMessage("");
+      setImportStrategy("structured");
       if (editor) {
         editor.commands.setContent(createEmptyLessonDoc());
       }
@@ -174,7 +195,63 @@ export function LessonEditorModal({
     return serializeLessonDoc(editor.getJSON());
   }, [editor, mode]);
 
+  const previewContent = useMemo(() => {
+    if ((importStrategy === "raw" || mode === "code") && rawHtml.trim()) {
+      return rawHtml;
+    }
+    return currentJsonString;
+  }, [importStrategy, mode, rawHtml, currentJsonString]);
+
   if (!isOpen) return null;
+
+  const handleFileUpload = (file: File) => {
+    const fileNameLower = file.name.toLowerCase();
+    if (!fileNameLower.endsWith(".html") && !fileNameLower.endsWith(".htm")) {
+      setError("Vui lòng chọn tệp có định dạng .html hoặc .htm");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) || "";
+      setRawHtml(text);
+      setUploadedFileInfo({ name: file.name, size: file.size });
+
+      // Trích xuất tiêu đề & tóm tắt từ file HTML nếu có
+      const meta = extractHtmlMetadata(text);
+      if (meta.title && (!title.trim() || title === "Tạo bài học mới" || title === "Chỉnh sửa bài học")) {
+        setTitle(meta.title);
+      }
+      if (meta.summary && !summary.trim()) {
+        setSummary(meta.summary);
+      }
+
+      // Nạp vào editor nếu theo chiến lược cấu trúc khối
+      if (importStrategy === "structured" && editor) {
+        const converted = convertLegacyHtmlToStructured(text);
+        editor.commands.setContent(converted);
+      }
+
+      setUploadMessage(`Đã nạp tệp: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+      setError("");
+    };
+    reader.onerror = () => {
+      setError("Không thể đọc tệp HTML đã chọn.");
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const handleDownloadHtml = () => {
+    const content = (mode === "code" || importStrategy === "raw") && rawHtml.trim()
+      ? rawHtml
+      : editor ? editor.getHTML() : "";
+    const blob = new Blob([content], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.trim().replace(/[/\\?%*:|"<>]/g, "-") || "bai-hoc"}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,8 +264,13 @@ export function LessonEditorModal({
     setError("");
 
     try {
-      const doc = editor ? editor.getJSON() : createEmptyLessonDoc();
-      const contentHtml = serializeLessonDoc(doc);
+      let contentHtml: string;
+      if (importStrategy === "raw" || mode === "code") {
+        contentHtml = rawHtml.trim() || serializeLessonDoc(editor ? editor.getJSON() : createEmptyLessonDoc());
+      } else {
+        const doc = editor ? editor.getJSON() : createEmptyLessonDoc();
+        contentHtml = serializeLessonDoc(doc);
+      }
 
       await onSave({
         chapterId,
@@ -223,7 +305,15 @@ export function LessonEditorModal({
 
   return (
     <div className="lesson-editor-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="lesson-editor-container">
+      <div
+        className="lesson-editor-container"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const file = e.dataTransfer.files?.[0];
+          if (file) handleFileUpload(file);
+        }}
+      >
         {/* TOP HEADER */}
         <header className="lesson-editor-head">
           <div className="lesson-editor-title-area">
@@ -243,16 +333,58 @@ export function LessonEditorModal({
             </div>
           </div>
 
-          {/* Mode Switcher: Soạn thảo / Xem trước */}
-          <div className="flex items-center gap-3">
+          {/* Mode Switcher: Soạn thảo khối / Mã HTML / Xem trước */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#176b50] font-semibold text-xs transition-colors cursor-pointer"
+              title="Tải lên tệp HTML (.html, .htm) từ máy tính để nạp nội dung bài học"
+            >
+              <Upload size={14} />
+              <span>Nạp file HTML</span>
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".html,.htm"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleFileUpload(file);
+                  e.target.value = "";
+                }
+              }}
+            />
+
             <div className="lesson-mode-switch">
               <button
                 type="button"
                 className={`lesson-mode-tab ${mode === "edit" ? "active" : ""}`}
-                onClick={() => setMode("edit")}
+                onClick={() => {
+                  if (mode === "code" && rawHtml.trim()) {
+                    const converted = convertLegacyHtmlToStructured(rawHtml);
+                    editor?.commands.setContent(converted);
+                  }
+                  setMode("edit");
+                }}
               >
                 <Edit3 size={14} />
-                <span>Soạn thảo</span>
+                <span>Soạn thảo khối</span>
+              </button>
+              <button
+                type="button"
+                className={`lesson-mode-tab ${mode === "code" ? "active" : ""}`}
+                onClick={() => {
+                  if (editor && (!rawHtml.trim() || mode === "edit")) {
+                    setRawHtml(editor.getHTML());
+                  }
+                  setMode("code");
+                }}
+              >
+                <FileCode size={14} />
+                <span>Mã HTML</span>
               </button>
               <button
                 type="button"
@@ -275,6 +407,19 @@ export function LessonEditorModal({
             </button>
           </div>
         </header>
+
+        {/* THÔNG BÁO NẠP TỆP HTML THÀNH CÔNG */}
+        {uploadMessage && (
+          <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={15} className="text-emerald-600" />
+              <span>{uploadMessage}</span>
+            </div>
+            <button type="button" onClick={() => setUploadMessage("")} className="text-emerald-600 hover:text-emerald-800 font-bold">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* ERROR BANNER IF ANY */}
         {error && (
@@ -372,6 +517,83 @@ export function LessonEditorModal({
               />
             </label>
 
+            {/* Quản lý tệp HTML */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="editor-field-label flex items-center gap-1.5 text-slate-700">
+                  <FileCode size={13} className="text-[#176b50]" />
+                  TỆP HTML BÀI HỌC
+                </span>
+                {uploadedFileInfo && (
+                  <span className="text-[10px] font-medium bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                    {(uploadedFileInfo.size / 1024).toFixed(1)} KB
+                  </span>
+                )}
+              </div>
+
+              {uploadedFileInfo ? (
+                <p className="text-xs text-slate-700 m-0 truncate" title={uploadedFileInfo.name}>
+                  Tệp: <b>{uploadedFileInfo.name}</b>
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-500 m-0">
+                  Nạp file .html có sẵn từ máy tính để cập nhật nội dung bài học nhanh chóng.
+                </p>
+              )}
+
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-200/60">
+                <span className="text-[11px] font-semibold text-slate-600">Cách xử lý nội dung:</span>
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="importStrategy"
+                    value="structured"
+                    checked={importStrategy === "structured"}
+                    onChange={() => {
+                      setImportStrategy("structured");
+                      if (rawHtml.trim() && editor) {
+                        const converted = convertLegacyHtmlToStructured(rawHtml);
+                        editor.commands.setContent(converted);
+                      }
+                    }}
+                  />
+                  <span>Khối chuẩn (Khuyên dùng)</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="importStrategy"
+                    value="raw"
+                    checked={importStrategy === "raw"}
+                    onChange={() => setImportStrategy("raw")}
+                  />
+                  <span>Giữ nguyên mã HTML gốc</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <Upload size={12} />
+                  <span>Chọn tệp HTML</span>
+                </button>
+                {(rawHtml || (editor && !editor.isEmpty)) && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadHtml}
+                    className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    title="Tải tệp HTML về máy"
+                  >
+                    <Download size={12} />
+                    <span>Xuất HTML</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Legacy Notice */}
             {isLegacy && (
               <div className="editor-format-banner">
@@ -380,14 +602,14 @@ export function LessonEditorModal({
                   <span>Định dạng HTML cũ</span>
                 </div>
                 <p className="text-xs text-amber-800 m-0 leading-relaxed">
-                  Bài học này đã được tự động chuyển sang Khối chuẩn (Block JSON). Khi bấm "Lưu thay đổi", bài học sẽ được lưu ở định dạng hiện đại.
+                  Bài học này đang lưu ở định dạng HTML. Khi lưu theo Khối chuẩn, hệ thống sẽ tự động tối ưu sang cấu trúc sư phạm hiện đại.
                 </p>
               </div>
             )}
 
             <div className="mt-auto pt-4 border-t border-slate-100 text-[11px] text-slate-400 space-y-1">
+              <p className="m-0">💡 Có thể kéo thả trực tiếp tệp .html vào cửa sổ soạn thảo.</p>
               <p className="m-0">💡 Sử dụng <b>$công_thức$</b> cho toán inline.</p>
-              <p className="m-0">💡 Bấm vào các nút khối sư phạm để chèn thẻ tương ứng.</p>
             </div>
           </aside>
 
@@ -637,6 +859,55 @@ export function LessonEditorModal({
                 </div>
               </div>
             </main>
+          ) : mode === "code" ? (
+            /* CODE MODE: XEM & CHỈNH SỬA MÃ HTML */
+            <main className="editor-canvas-container">
+              <div className="bg-slate-900 text-slate-100 p-3 px-4 flex items-center justify-between text-xs border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2 font-mono">
+                  <FileCode size={15} className="text-emerald-400" />
+                  <span className="font-semibold">Mã nguồn HTML</span>
+                  {uploadedFileInfo && (
+                    <span className="text-slate-400 text-[11px] truncate max-w-[280px]">
+                      · {uploadedFileInfo.name} ({(uploadedFileInfo.size / 1024).toFixed(1)} KB)
+                    </span>
+                  )}
+                  <span className="text-slate-500 font-sans text-[11px]">({rawHtml.length} ký tự)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rawHtml.trim()) {
+                        const converted = convertLegacyHtmlToStructured(rawHtml);
+                        editor?.commands.setContent(converted);
+                        setImportStrategy("structured");
+                        setMode("edit");
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-emerald-400 font-medium transition-colors cursor-pointer"
+                    title="Chuyển mã HTML này thành các khối chuẩn sư phạm và mở chế độ soạn thảo trực quan"
+                  >
+                    Chuyển sang Khối trực quan →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-2.5 py-1 rounded bg-emerald-800 hover:bg-emerald-700 text-xs text-white font-medium transition-colors cursor-pointer"
+                  >
+                    Nạp file HTML khác
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 p-4 bg-slate-950 overflow-auto">
+                <textarea
+                  value={rawHtml}
+                  onChange={(e) => setRawHtml(e.target.value)}
+                  placeholder="Dán hoặc nhập mã HTML vào đây, hoặc nhấn 'Nạp file HTML' để tải tệp từ máy tính..."
+                  className="w-full h-full min-h-[500px] font-mono text-xs text-emerald-300 bg-transparent border-0 outline-none resize-none leading-relaxed selection:bg-emerald-900 selection:text-white"
+                  spellCheck={false}
+                />
+              </div>
+            </main>
           ) : (
             /* PREVIEW MODE: CHÍNH XÁC NHƯ HỌC SINH THẤY */
             <section className="editor-preview-area">
@@ -666,7 +937,7 @@ export function LessonEditorModal({
                   </h3>
                   <div className="p-6 rounded-xl border border-slate-200 bg-white">
                     <LessonContentRenderer
-                      content={currentJsonString}
+                      content={previewContent}
                       fallbackSummary={summary}
                     />
                   </div>
