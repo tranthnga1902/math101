@@ -1,0 +1,26 @@
+.finance-form{display:grid;gap:14px}.finance-form label{display:grid;gap:6px;font-size:13px;font-weight:600;color:var(--color-on-surface)}
+.finance-form input:not([type=checkbox]),.finance-form select,.finance-form textarea{box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--color-outline-variant);border-radius:8px;padding:10px;background:var(--color-surface-container-lowest);font:inherit;color:var(--color-on-surface)}
+.finance-form .finance-check{display:flex;align-items:center;gap:8px}.finance-form input[type=checkbox]{accent-color:var(--color-primary)}
+.finance-error{padding:12px;border-radius:8px;background:var(--color-error-container);color:var(--color-error);font-size:14px}
+.finance-status{display:inline-flex;padding:4px 8px;border-radius:6px;background:var(--color-surface-container-low);color:var(--color-on-surface-variant);font-size:12px;white-space:nowrap}
+.finance-status[data-status=PAID],.finance-status[data-status=SUCCESS]{background:var(--color-primary-container);color:var(--color-primary)}
+.finance-status[data-status=OVERDUE],.finance-status[data-status=FAILED]{background:var(--color-error-container);color:var(--color-error)}
+.finance-scroll{overflow:auto}.finance-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}.finance-table th{font-weight:600;background:var(--color-surface-container-low)}.finance-table th,.finance-table td{padding:12px;border-bottom:1px solid var(--color-outline-variant);vertical-align:top}.finance-table small{display:block;margin-top:5px;color:var(--color-on-surface-variant)}
+@media(min-width:640px){.finance-form.two-columns{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-form .full{grid-column:1/-1}}
+.fee-policy{display:flex;flex-direction:column;gap:16px}
+.fee-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start}
+.fee-card{border:1px solid #e2e8f0;border-radius:8px;padding:18px;background:#fff;display:flex;flex-direction:column;gap:14px;min-width:0}
+.fee-wide{grid-column:1/-1}
+.fee-card-title{display:flex;align-items:center;gap:7px;margin:0;font-size:13px;font-weight:700;color:#0f172a}.fee-card-title svg{color:var(--primary);flex-shrink:0}
+.fee-policy .finance-form label{font-size:12.5px;color:#334155}
+.fee-policy .finance-form input:not([type=checkbox]),.fee-policy .finance-form select{height:36px;padding:0 10px;border-color:#cbd5e1;border-radius:7px;background:#f8fafc;font-size:13px;color:#0f172a;outline:0;transition:border-color .15s,background .15s}
+.fee-policy .finance-form input:not([type=checkbox]):focus,.fee-policy .finance-form select:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px #eef6f2}
+.fee-key{width:150px;color:#64748b;font-weight:500}
+.fee-total{color:var(--primary);font-size:15px}
+.fee-muted{margin:0;font-size:12.5px;color:#64748b}
+.fee-payee{margin:0;padding:10px 12px;border-radius:7px;background:#eef6f2;border:1px solid #c6e6d9;font-size:12.5px;color:#11543e}
+.fee-notice{margin:0;padding:10px 14px;border-left:3px solid var(--primary);border-radius:0 6px 6px 0;background:#eef6f2;color:#11543e;font-size:13px}
+.fee-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-top:4px}
+.fee-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+@media(max-width:900px){.fee-grid{grid-template-columns:1fr}}

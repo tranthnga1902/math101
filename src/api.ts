@@ -231,6 +231,10 @@ export function normalizeRole(value: string | undefined | null): AuthSession["ro
   throw new Error("Vai trò tài khoản không được hỗ trợ");
 }
 
+export function financeRequest<T>(session:AuthSession,path:string,method="GET",body?:unknown):Promise<T>{
+ return request<T>(`/finance${path}`,{method,...(body===undefined?{}:{body:JSON.stringify(body)})},session.accessToken);
+}
+
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   return withTimeout(DEFAULT_TIMEOUT_MS, async signal => {
     const headers = new Headers(options.headers);
