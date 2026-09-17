@@ -36,4 +36,8 @@ public class Classroom extends BaseEntity {
     /** Người tạo lớp — để Admin biết lớp nào do giáo viên nào lập ra. */
     @Column(name = "created_by")
     private Long createdBy;
+
+    /** Ngày khai giảng lớp học — dùng để sinh lịch học thực tế. */
+    @Column(name = "start_date")
+    private java.time.LocalDate startDate;
 }

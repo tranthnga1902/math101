@@ -29,6 +29,23 @@ public class TeacherWorkspaceController {
    where c.deleted_at is null and (? or ct.teacher_id=?) order by c.name
    ""","ADMIN".equals(current.requireRoleCode()),id));}
  /**
+  * Khóa admin đã phân cho giáo viên: giáo viên → lớp (class_teachers) → khóa (class_courses) → chương trình.
+  * Quyền nằm ngay trong câu query như {@code /classes}: giáo viên chỉ thấy lớp mình dạy, admin thấy hết.
+  * Lớp chưa gắn khóa vẫn trả về (khóa null) để giáo viên biết lớp đó còn trống nội dung.
+  */
+ @GetMapping("/assigned-courses") public ApiResponse<List<Map<String,Object>>> assignedCourses(){Long id=current.requireUserId();return ApiResponse.ok("Khóa được phân công",jdbc.queryForList("""
+   select distinct c.id "classId",c.code "classCode",c.name "className",c.status "classStatus",
+   ci.id "courseInstanceId",ci.name "courseInstanceName",ci.school_year "schoolYear",ci.starts_on "startsOn",ci.ends_on "endsOn",ci.status "courseInstanceStatus",
+   p.id "programId",p.code "programCode",p.name "programName"
+   from classes c join class_teachers ct on ct.class_id=c.id and ct.deleted_at is null
+   left join class_courses cc on cc.class_id=c.id and cc.deleted_at is null
+   left join course_instances ci on ci.id=cc.course_instance_id and ci.deleted_at is null
+   left join program_templates pt on pt.id=ci.template_id and pt.deleted_at is null
+   left join courses p on p.id=pt.program_id and p.deleted_at is null
+   where c.deleted_at is null and (? or ct.teacher_id=?)
+   order by p.name nulls last,ci.starts_on nulls last,c.name,c.id
+   ""","ADMIN".equals(current.requireRoleCode()),id));}
+ /**
   * Sổ điểm của một lớp: mọi học sinh × mọi bài đã giao, kể cả ô chưa có bài nộp.
   *
   * <p><b>Bỏ bài nháp.</b> Bài DRAFT chưa đến tay học sinh nên ô nào của nó cũng là "chưa mở" —

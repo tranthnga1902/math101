@@ -70,6 +70,11 @@ public class Document extends BaseEntity {
     @Column(name = "content_group", length = 30)
     private ContentGroup contentGroup;
 
+    /** Định dạng file (Word/Excel/…/SCORM/xAPI). Null với dòng cũ không đoán được đuôi. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "file_format", length = 20)
+    private FileFormat fileFormat;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
     private Subject subject;

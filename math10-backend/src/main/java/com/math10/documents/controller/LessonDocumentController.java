@@ -1,6 +1,7 @@
 package com.math10.documents.controller;
 
 import com.math10.common.dto.ApiResponse;
+import org.springframework.http.MediaType;
 import com.math10.documents.dto.DocumentOpenResponse;
 import com.math10.documents.dto.LessonDocumentProgressResponse;
 import com.math10.documents.dto.LessonDocumentQuestionRequest;
@@ -95,6 +96,20 @@ public class LessonDocumentController {
         return ResponseEntity.ok()
                 .contentType(DocumentController.mediaTypeFor(ext))
                 .body(documentService.readLessonDocumentBytes(lessonId, id));
+    }
+
+    @GetMapping("/{id}/preview.pdf")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ResponseEntity<byte[]> preview(@PathVariable Long lessonId, @PathVariable Long id) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF)
+                .body(documentService.readLessonDocumentPreviewPdf(lessonId, id));
+    }
+
+    @PostMapping("/{id}/package/launch")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ApiResponse<DocumentController.PackageLaunchResponse> launchPackage(@PathVariable Long lessonId, @PathVariable Long id) {
+        return ApiResponse.ok("Mở gói học liệu thành công",
+                new DocumentController.PackageLaunchResponse(documentService.launchLessonDocumentPackage(lessonId, id)));
     }
 
     @GetMapping("/{id}/questions")

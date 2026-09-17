@@ -55,7 +55,7 @@
 .taxonomy-info-tab dl>div:nth-child(3){grid-column:1/-1}
 .taxonomy-info-tab dt{font-size:12px;color:#434655}
 .taxonomy-info-tab dd{margin:4px 0 0;font-weight:600}
-.taxonomy-info-tab dd.mono{font-family:ui-monospace,Consolas,monospace;font-weight:400}
+.taxonomy-info-tab dd.mono{font-weight:400}
 .taxonomy-actions-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
 .taxonomy-actions-row button{height:38px;padding:0 14px;border:1px solid #737686;border-radius:6px;background:#fff;font-size:13px}
 .taxonomy-actions-row button.danger{border-color:#fecaca;color:#ba1a1a;background:#fef2f2}

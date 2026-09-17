@@ -1,0 +1,540 @@
+/* MATH10 Login Screen Styles */
+
+.login-page-wrapper {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-image: url("/login-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+}
+
+/* Very subtle dark/teal overlay 8% to elevate card contrast without blurring campus */
+.login-page-wrapper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 28, 20, 0.08);
+  pointer-events: none;
+}
+
+/* Center Card Container */
+.login-card-container {
+  position: relative;
+  z-index: 2;
+  width: min(880px, calc(100vw - 48px));
+  min-height: 540px;
+  max-height: 600px;
+  background: #ffffff;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(4, 28, 20, 0.16), 0 4px 16px rgba(0, 0, 0, 0.04);
+  display: grid;
+  grid-template-columns: 48% 52%;
+}
+
+/* ==========================================================================
+   Left Panel: Branding
+   ========================================================================== */
+.login-brand-panel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(165deg, #024b40 0%, #055e52 50%, #097262 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 44px 44px 0 44px;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+/* Decorative dot grid at top right */
+.brand-dot-grid {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  width: 56px;
+  height: 56px;
+  background-image: radial-gradient(rgba(110, 231, 183, 0.65) 1.5px, transparent 1.5px);
+  background-size: 11px 11px;
+  pointer-events: none;
+}
+
+/* Decorative subtle curved line */
+.brand-orbit-ring {
+  position: absolute;
+  top: 22%;
+  right: -60px;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  border: 1px solid rgba(167, 243, 208, 0.16);
+  pointer-events: none;
+}
+
+.brand-content {
+  position: relative;
+  z-index: 2;
+}
+
+.brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+
+.brand-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo-icon {
+  width: 42px;
+  height: 42px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
+.brand-name-text {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.brand-accent-bar {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34d399, #10b981);
+  margin-top: 10px;
+}
+
+.brand-slogan-wrap {
+  margin-top: 8px;
+}
+
+.brand-slogan {
+  margin: 0;
+  font-size: clamp(24px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.35;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.brand-slogan span {
+  display: block;
+}
+
+/* Bottom 3D Educational Visual */
+.brand-visual-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.brand-visual-img {
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+/* ==========================================================================
+   Right Panel: Login Form
+   ========================================================================== */
+.login-form-panel {
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 50px;
+  box-sizing: border-box;
+}
+
+.login-form-inner {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.form-brand-mark {
+  margin-bottom: 8px;
+}
+
+.form-logo-icon {
+  width: 44px;
+  height: 44px;
+}
+
+.form-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0b1c30;
+  letter-spacing: -0.01em;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+/* Global Alert Banners */
+.form-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #b91c1c;
+  font-size: 13.5px;
+  line-height: 1.4;
+  margin-bottom: 18px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.error-bullet {
+  font-weight: 700;
+  font-size: 16px;
+  color: #dc2626;
+}
+
+.form-info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  color: #166534;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 18px;
+  position: relative;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.info-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #15803d;
+}
+
+.info-text {
+  flex: 1;
+}
+
+.info-close-btn {
+  background: transparent;
+  border: none;
+  color: #15803d;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.info-close-btn:hover {
+  background: rgba(22, 101, 52, 0.1);
+}
+
+/* Inputs & Form Groups */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 50px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background-color: #ffffff;
+  padding: 0 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.input-container:focus-within {
+  border-color: #176b50;
+  box-shadow: 0 0 0 3px rgba(23, 107, 80, 0.12);
+}
+
+.input-container.has-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.field-icon {
+  color: #64748b;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.form-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: #0f172a;
+  padding: 0;
+  font-family: inherit;
+}
+
+.form-input::placeholder {
+  color: #94a3b8;
+  font-size: 14.5px;
+}
+
+.password-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  margin-left: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.password-toggle-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.field-error-text {
+  margin: 0;
+  font-size: 12.5px;
+  color: #dc2626;
+  padding-left: 2px;
+}
+
+/* Form Options: Remember Me & Forgot Password */
+.form-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -2px;
+  margin-bottom: 6px;
+}
+
+.remember-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.custom-checkbox {
+  width: 17px;
+  height: 17px;
+  accent-color: #176b50;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.remember-text {
+  font-size: 14px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.forgot-password-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0d7f5e;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.forgot-password-link:hover {
+  color: #065e43;
+  text-decoration: underline;
+}
+
+/* Submit CTA Button */
+.login-submit-button {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0d7f5e 0%, #0a6b4f 100%);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(13, 127, 94, 0.28);
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.login-submit-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #10946e 0%, #0d7f5e 100%);
+  box-shadow: 0 6px 18px rgba(13, 127, 94, 0.35);
+  transform: translateY(-1px);
+}
+
+.login-submit-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(13, 127, 94, 0.24);
+}
+
+.login-submit-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.button-spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   Responsive Adaptations
+   ========================================================================== */
+
+/* Tablet (768px to 1023px) */
+@media (max-width: 1023px) and (min-width: 768px) {
+  .login-card-container {
+    grid-template-columns: 44% 56%;
+    min-height: 540px;
+  }
+  .login-brand-panel {
+    padding: 36px 32px 0 32px;
+  }
+  .login-form-panel {
+    padding: 36px 40px;
+  }
+  .brand-slogan {
+    font-size: 24px;
+  }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 767px) {
+  .login-page-wrapper {
+    padding: 16px;
+    align-items: center;
+  }
+
+  .login-card-container {
+    grid-template-columns: 1fr;
+    width: min(440px, 100%);
+    min-height: auto;
+    max-height: none;
+    border-radius: 20px;
+    box-shadow: 0 16px 40px rgba(4, 28, 20, 0.18);
+  }
+
+  /* Compact banner on mobile */
+  .login-brand-panel {
+    padding: 24px 24px 20px 24px;
+  }
+
+  .brand-visual-container {
+    display: none; /* Hide large 3D visual on mobile so form fits comfortably */
+  }
+
+  .brand-header {
+    margin-bottom: 12px;
+  }
+
+  .brand-slogan {
+    font-size: 19px;
+    line-height: 1.3;
+  }
+
+  .brand-slogan span {
+    display: inline;
+  }
+  .brand-slogan span:not(:last-child)::after {
+    content: " ";
+  }
+
+  .login-form-panel {
+    padding: 28px 24px 32px 24px;
+  }
+
+  .form-header {
+    display: none; /* Already presented in the top brand panel */
+  }
+
+  .input-container {
+    height: 48px;
+  }
+
+  .login-submit-button {
+    height: 48px;
+  }
+}

@@ -40,6 +40,12 @@ public class LessonController {
         return ApiResponse.ok("Lesson list loaded", lessonService.findByChapter(chapterId));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<LessonResponse> findById(@PathVariable Long id) {
+        return ApiResponse.ok("Lesson loaded", lessonService.findById(id));
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<LessonResponse> create(@Valid @RequestBody LessonRequest request) {

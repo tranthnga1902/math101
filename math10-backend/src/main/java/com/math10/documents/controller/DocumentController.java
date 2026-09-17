@@ -64,6 +64,23 @@ public class DocumentController {
                 .body(documentService.readDocumentBytes(id));
     }
 
+    /** PDF để xem trong app: PDF gốc, hoặc Word/Excel/PowerPoint đã đổi sang PDF. */
+    @GetMapping("/{id}/preview.pdf")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ResponseEntity<byte[]> preview(@PathVariable Long id) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).body(documentService.readDocumentPreviewPdf(id));
+    }
+
+    /** Mở gói SCORM/xAPI: kiểm quyền rồi trả đường dẫn khởi chạy có token (xem LearningPackageService). */
+    @PostMapping("/{id}/package/launch")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
+    public ApiResponse<PackageLaunchResponse> launchPackage(@PathVariable Long id) {
+        return ApiResponse.ok("Mở gói học liệu thành công", new PackageLaunchResponse(documentService.launchDocumentPackage(id)));
+    }
+
+    public record PackageLaunchResponse(String launchUrl) {
+    }
+
     /** Ảnh bìa đi qua backend để bucket R2 có thể để private mà bìa vẫn hiện. */
     @GetMapping("/{id}/thumbnail")
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER','STUDENT')")
@@ -82,6 +99,16 @@ public class DocumentController {
             case "doc" -> MediaType.parseMediaType("application/msword");
             case "docx" -> MediaType.parseMediaType(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            case "xls" -> MediaType.parseMediaType("application/vnd.ms-excel");
+            case "xlsx" -> MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            case "ppt" -> MediaType.parseMediaType("application/vnd.ms-powerpoint");
+            case "pptx" -> MediaType.parseMediaType(
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+            case "mp4", "m4v" -> MediaType.parseMediaType("video/mp4");
+            case "webm" -> MediaType.parseMediaType("video/webm");
+            case "mov" -> MediaType.parseMediaType("video/quicktime");
+            case "zip" -> MediaType.parseMediaType("application/zip");
             default -> MediaType.APPLICATION_OCTET_STREAM;
         };
     }

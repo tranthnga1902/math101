@@ -8,6 +8,7 @@ import com.math10.audit.service.AuditService;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.programs.support.LuongNoiDung;
 import com.math10.programs.support.VideoThumbnails;
+import com.math10.documents.support.DocumentUrls;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -57,15 +58,25 @@ public class ProgramContentController {
                 ?lich.tuanHienTaiCuaHocSinh(toi,programId,java.time.LocalDate.now()).orElse(null):null;
         String filter=type==null?"":" and pr.resource_type=?";
         Object[] args=type==null?new Object[]{}:new Object[]{type};
-        return ApiResponse.ok("Nội dung chương trình",jdbc.queryForList("""
+        List<Map<String,Object>> rows=jdbc.queryForList("""
           select pr.*,tt.tuan,cc.id chapter_id,cc.title chapter_title,cc.order_index chapter_order,
-          v.video_url,v.thumbnail_url,v.duration_seconds,
+          v.video_url,v.thumbnail_url,v.duration_seconds,d.doc_type,d.file_url,d.file_asset_id,
           """+LuongNoiDung.dai(tuanNay)+" dai\n from program_resources pr\n"
           +LuongNoiDung.NOI_NGUON+LuongNoiDung.NOI_TUAN+LuongNoiDung.NOI_CHUONG
           +"where"+LuongNoiDung.thuocChuongTrinh(String.valueOf(programId))
           +" and"+luat.docDuocDayDu(vai)
           +" and"+luat.toiDuocLop(vai,toi)
-          +filter+LuongNoiDung.thuTuBonDai(tuanNay),args));
+          +filter+LuongNoiDung.thuTuBonDai(tuanNay),args);
+        rows.forEach(row -> {
+            DocumentUrls.maskContent(row,"resource_ref_id","doc_type","file_url");
+            String url=(String)row.get("file_url");
+            if(url!=null && url.startsWith("/api/documents/")) {
+                row.put("file_url","/api/program-resources/"+row.get("id")+"/content."+DocumentUrls.extensionOf(url));
+            } else if((url==null || url.isBlank()) && row.get("file_asset_id")!=null) {
+                row.put("file_url","/api/files/"+row.get("file_asset_id")+"/download");
+            }
+        });
+        return ApiResponse.ok("Nội dung chương trình",rows);
     }
 
     // Cùng một luật ĐỌC như published() ở trên, và đó là điểm chính: hai đường này phải trả lời

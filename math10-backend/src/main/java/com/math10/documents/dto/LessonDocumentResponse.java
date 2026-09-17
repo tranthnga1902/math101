@@ -14,6 +14,12 @@ public record LessonDocumentResponse(
         boolean required,
         String teacherNote,
         Integer startPage,
-        Integer displayOrder
+        Integer displayOrder,
+        String thumbnailUrl
 ) {
+    public LessonDocumentResponse(Long id, Long lessonId, Long documentId, String title, DocumentType docType,
+                                  DocumentAudience audience, String fileUrl, boolean required,
+                                  String teacherNote, Integer startPage, Integer displayOrder) {
+        this(id, lessonId, documentId, title, docType, audience, fileUrl, required, teacherNote, startPage, displayOrder, null);
+    }
 }

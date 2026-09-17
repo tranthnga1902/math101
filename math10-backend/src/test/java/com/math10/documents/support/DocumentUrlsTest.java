@@ -41,6 +41,16 @@ class DocumentUrlsTest {
     }
 
     @Test
+    void videoTaiLenNamTrenR2ThiVanDiQuaBackend() {
+        String url = DocumentUrls.contentUrl(7L, "VIDEO", "https://files.example.com/documents/bai-giang.mp4");
+
+        assertThat(url).isEqualTo("/api/documents/7/content.mp4");
+        assertThat(DocumentUrls.contentUrl(7L, "VIDEO", "https://youtu.be/abc")).isEqualTo("https://youtu.be/abc");
+        assertThat(DocumentUrls.contentUrl(7L, "VIDEO", "https://youtube.com.evil.example/x.mp4"))
+                .isEqualTo("/api/documents/7/content.mp4");
+    }
+
+    @Test
     void khongDoanDuocDuoiThiCoiNhuPdf() {
         assertThat(DocumentUrls.contentUrl(7L, "CHUYEN_DE", "https://files.example.com/a/khong-duoi"))
                 .isEqualTo("/api/documents/7/content.pdf");

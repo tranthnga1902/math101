@@ -19,6 +19,8 @@ import {
 import { flattenLessons, formatPercent } from "./format";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
+import { LessonContentRenderer } from "../components/lesson-editor";
+import { DocumentPreview } from "../components/DocumentPreview";
 
 type LessonDetailPageProps = {
   session: AuthSession;
@@ -184,15 +186,8 @@ export function LessonDetailPage({
           <div className="bg-error-container text-on-error-container px-4 py-2 rounded-lg text-sm">{error}</div>
         )}
 
-        <section className="prose prose-sm max-w-none text-on-surface">
-          {lesson.contentHtml ? (
-            <div
-              className="space-y-4 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: renderMathContent(lesson.contentHtml) }}
-            />
-          ) : (
-            <p className="text-on-surface-variant">{lesson.summary || "Giáo viên chưa nhập nội dung bài giảng."}</p>
-          )}
+        <section className="max-w-none text-on-surface">
+          <LessonContentRenderer content={lesson.contentHtml} fallbackSummary={lesson.summary} />
         </section>
 
         {!!videoDocs.length && (
@@ -228,13 +223,29 @@ export function LessonDetailPage({
             {learningDocs.map((doc, index) => {
               const qs = docQuestions[doc.id] ?? [];
               return (
-                <article key={doc.id} className="border border-outline-variant rounded-xl p-4 flex flex-col md:flex-row gap-4">
-                  <div className="flex-1 space-y-1">
+                <article key={doc.id} className="border border-outline-variant rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start bg-surface-container-lowest hover:border-primary/40 transition-colors">
+                  <DocumentPreview
+                    fileUrl={doc.fileUrl}
+                    thumbnailUrl={doc.thumbnailUrl}
+                    title={doc.title}
+                    docType={doc.docType}
+                    pageNumber={doc.startPage || 1}
+                    accessToken={session.accessToken}
+                    variant="thumbnail"
+                    className="w-24 h-32 sm:w-28 sm:h-36 cursor-pointer hover:opacity-95 shadow-sm"
+                    onClick={() => void openDocument(doc)}
+                  />
+                  <div className="flex-1 min-w-0 space-y-1">
                     <small className="text-xs text-on-surface-variant">
                       Bước {index + 1} · {doc.docType} · {doc.required ? "Bắt buộc" : "Tham khảo"}
                       {doc.startPage ? ` · Mở trang ${doc.startPage}` : ""}
                     </small>
-                    <b className="block text-sm">{doc.title}</b>
+                    <b
+                      className="block text-sm text-on-surface hover:text-primary cursor-pointer transition-colors"
+                      onClick={() => void openDocument(doc)}
+                    >
+                      {doc.title}
+                    </b>
                     {doc.teacherNote && <p className="text-xs text-on-surface-variant">{doc.teacherNote}</p>}
                     {!!qs.length && (
                       <div className="mt-3 space-y-2">

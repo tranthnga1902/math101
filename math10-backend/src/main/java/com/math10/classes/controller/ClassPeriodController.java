@@ -57,6 +57,7 @@ public class ClassPeriodController {
                        ps.id strand_id,ps.name strand_name,ps.order_index strand_order,
                        cw.starts_on week_starts_on,cw.ends_on week_ends_on,
                        cpp.closed_at,cpp.note,
+                       cc.course_instance_id,
                        (select count(*) from assignments a
                          where a.anchor_period_id=pp.id and a.class_id=? and a.deleted_at is null) so_bai_neo
                 from class_courses cc
@@ -114,6 +115,48 @@ public class ClassPeriodController {
         dong.setClosedBy(current.requireUserId());
         dong.setNote(body == null ? null : body.note());
         progress.save(dong);
+
+        // Đồng bộ tiến độ tổng hợp của lớp theo khóa học (để tính BEHIND/ON_TRACK/AHEAD nhanh).
+        // Tìm course_instance_id của lớp qua class_courses.
+        List<Map<String, Object>> khoaList = jdbc.queryForList("""
+                select cc.course_instance_id, ci.teaching_plan_id
+                from class_courses cc
+                join course_instances ci on ci.id = cc.course_instance_id and ci.deleted_at is null
+                join program_templates pt on pt.id = ci.template_id and pt.deleted_at is null
+                join program_strands ps on ps.program_id = pt.program_id and ps.deleted_at is null
+                join program_periods pp on pp.strand_id = ps.id and pp.deleted_at is null
+                where cc.class_id = ? and cc.deleted_at is null and pp.id = ?
+                limit 1
+                """, classId, periodId);
+        if (!khoaList.isEmpty()) {
+            long courseInstanceId = ((Number) khoaList.get(0).get("course_instance_id")).longValue();
+            // Đếm số tiết đã chốt của lớp trong khóa này
+            Integer total = jdbc.queryForObject("""
+                    select count(*) from class_period_progress cpp
+                    join program_periods pp on pp.id = cpp.period_id and pp.deleted_at is null
+                    join program_strands ps on ps.id = pp.strand_id and ps.deleted_at is null
+                    join program_templates pt on pt.program_id = ps.program_id and pt.deleted_at is null
+                    join course_instances ci on ci.template_id = pt.id and ci.id = ? and ci.deleted_at is null
+                    where cpp.class_id = ? and cpp.deleted_at is null
+                    """, Integer.class, courseInstanceId, classId);
+            int completedCount = total == null ? 0 : total;
+            // last_completed_session_id còn khóa ngoại về course_sessions (Hệ B, đã ngừng dùng ở
+            // luồng chốt tiết này) nên không tra cứu qua đó nữa — để null cho tới khi có khái niệm
+            // "buổi đã hoàn thành" tương đương ở course_delivery_sessions (Hệ A).
+            Long lastSessionId = null;
+
+            jdbc.update("""
+                    insert into class_course_progress
+                        (class_id, course_instance_id, last_completed_session_id, last_completed_period_id,
+                         completed_period_count, updated_at)
+                    values (?,?,?,?,?,now())
+                    on conflict (class_id, course_instance_id) do update
+                    set last_completed_session_id   = excluded.last_completed_session_id,
+                        last_completed_period_id    = excluded.last_completed_period_id,
+                        completed_period_count       = excluded.completed_period_count,
+                        updated_at                  = now()
+                    """, classId, courseInstanceId, lastSessionId, periodId, completedCount);
+        }
 
         int daMo = neoBuoi.dongBoTheoTiet(classId, periodId);
         audit.record("CLOSE", "CLASS_PERIOD", periodId, null, "class=" + classId + " opened=" + daMo);

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   closeClassPeriod, createAssignmentBatch, getClassPeriods, reopenClassPeriod,
-  type AuthSession, type ClassPeriod, type ClosePeriodResult, type PeriodSuggestion,
+  getCourseClassProgress,
+  type AuthSession, type ClassPeriod, type ClosePeriodResult, type PeriodSuggestion, type ClassProgressRow,
 } from "../../api";
 import { messageOf } from "../../lib/errors";
 import { macDinhCua } from "./loaiNhiemVu";
@@ -96,6 +97,24 @@ export function ClassSessionPanel({ session, classId }: { session: AuthSession; 
   const daChot = rows.filter(row => row.closed_at).length;
   const tietKe = rows.find(row => !row.closed_at);
 
+  // Lấy courseInstanceId từ dòng đầu tiên (tất cả dòng cùng course_instance_id)
+  const courseInstanceId = rows[0]?.course_instance_id ?? null;
+
+  // Query tiến độ lớp (chỉ khi có courseInstanceId)
+  const progressQuery = useQuery({
+    queryKey: ["course-class-progress", courseInstanceId],
+    queryFn: () => getCourseClassProgress(session, courseInstanceId!),
+    enabled: !!courseInstanceId,
+    select: (data: ClassProgressRow[]) => data.find(r => r.classId === classId) ?? null,
+  });
+  const tienDo = progressQuery.data ?? null;
+
+  const TRANG_THAI_MAUSAC: Record<string, { bg: string; text: string; label: string }> = {
+    ON_TRACK: { bg: "#f0fdf4", text: "#166534", label: "✅ Đúng tiến độ" },
+    AHEAD:    { bg: "#eff6ff", text: "#1e40af", label: "🚀 Đang nhanh hơn kế hoạch" },
+    BEHIND:   { bg: "#fef2f2", text: "#991b1b", label: "⚠️ Đang chậm hơn kế hoạch" },
+  };
+
   return <section className="flex flex-col gap-4">
     <div>
       <h3 className="text-base font-bold text-on-surface">Buổi học</h3>
@@ -104,6 +123,18 @@ export function ClassSessionPanel({ session, classId }: { session: AuthSession; 
         {tietKe && ` · tiếp theo: ${tietKe.strand_name} tiết ${tietKe.period_no}`}
       </p>
     </div>
+
+    {/* Tiến độ lớp */}
+    {tienDo && tienDo.trangThai && (()=>{
+      const ms = TRANG_THAI_MAUSAC[tienDo.trangThai] ?? TRANG_THAI_MAUSAC.ON_TRACK;
+      return <div style={{padding:"8px 12px",borderRadius:8,background:ms.bg,color:ms.text,fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontWeight:600}}>{ms.label}</span>
+        <span style={{fontSize:12,opacity:0.85}}>
+          Kế hoạch: {tienDo.plannedPeriodCount} tiết · Thực tế: {tienDo.completedPeriodCount} tiết
+          {tienDo.lech > 0 && ` · ${tienDo.trangThai === "BEHIND" ? "Trễ" : "Nhanh"} ${tienDo.lech} tiết`}
+        </span>
+      </div>;
+    })()}
 
     {error && <div className="api-error">{error}</div>}
 

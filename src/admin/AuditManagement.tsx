@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAuditLogs, getUsers, type AuditLog, type AuthSession, type UserAccount } from "../api";
-import "./audit-management.css";
+import { AdminPage } from "./components/AdminPageLayout";
+import { AdminTable, AdminPagination } from "./components/AdminTable";
+import { AdminDrawer } from "./components/AdminDrawer";
+import { SearchInput, FilterSelect } from "./components/AdminFilterBar";
 
 const actionLabel: Record<string, string> = {
   CREATE: "Tạo mới", UPDATE: "Cập nhật", DELETE: "Xóa", LOGIN: "Đăng nhập",
@@ -79,55 +82,122 @@ export function AuditManagement({ session }: { session: AuthSession }) {
   }, [logs, search, userMap]);
   const sentence = (log: AuditLog) => `${actionLabel[log.action] ?? log.action} ${targetLabel[log.targetType] ?? log.targetType}${log.targetId ? ` #${log.targetId}` : ""}`;
 
-  return <section className="audit-page">
-    <div className="audit-filters">
-      <select value={range} onChange={(event) => changeFilter(() => setRange(event.target.value))}>
-        <option value="1">Hôm nay</option><option value="7">7 ngày qua</option><option value="30">30 ngày qua</option><option value="all">Tất cả thời gian</option>
-      </select>
-      <select value={actor} onChange={(event) => changeFilter(() => setActor(event.target.value))}>
-        <option value="">Người thực hiện</option>{users.map((user) => <option key={user.id} value={user.id}>{user.fullName}</option>)}
-      </select>
-      <select value={role} onChange={(event) => changeFilter(() => setRole(event.target.value))}>
-        <option value="">Vai trò</option>{roles.map((item) => <option key={item} value={item}>{item}</option>)}
-      </select>
-      <select value={target} onChange={(event) => changeFilter(() => setTarget(event.target.value))}>
-        <option value="">Loại đối tượng</option>{targetTypes.map((item) => <option key={item} value={item}>{targetLabel[item]}</option>)}
-      </select>
-      <input placeholder="Mã đối tượng…" inputMode="numeric" value={objectId}
-             onChange={(event) => changeFilter(() => setObjectId(event.target.value.replace(/\D/g, "")))} />
-      <input className="audit-search" placeholder="Lọc trong trang này…" value={search} onChange={(event) => setSearch(event.target.value)} />
-    </div>
-    {error && <div className="api-error">{error}</div>}
-    <div className="audit-table"><table>
-      <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Thao tác</th><th>Đối tượng</th><th>Kết quả</th><th>IP</th><th>Chi tiết</th></tr></thead>
-      <tbody>{visible.map((log) => {
-        const user = log.actorUserId ? userMap.get(log.actorUserId) : null;
-        return <tr key={log.id} onClick={() => setSelected(log)}>
-          <td>{formatDate(log.createdAt)}</td><td><b>{user?.fullName ?? "Hệ thống"}</b><small>{user?.roleCode ?? "Tác vụ hệ thống"}</small></td>
-          <td>{sentence(log)}</td><td>{targetLabel[log.targetType] ?? log.targetType}</td><td><span>Thành công</span></td>
-          <td>{log.ipAddress ?? "—"}</td><td><button aria-label="Xem chi tiết">›</button></td>
-        </tr>;
-      })}</tbody>
-    </table><footer className="audit-paging">
-      <button disabled={page === 0 || logsQuery.isFetching} onClick={() => setPage(page - 1)}>‹ Trang trước</button>
-      <span>
-        {logsQuery.isFetching ? "Đang tải…" : `Hiển thị ${visible.length} dòng · trang ${page + 1}/${Math.max(pages, 1)} · ${total} kết quả khớp bộ lọc`}
-      </span>
-      <button disabled={page + 1 >= pages || logsQuery.isFetching} onClick={() => setPage(page + 1)}>Trang sau ›</button>
-    </footer></div>
-    {selected && <AuditDetail log={selected} user={selected.actorUserId ? userMap.get(selected.actorUserId) : undefined} sentence={sentence(selected)} onClose={() => setSelected(null)} />}
-  </section>;
+  const columns = [
+    { key: "createdAt", label: "Thời gian", render: (log: AuditLog) => <span className="whitespace-nowrap">{formatDate(log.createdAt)}</span> },
+    { key: "actor", label: "Người thực hiện", render: (log: AuditLog) => {
+      const user = log.actorUserId ? userMap.get(log.actorUserId) : null;
+      return <div><b className="block">{user?.fullName ?? "Hệ thống"}</b><small className="text-on-surface-variant">{user?.roleCode ?? "Tác vụ hệ thống"}</small></div>;
+    }},
+    { key: "action", label: "Thao tác", render: (log: AuditLog) => sentence(log) },
+    { key: "targetType", label: "Đối tượng", render: (log: AuditLog) => targetLabel[log.targetType] ?? log.targetType },
+    { key: "result", label: "Kết quả", render: () => <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-[#ecfccb] text-[#3f6212] border border-[#d9f99d]">Thành công</span> },
+    { key: "ip", label: "IP", render: (log: AuditLog) => <span className="text-on-surface-variant">{log.ipAddress ?? "—"}</span> },
+    { key: "detail", label: "Chi tiết", className: "text-center", sticky: true, render: (log: AuditLog) => (
+      <button className="text-lg text-primary hover:text-on-primary-container transition-colors" onClick={(e) => { e.stopPropagation(); setSelected(log); }} aria-label="Xem chi tiết">›</button>
+    )},
+  ];
+
+  return (
+    <AdminPage>
+      <AdminPage.Header
+        eyebrow="QUẢN TRỊ HỆ THỐNG"
+        title="Nhật ký hoạt động"
+        description="Theo dõi mọi thay đổi dữ liệu và hành động trong hệ thống."
+      />
+      <AdminPage.Filters>
+        <FilterSelect value={range} onChange={(e) => changeFilter(() => setRange(e.target.value))}>
+          <option value="1">Hôm nay</option>
+          <option value="7">7 ngày qua</option>
+          <option value="30">30 ngày qua</option>
+          <option value="all">Tất cả thời gian</option>
+        </FilterSelect>
+        <FilterSelect value={actor} onChange={(e) => changeFilter(() => setActor(e.target.value))}>
+          <option value="">Người thực hiện</option>
+          {users.map((user) => <option key={user.id} value={user.id}>{user.fullName}</option>)}
+        </FilterSelect>
+        <FilterSelect value={role} onChange={(e) => changeFilter(() => setRole(e.target.value))}>
+          <option value="">Vai trò</option>
+          {roles.map((item) => <option key={item} value={item}>{item}</option>)}
+        </FilterSelect>
+        <FilterSelect value={target} onChange={(e) => changeFilter(() => setTarget(e.target.value))}>
+          <option value="">Loại đối tượng</option>
+          {targetTypes.map((item) => <option key={item} value={item}>{targetLabel[item]}</option>)}
+        </FilterSelect>
+        <input
+          className="h-10 rounded-lg border border-outline-variant bg-white text-sm px-3 w-32 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          placeholder="Mã đối tượng…" inputMode="numeric" value={objectId}
+          onChange={(e) => changeFilter(() => setObjectId(e.target.value.replace(/\D/g, "")))}
+        />
+        <div className="ml-auto">
+          <SearchInput value={search} onChange={setSearch} placeholder="Lọc trong trang này…" debounceMs={0} />
+        </div>
+      </AdminPage.Filters>
+
+      {error && <div className="mb-4 p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
+
+      <AdminPage.Content>
+        <AdminTable<AuditLog>
+          columns={columns}
+          data={visible}
+          loading={logsQuery.isLoading}
+          skeletonRows={8}
+          keyExtractor={(log) => log.id}
+          onRowClick={(log) => setSelected(log)}
+          selectedId={selected?.id}
+          emptyMessage="Không có nhật ký phù hợp với bộ lọc."
+          footer={
+            <AdminPagination
+              page={page + 1}
+              totalPages={Math.max(pages, 1)}
+              onPageChange={(p) => setPage(p - 1)}
+              totalItems={total}
+            />
+          }
+        />
+      </AdminPage.Content>
+
+      <AdminDrawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        size="sm"
+        title="Chi tiết thao tác"
+      >
+        {selected && <AuditDetailContent log={selected} user={selected.actorUserId ? userMap.get(selected.actorUserId) : undefined} sentence={sentence(selected)} />}
+      </AdminDrawer>
+    </AdminPage>
+  );
 }
 
-function AuditDetail({ log, user, sentence, onClose }: { log: AuditLog; user?: UserAccount; sentence: string; onClose: () => void }) {
-  return <><div className="audit-overlay" onClick={onClose} /><aside className="audit-detail">
-    <header><h2>Chi tiết thao tác</h2><button onClick={onClose} aria-label="Đóng">×</button></header>
-    <main><section><dl>
-      <div><dt>Thời gian</dt><dd>{formatDate(log.createdAt, true)}</dd></div><div><dt>IP Address</dt><dd>{log.ipAddress ?? "—"}</dd></div>
-      <div><dt>Người thực hiện</dt><dd>{user?.fullName ?? "Hệ thống"} <span>{user?.roleCode ?? "SYSTEM"}</span></dd></div>
-      <div><dt>Thao tác</dt><dd>{sentence}</dd></div>
-    </dl></section><h3>So sánh Trước/Sau</h3><div className="audit-diff">
-      <div><b>TRƯỚC (OLD)</b><pre>{pretty(parse(log.oldData))}</pre></div><div><b>SAU (NEW)</b><pre>{pretty(parse(log.newData))}</pre></div>
-    </div><button className="close-detail" onClick={onClose}>Đóng</button></main>
-  </aside></>;
+function AuditDetailContent({ log, user, sentence }: { log: AuditLog; user?: UserAccount; sentence: string }) {
+  const items = [
+    { label: "Thời gian", value: formatDate(log.createdAt, true) },
+    { label: "IP Address", value: log.ipAddress ?? "—" },
+    { label: "Người thực hiện", value: <>{user?.fullName ?? "Hệ thống"} <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-primary-container text-on-primary-container">{user?.roleCode ?? "SYSTEM"}</span></> },
+    { label: "Thao tác", value: sentence },
+  ];
+  return (
+    <div className="space-y-6">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+        {items.map((item) => (
+          <div key={item.label} className="contents">
+            <dt className="font-medium text-on-surface-variant">{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-on-surface-variant mb-3">So sánh Trước/Sau</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border border-outline-variant overflow-hidden">
+            <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-on-surface-variant border-b border-outline-variant">Trước (OLD)</div>
+            <pre className="p-3 text-xs whitespace-pre-wrap break-all max-h-64 overflow-y-auto bg-white">{pretty(parse(log.oldData))}</pre>
+          </div>
+          <div className="rounded-lg border border-outline-variant overflow-hidden">
+            <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-on-surface-variant border-b border-outline-variant">Sau (NEW)</div>
+            <pre className="p-3 text-xs whitespace-pre-wrap break-all max-h-64 overflow-y-auto bg-white">{pretty(parse(log.newData))}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

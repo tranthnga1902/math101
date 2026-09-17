@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { AuthSession } from "../api";
 
-export type StudentTab = "today" | "classes" | "lessons" | "videos" | "textbooks" | "materials" | "exercises" | "topics" | "assignments" | "profile" | "settings";
+export type StudentTab = "today" | "classes" | "lessons" | "videos" | "textbooks" | "materials" | "exercises" | "assignments" | "profile" | "settings" | "fees";
 
 type StudentShellProps = {
   session: AuthSession;
@@ -22,13 +22,13 @@ const navSections: Array<{ label?: string; items: Array<{ key: StudentTab; label
     { key: "textbooks", label: "Sách giáo khoa", icon: "auto_stories" },
     { key: "materials", label: "Tài liệu", icon: "description" },
     { key: "exercises", label: "Bài tập chương trình", icon: "edit_note" },
-    { key: "topics", label: "Chuyên đề", icon: "folder_special" },
   ] },
   { label: "Phiếu bài tập", items: [
     { key: "assignments", label: "Được giao & đã làm", icon: "assignment" },
   ] },
   { label: "Cá nhân", items: [
     { key: "classes", label: "Lớp của em", icon: "school" },
+    { key: "fees", label: "Học phí", icon: "payments" },
     { key: "profile", label: "Kết quả học tập", icon: "monitoring" },
     { key: "settings", label: "Cài đặt", icon: "settings" },
   ] },
@@ -124,7 +124,7 @@ export function StudentShell({
           </div>
         </header>
 
-        <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-8 pb-24 md:pb-10 space-y-6">
+        <main className="w-full px-4 sm:px-6 md:px-8 py-6 md:py-8 pb-24 md:pb-10 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold">{greeting}</h1>

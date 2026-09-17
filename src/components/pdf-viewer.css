@@ -1,6 +1,6 @@
 /* Trình xem PDF dùng chung cho cả shell Admin (CSS thuần) và shell Giáo viên/Học sinh
    (Tailwind) — nên viết CSS thuần với tiền tố .pv-, giống markdown-viewer.css. */
-.pv-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.pv-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;z-index:1100;padding:16px}
 .pv-modal{background:#fff;border-radius:12px;width:min(1100px,100%);height:min(92dvh,100%);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.28);overflow:hidden}
 .pv-modal>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #e5e7eb}
 .pv-modal>header h2{margin:0;font-size:16px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -21,11 +21,25 @@
 /* Khung đo để tính "vừa trang" — kích thước của nó là khung chứa trang giấy.
    Canh giữa bằng margin:auto chứ không phải justify-content: khi phóng to hơn khung,
    auto margin về 0 nên trang không bị cắt mất mép, vẫn cuộn ngang được. */
-.pv-stage{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;background:#e2e8f0;display:flex}
-.pv-canvas{display:block;margin:auto;background:#fff;box-shadow:0 2px 12px rgba(15,23,42,.2)}
-.pv-state{margin:auto;padding:24px;text-align:center;color:#475569;font-size:14px;line-height:1.6}
+.pv-stage{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px;background:#e2e8f0;position:relative}
+/* Dải trang dọc: rộng theo trang để khi phóng to vẫn cuộn ngang được từ mép trái. */
+.pv-pages{width:max-content;min-width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
+.pv-page{flex:none;background:#fff;box-shadow:0 2px 12px rgba(15,23,42,.2)}
+.pv-pan{cursor:grab;user-select:none;touch-action:none;overscroll-behavior:contain}
+.pv-pan.is-dragging{cursor:grabbing}
+.pv-hint{font-size:12px;color:#64748b}
+.pv-canvas{display:block}
+.pv-state{margin:48px auto;max-width:460px;padding:24px;text-align:center;color:#475569;font-size:14px;line-height:1.6}
 .pv-state strong{display:block;margin-bottom:8px;color:#0f172a;font-size:15px}
 .pv-state button{margin-top:12px;height:36px;padding:0 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+
+/* Trình xem chung (DocumentViewerHost) cho video, ảnh, gói SCORM/xAPI. */
+.dv-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0f172a;overflow:auto}
+.dv-body .pv-state{background:#fff;border-radius:12px}
+.dv-fill{background:#fff;align-items:stretch}
+.dv-frame{flex:1;width:100%;height:100%;border:0;background:#fff}
+.dv-media{max-width:100%;max-height:100%;display:block;object-fit:contain}
+.dv-audio{width:min(560px,90%)}
 
 @media(max-width:640px){
  .pv-overlay{padding:0}

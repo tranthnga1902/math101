@@ -25,12 +25,13 @@ import {
 } from "../api";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
-import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
+import { YoutubeVideoModal, youtubeEmbedUrl, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
 import { StudentShell, type StudentTab } from "./StudentShell";
 import { ProfileSettings } from "../settings/ProfileSettings";
 import { TodayPage } from "./TodayPage";
 import { LessonsPage } from "./LessonsPage";
 import { MyClassesPage } from "./MyClassesPage";
+import { StudentFeesPage } from "../finance/StudentFeesPage";
 import { LessonDetailPage } from "./LessonDetailPage";
 import { AssignmentsPage } from "./AssignmentsPage";
 import { WorksheetRunner } from "./WorksheetRunner";
@@ -38,6 +39,8 @@ import { avatarInitials, buildGreeting, formatPercent } from "./format";
 import { AuthedImage } from "../lib/authedImage";
 import { ProgramResourcePage } from "./ProgramResourcePage";
 import { ChapterDetailPage } from "./ChapterDetailPage";
+import { StudentHomePage } from "./StudentHomePage";
+import { DocumentPreview } from "../components/DocumentPreview";
 
 type StudentExperienceProps = {
   session: AuthSession;
@@ -319,9 +322,9 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
   const [videoDoc, setVideoDoc] = useState<DocumentItem | null>(null);
   const [pdfDoc, setPdfDoc] = useState<DocumentItem | null>(null);
 
-  const types = (metadataQuery.data?.documentTypes ?? []).filter((item) => item.value !== "DE_THI" && item.value !== "VIDEO");
+  const types = (metadataQuery.data?.documentTypes ?? []).filter((item) => item.value !== "DE_THI");
   const docs = (query.data ?? []).filter((doc) =>
-    doc.docType !== "VIDEO" && (mode === "topics" ? doc.chapterId != null : doc.chapterId == null)
+    (mode === "topics" ? doc.chapterId != null : doc.chapterId == null)
   );
   const visible = useMemo(
     () => docs.filter((doc) => !docType || doc.docType === docType),
@@ -337,7 +340,7 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
     const map = new Map<string, { label: string; items: DocumentItem[] }>();
     visible.forEach((doc) => {
       const info = doc.chapterId ? lookup.get(doc.chapterId) : undefined;
-      const isVideo = doc.docType === "VIDEO";
+      const isVideo = doc.docType === "VIDEO" || (!!doc.fileUrl && !!youtubeEmbedUrl(doc.fileUrl));
       const area = isVideo ? "video" : "document";
       const key = info ? `${area}-${info.course.id}-${info.chapter.id}` : `${area}-other`;
       const chapterLabel = info
@@ -353,7 +356,7 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
   }, [visible, lookup, courseCount, mode]);
 
   const openDoc = (doc: DocumentItem) => {
-    if (doc.docType === "VIDEO") {
+    if (doc.docType === "VIDEO" || (doc.fileUrl && youtubeEmbedUrl(doc.fileUrl))) {
       setVideoDoc(doc);
       return;
     }
@@ -406,22 +409,37 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
         <section key={section.label} className="space-y-3">
           <h3 className="text-base font-semibold flex items-center gap-2"><span className="material-symbols-outlined text-primary">{section.items[0]?.docType === "VIDEO" ? "smart_display" : "auto_stories"}</span>{section.label}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {section.items.map((doc) => (
-              <article key={doc.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex items-start gap-3">
-                <AuthedImage url={doc.thumbnailUrl} accessToken={session.accessToken} alt=""
-                  className="w-12 h-12 rounded-lg object-cover shrink-0 border border-outline-variant"
-                  fallback={<span className="w-12 h-12 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined">{doc.docType === "VIDEO" ? "play_circle" : "description"}</span>
-                  </span>} />
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-semibold text-sm line-clamp-2">{doc.title}</h4>
-                  <p className="text-xs text-on-surface-variant mt-1">{types.find((item) => item.value === doc.docType)?.label ?? doc.docType}</p>
-                  <button type="button" onClick={() => void openDoc(doc)} className="mt-2 inline-flex h-8 px-3 items-center rounded-lg bg-primary text-on-primary text-xs font-medium">
-                    {doc.docType === "VIDEO" ? "Xem video" : "Mở tài liệu"}
-                  </button>
-                </div>
-              </article>
-            ))}
+            {section.items.map((doc) => {
+              const isYt = !!doc.fileUrl && !!youtubeEmbedUrl(doc.fileUrl);
+              const isVid = doc.docType === "VIDEO" || isYt;
+              const thumb = doc.thumbnailUrl || (isYt ? youtubeThumbnailUrl(doc.fileUrl) : undefined);
+              return (
+                <article key={doc.id} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex items-start gap-3 hover:border-primary/40 transition-colors">
+                  <DocumentPreview
+                    fileUrl={doc.fileUrl}
+                    thumbnailUrl={doc.thumbnailUrl}
+                    title={doc.title}
+                    docType={doc.docType}
+                    accessToken={session.accessToken}
+                    variant="compact"
+                    className="w-16 h-20 shadow-xs cursor-pointer shrink-0"
+                    onClick={() => void openDoc(doc)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h4
+                      className="font-semibold text-sm line-clamp-2 hover:text-primary cursor-pointer transition-colors"
+                      onClick={() => void openDoc(doc)}
+                    >
+                      {doc.title}
+                    </h4>
+                    <p className="text-xs text-on-surface-variant mt-1">{types.find((item) => item.value === doc.docType)?.label ?? doc.docType}</p>
+                    <button type="button" onClick={() => void openDoc(doc)} className="mt-2 inline-flex h-8 px-3 items-center rounded-lg bg-primary text-on-primary text-xs font-medium hover:opacity-90 transition-opacity">
+                      {isVid ? "Xem video" : "Mở tài liệu"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       ))}
@@ -430,7 +448,7 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
           onClose={() => setMarkdownDoc(null)}
           onOpenPdf={isPdfDocument(markdownDoc) ? () => { setMarkdownDoc(null); setPdfDoc(markdownDoc); } : undefined} />
       )}
-      {videoDoc && <YoutubeVideoModal title={videoDoc.title} url={videoDoc.fileUrl} onClose={() => setVideoDoc(null)} />}
+      {videoDoc && videoDoc.fileUrl && <YoutubeVideoModal title={videoDoc.title} url={videoDoc.fileUrl} onClose={() => setVideoDoc(null)} />}
       {pdfDoc && <PdfViewer session={session} documentId={pdfDoc.id} title={pdfDoc.title} fileUrl={pdfDoc.fileUrl} onClose={() => setPdfDoc(null)} />}
     </div>
   );
@@ -439,15 +457,20 @@ function MaterialsTab({ session, mode }: { session: AuthSession; mode: "material
 function StudentTopicsTab({session}:{session:AuthSession}){
   const treeQuery=useQuery({queryKey:["student-taxonomy",session.userId],queryFn:()=>getStudentTaxonomyTree(session)});
   const docsQuery=useQuery({queryKey:["student-topic-documents",session.userId],queryFn:()=>getStudentDocuments(session)});
-  const [expanded,setExpanded]=useState<number[]>([]),[selectedId,setSelectedId]=useState<number|null>(null),[pdfDoc,setPdfDoc]=useState<DocumentItem|null>(null),[markdownDoc,setMarkdownDoc]=useState<DocumentItem|null>(null),[openError,setOpenError]=useState("");
+  const [expanded,setExpanded]=useState<number[]>([]),[selectedId,setSelectedId]=useState<number|null>(null),[pdfDoc,setPdfDoc]=useState<DocumentItem|null>(null),[markdownDoc,setMarkdownDoc]=useState<DocumentItem|null>(null),[videoDoc,setVideoDoc]=useState<DocumentItem|null>(null),[openError,setOpenError]=useState("");
   const nodes=treeQuery.data??[],docs=(docsQuery.data??[]).filter(doc=>doc.taxonomyNodeId!=null);
   const children=useMemo(()=>{const map=new Map<number,TaxonomyNode[]>();nodes.forEach(node=>{const key=node.parentId??0;if(!map.has(key))map.set(key,[]);map.get(key)!.push(node)});map.forEach(list=>list.sort((a,b)=>a.orderNo-b.orderNo));return map},[nodes]);
   const selected=nodes.find(node=>node.id===selectedId)??null;
   const selectedDocs=selectedId==null?[]:docs.filter(doc=>doc.taxonomyNodeId===selectedId);
-  const openDoc=(doc:DocumentItem)=>{if(doc.contentMarkdown){setMarkdownDoc(doc);return}if(isPdfDocument(doc)){setPdfDoc(doc);return}openDocumentFile(session,doc.fileUrl,doc.title).catch(reason=>setOpenError((reason as Error).message))};
+  const openDoc=(doc:DocumentItem)=>{
+    if(doc.docType==="VIDEO"||(doc.fileUrl&&youtubeEmbedUrl(doc.fileUrl))){setVideoDoc(doc);return}
+    if(doc.contentMarkdown){setMarkdownDoc(doc);return}
+    if(isPdfDocument(doc)){setPdfDoc(doc);return}
+    openDocumentFile(session,doc.fileUrl,doc.title).catch(reason=>setOpenError((reason as Error).message))
+  };
   if(treeQuery.isLoading||docsQuery.isLoading)return <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4"><div className="h-80 rounded-xl bg-surface-container animate-pulse"/><div className="h-80 rounded-xl bg-surface-container animate-pulse"/></div>;
   const error=treeQuery.error||docsQuery.error;if(error)return <div className="bg-error-container text-on-error-container px-4 py-3 rounded-lg text-sm">{(error as Error).message}</div>;
-  return <div className="space-y-5"><header><h2 className="text-xl font-bold">Chuyên đề học tập</h2><p className="mt-1 text-sm text-on-surface-variant">Nội dung chính thức do quản trị viên biên soạn.</p></header>{openError&&<div className="bg-error-container text-on-error-container px-4 py-2 rounded-lg text-sm">{openError}</div>}<div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4 items-start"><aside className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden"><div className="px-4 py-3 border-b border-outline-variant"><b className="text-sm">Cây chuyên đề</b><p className="text-[11px] text-on-surface-variant">Chuyên đề · Bài · Dạng</p></div><div className="max-h-[65vh] overflow-auto py-1">{(children.get(0)??[]).map(node=><StudentTopicRow key={node.id} node={node} level={0} children={children} expanded={expanded} selectedId={selectedId} onToggle={id=>setExpanded(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id])} onSelect={setSelectedId}/>)}{!nodes.length&&<p className="p-4 text-sm text-on-surface-variant">Admin chưa tạo chuyên đề nào.</p>}</div></aside><section className="min-h-80 rounded-xl border border-outline-variant bg-surface-container-lowest">{!selected?<div className="h-80 grid place-items-center text-center text-sm text-on-surface-variant p-8">Chọn một chuyên đề hoặc bài học để xem nội dung.</div>:<><header className="p-5 border-b border-outline-variant"><span className="text-[11px] font-semibold text-primary">{selected.depth===1?"CHUYÊN ĐỀ":selected.depth===2?"BÀI HỌC":"DẠNG TOÁN"}</span><h3 className="mt-1 text-lg font-bold">{selected.title}</h3>{selected.description&&<p className="mt-2 text-sm text-on-surface-variant">{selected.description}</p>}</header><div className="p-5"><h4 className="text-sm font-semibold mb-3">Tài liệu học tập ({selectedDocs.length})</h4>{selectedDocs.length?<div className="grid grid-cols-1 md:grid-cols-2 gap-3">{selectedDocs.map(doc=><button type="button" key={doc.id} onClick={()=>openDoc(doc)} className="p-4 rounded-lg border border-outline-variant text-left hover:border-primary hover:bg-primary-container/10 transition-colors"><span className="material-symbols-outlined text-primary">description</span><b className="block mt-2 text-sm">{doc.title}</b><small className="text-on-surface-variant">{doc.docType}</small></button>)}</div>:<p className="py-8 text-center text-sm text-on-surface-variant">Mục này chưa có tài liệu được chia sẻ cho em.</p>}</div></>}</section></div>{pdfDoc&&<PdfViewer session={session} documentId={pdfDoc.id} title={pdfDoc.title} fileUrl={pdfDoc.fileUrl} onClose={()=>setPdfDoc(null)}/>} {markdownDoc&&<MarkdownViewer session={session} title={markdownDoc.title} markdown={markdownDoc.contentMarkdown??""} fileUrl={markdownDoc.fileUrl} onClose={()=>setMarkdownDoc(null)} onOpenPdf={isPdfDocument(markdownDoc)?()=>{setMarkdownDoc(null);setPdfDoc(markdownDoc)}:undefined}/>}</div>
+  return <div className="space-y-5"><header><h2 className="text-xl font-bold">Chuyên đề học tập</h2><p className="mt-1 text-sm text-on-surface-variant">Nội dung chính thức do quản trị viên biên soạn.</p></header>{openError&&<div className="bg-error-container text-on-error-container px-4 py-2 rounded-lg text-sm">{openError}</div>}<div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4 items-start"><aside className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden"><div className="px-4 py-3 border-b border-outline-variant"><b className="text-sm">Cây chuyên đề</b><p className="text-[11px] text-on-surface-variant">Chuyên đề · Bài · Dạng</p></div><div className="max-h-[65vh] overflow-auto py-1">{(children.get(0)??[]).map(node=><StudentTopicRow key={node.id} node={node} level={0} children={children} expanded={expanded} selectedId={selectedId} onToggle={id=>setExpanded(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id])} onSelect={setSelectedId}/>)}{!nodes.length&&<p className="p-4 text-sm text-on-surface-variant">Admin chưa tạo chuyên đề nào.</p>}</div></aside><section className="min-h-80 rounded-xl border border-outline-variant bg-surface-container-lowest">{!selected?<div className="h-80 grid place-items-center text-center text-sm text-on-surface-variant p-8">Chọn một chuyên đề hoặc bài học để xem nội dung.</div>:<><header className="p-5 border-b border-outline-variant"><span className="text-[11px] font-semibold text-primary">{selected.depth===1?"CHUYÊN ĐỀ":selected.depth===2?"BÀI HỌC":"DẠNG TOÁN"}</span><h3 className="mt-1 text-lg font-bold">{selected.title}</h3>{selected.description&&<p className="mt-2 text-sm text-on-surface-variant">{selected.description}</p>}</header><div className="p-5"><h4 className="text-sm font-semibold mb-3">Tài liệu học tập ({selectedDocs.length})</h4>{selectedDocs.length?<div className="grid grid-cols-1 md:grid-cols-2 gap-3">{selectedDocs.map(doc=><div key={doc.id} onClick={()=>openDoc(doc)} className="p-3.5 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-start gap-3 text-left hover:border-primary/50 hover:bg-surface-container-low transition-colors cursor-pointer"><DocumentPreview fileUrl={doc.fileUrl} thumbnailUrl={doc.thumbnailUrl} title={doc.title} docType={doc.docType} accessToken={session.accessToken} variant="compact" className="w-16 h-20 shadow-xs shrink-0"/><div className="min-w-0 flex-1"><b className="block text-sm text-on-surface line-clamp-2 leading-tight">{doc.title}</b><small className="block mt-1 text-xs text-on-surface-variant">{doc.docType}</small><button type="button" onClick={e=>{e.stopPropagation();openDoc(doc);}} className="mt-2 inline-flex h-7 px-2.5 items-center rounded-md bg-primary text-on-primary text-[11px] font-medium hover:opacity-90 transition-opacity">{doc.docType==="VIDEO"?"Xem video":"Xem tài liệu"}</button></div></div>)}</div>:<p className="py-8 text-center text-sm text-on-surface-variant">Mục này chưa có tài liệu được chia sẻ cho em.</p>}</div></>}</section></div>{pdfDoc&&<PdfViewer session={session} documentId={pdfDoc.id} title={pdfDoc.title} fileUrl={pdfDoc.fileUrl} onClose={()=>setPdfDoc(null)}/>} {markdownDoc&&<MarkdownViewer session={session} title={markdownDoc.title} markdown={markdownDoc.contentMarkdown??""} fileUrl={markdownDoc.fileUrl} onClose={()=>setMarkdownDoc(null)} onOpenPdf={isPdfDocument(markdownDoc)?()=>{setMarkdownDoc(null);setPdfDoc(markdownDoc)}:undefined}/>} {videoDoc&&videoDoc.fileUrl&&<YoutubeVideoModal title={videoDoc.title} url={videoDoc.fileUrl} onClose={()=>setVideoDoc(null)}/>}</div>;
 }
 
 function StudentTopicRow({node,level,children,expanded,selectedId,onToggle,onSelect}:{node:TaxonomyNode;level:number;children:Map<number,TaxonomyNode[]>;expanded:number[];selectedId:number|null;onToggle:(id:number)=>void;onSelect:(id:number)=>void}){const items=children.get(node.id)??[],open=expanded.includes(node.id);return <div><div className={`flex items-center pr-2 ${selectedId===node.id?"bg-primary-container/20":"hover:bg-surface-container-low"}`} style={{paddingLeft:8+level*14}}><button type="button" disabled={!items.length} onClick={()=>onToggle(node.id)} className="w-7 h-9 grid place-items-center disabled:opacity-0"><span className="material-symbols-outlined text-[18px]">{open?"expand_more":"chevron_right"}</span></button><button type="button" onClick={()=>onSelect(node.id)} className="flex-1 min-w-0 py-2 text-left text-sm truncate">{node.title}</button>{node.documentCount>0&&<small className="text-on-surface-variant">{node.documentCount}</small>}</div>{open&&items.map(child=><StudentTopicRow key={child.id} node={child} level={level+1} children={children} expanded={expanded} selectedId={selectedId} onToggle={onToggle} onSelect={onSelect}/>)}</div>}
@@ -513,7 +536,15 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
       ) : route.kind === "worksheet" ? (
         <WorksheetRunner session={session} assignmentId={route.assignmentId} onBack={() => goTab("assignments")} />
       ) : route.tab === "today" ? (
-        <TodayPage session={session} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} onSeeAllAssignments={() => goTab("assignments")} />
+        <StudentHomePage
+          session={session}
+          onOpenLesson={openLesson}
+          onOpenWorksheet={openWorksheet}
+          onSeeAllAssignments={() => goTab("assignments")}
+          onGoTab={goTab}
+        />
+      ) : route.tab === "fees" ? (
+        <StudentFeesPage session={session}/>
       ) : route.tab === "classes" ? (
         <MyClassesPage session={session} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} />
       ) : route.tab === "lessons" ? (
@@ -528,8 +559,6 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
         <ProgramResourcePage session={session} type="DOCUMENT" />
       ) : route.tab === "exercises" ? (
         <ProgramResourcePage session={session} type="EXERCISE" />
-      ) : route.tab === "topics" ? (
-        <ProgramResourcePage session={session} type="SPECIAL_TOPIC" />
       ) : route.tab === "settings" ? (
         <ProfileSettings session={session}/>
       ) : (

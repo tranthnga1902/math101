@@ -104,13 +104,18 @@ public class HomNayController {
      * <p>{@code tuanSeHoc} nói cho màn hình biết chia động từ thế nào: "đang học" hay "sẽ học". Để
      * màn hình tự suy từ ngày tháng thì mỗi màn suy một kiểu.
      */
+    /** Tiến độ thực tế của lớp học sinh so với kế hoạch. Null khi chưa có dữ liệu. */
+    public record TienDoLop(String trangThai, int theoKeHoach, int thucTe, int lech,
+                            boolean canhBao) {}
+
     public record HomNay(TrangThai trangThai, LocalDate ngay,
                          Long khoaId, String tenKhoa, int soKhoa,
                          LichCuaKhoa.Dong tuan, boolean tuanSeHoc,
                          String nhanNghi, LocalDate ngayHocLai,
                          List<Mach> mach, List<HocLieu> hocLieu, int soTietChuaCoBai,
                          List<Viec> viec, List<Diem> diem, HocTiep hocTiep,
-                         List<TuanToi> sapToi, List<ChuongDaHoc> daHoc) {}
+                         List<TuanToi> sapToi, List<ChuongDaHoc> daHoc,
+                         TienDoLop tienDoLop) {}
 
     /**
      * Màn hình mặc định của học sinh.
@@ -185,7 +190,7 @@ public class HomNayController {
     private HomNay trong(TrangThai trangThai, LocalDate ngay, Long khoa, String tenKhoa, int soKhoa,
                          LichCuaKhoa.Dong tuan, String nhanNghi) {
         return new HomNay(trangThai, ngay, khoa, tenKhoa, soKhoa, tuan, false, nhanNghi, null,
-                List.of(), List.of(), 0, List.of(), List.of(), null, List.of(), List.of());
+                List.of(), List.of(), 0, List.of(), List.of(), null, List.of(), List.of(), null);
     }
 
     private HomNay dung(TrangThai trangThai, LocalDate ngay, Long khoa, String tenKhoa, int soKhoa,
@@ -201,12 +206,85 @@ public class HomNayController {
         List<Mach> mach = mach(chuongTrinh, soTuan);
         int chuaCoBai = (int) mach.stream().flatMap(m -> m.tiet().stream()).filter(t -> t.tenBai() == null).count();
 
+        // Tính tiến độ lớp của học sinh này (chỉ khi DANG_HOC để tránh query thừa)
+        TienDoLop tienDo = null;
+        if (trangThai == TrangThai.DANG_HOC) {
+            tienDo = tinhTienDoLop(khoa, hocSinhId, ngay);
+        }
+
         HomNay khung = new HomNay(trangThai, ngay, khoa, tenKhoa, soKhoa, tuan, seHoc,
                 nhanNghi, seHoc ? tuan.batDau() : null,
                 mach, hocLieu(chuongTrinh, soTuan, hocSinhId), chuaCoBai,
                 List.of(), List.of(), null,
-                sapToi(chuongTrinh, caLich, tuan), daHoc(chuongTrinh, soTuan));
+                sapToi(chuongTrinh, caLich, tuan), daHoc(chuongTrinh, soTuan), tienDo);
         return keoTheoBai(khung, khoa, hocSinhId);
+    }
+
+    /**
+     * Tính tiến độ lớp của học sinh theo khóa học.
+     * Đọc class_course_progress của lớp học sinh đang học khóa này.
+     */
+    private TienDoLop tinhTienDoLop(Long khoaId, Long hocSinhId, LocalDate ngay) {
+        try {
+            // Tìm class_id của học sinh trong khóa này
+            List<Long> classIds = jdbc.queryForList("""
+                    select cs.class_id from class_students cs
+                    join class_courses cc on cc.class_id = cs.class_id and cc.deleted_at is null
+                    where cs.student_id = ? and cc.course_instance_id = ? and cs.deleted_at is null
+                    limit 1
+                    """, Long.class, hocSinhId, khoaId);
+            if (classIds.isEmpty()) return null;
+            long classId = classIds.get(0);
+
+            // 1. Ưu tiên tính từ class_schedule (mô hình 3 tầng) nếu lớp đã có lịch thực tế
+            Integer csTotal = jdbc.queryForObject("""
+                    select count(*) from class_schedule
+                     where class_id = ? and deleted_at is null
+                    """, Integer.class, classId);
+
+            if (csTotal != null && csTotal > 0) {
+                Integer plannedSeq = jdbc.queryForObject("""
+                        select max(seq) from class_schedule
+                         where class_id = ? and scheduled_date <= ? and deleted_at is null
+                        """, Integer.class, classId, java.sql.Date.valueOf(ngay));
+                Integer actualSeq = jdbc.queryForObject("""
+                        select max(seq) from class_schedule
+                         where class_id = ? and status = 'COMPLETED' and deleted_at is null
+                        """, Integer.class, classId);
+
+                int keHoach = plannedSeq != null ? plannedSeq : 0;
+                int thucTe  = actualSeq  != null ? actualSeq  : 0;
+                int lech    = thucTe - keHoach;
+                String trangThai = lech > 0 ? "AHEAD" : (lech < 0 ? "BEHIND" : "ON_TRACK");
+                return new TienDoLop(trangThai, keHoach, thucTe, Math.abs(lech), lech < 0);
+            }
+
+            // 2. Dự phòng: mô hình cũ
+            // Số tiết theo kế hoạch đến ngày này
+            Integer theoKeHoach = jdbc.queryForObject("""
+                    select count(*) from course_sessions
+                    where course_instance_id=? and planned_date<=? and deleted_at is null
+                    """, Integer.class, khoaId, java.sql.Date.valueOf(ngay));
+            int keHoach = theoKeHoach == null ? 0 : theoKeHoach;
+
+            // Số tiết lớp đã chốt
+            Integer thucTeRaw = jdbc.queryForObject("""
+                    select completed_period_count from class_course_progress
+                    where class_id=? and course_instance_id=?
+                    """, Integer.class, classId, khoaId);
+            int thucTe = thucTeRaw == null ? 0 : thucTeRaw;
+
+            int lech = thucTe - keHoach;
+            String trangThai;
+            if (lech > 0) trangThai = "AHEAD";
+            else if (lech < 0) trangThai = "BEHIND";
+            else trangThai = "ON_TRACK";
+
+            return new TienDoLop(trangThai, keHoach, thucTe, Math.abs(lech), Math.abs(lech) > 2);
+        } catch (Exception e) {
+            // Không để lỗi tiến độ làm hỏng toàn bộ màn hình Hôm nay
+            return null;
+        }
     }
 
     /**
@@ -223,7 +301,7 @@ public class HomNayController {
         return new HomNay(khung.trangThai(), khung.ngay(), khung.khoaId(), khung.tenKhoa(), khung.soKhoa(),
                 khung.tuan(), khung.tuanSeHoc(), khung.nhanNghi(), khung.ngayHocLai(),
                 khung.mach(), khung.hocLieu(), khung.soTietChuaCoBai(),
-                viec, diem, hocTiep(hocSinhId), khung.sapToi(), khung.daHoc());
+                viec, diem, hocTiep(hocSinhId), khung.sapToi(), khung.daHoc(), khung.tienDoLop());
     }
 
     /**

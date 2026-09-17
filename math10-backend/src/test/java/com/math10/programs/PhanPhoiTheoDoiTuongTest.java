@@ -128,6 +128,28 @@ class PhanPhoiTheoDoiTuongTest {
     }
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
+    @DisplayName("Gắn qua cửa sổ tài liệu bài học cập nhật luồng chương trình và trả đường mở có xác thực")
+    void ganQuaTaiLieuBaiHoc() throws Exception {
+        long doc = taiLieu("Tài liệu từ cửa sổ bài học", "STUDENT_ALLOWED");
+        jdbc.update("update documents set file_url='https://example.test/attachment.pdf' where id=?", doc);
+        var response = mockMvc.perform(post("/api/lessons/"+bai+"/documents")
+                .with(authentication(quanTri(9100L))).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"documentId\":"+doc+",\"required\":true,\"startPage\":6}"))
+                .andReturn().getResponse();
+        assertThat(response.getStatus()).as(response.getContentAsString()).isEqualTo(200);
+        String program = goi("/api/programs/"+chuongTrinh+"/resources", quanTri(9100L));
+        long resource=jdbc.queryForObject("select id from program_resources where resource_type='DOCUMENT' and resource_ref_id=? and deleted_at is null",Long.class,doc);
+        assertThat(program).contains("Tài liệu từ cửa sổ bài học", "/api/program-resources/"+resource+"/content.pdf")
+                .doesNotContain("https://example.test/attachment.pdf");
+        var duplicate = mockMvc.perform(post("/api/lessons/"+bai+"/documents")
+                .with(authentication(quanTri(9100L))).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"documentId\":"+doc+",\"required\":true}"))
+                .andReturn().getResponse();
+        assertThat(duplicate.getStatus()).isEqualTo(400);
+    }
+
+    @Test
     @DisplayName("Thu hẹp được đối tượng của riêng một dòng gắn")
     void thuHepDuocDoiTuongCuaMotDongGan() throws Exception {
         // Cùng một tài liệu, hai chỗ, hai đối tượng — không cần nhân bản tệp. Ở tiết kiểm tra thì

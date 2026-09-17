@@ -2,6 +2,8 @@ package com.math10.configuration.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import com.math10.documents.service.LearningPackageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -23,7 +25,25 @@ public class SecurityConfig {
     @Value("${math10.cors-allowed-origins}")
     private List<String> allowedOrigins;
 
+    /**
+     * File trong gói SCORM/xAPI: quyền nằm ở token ký trong đường dẫn, không dùng JWT. Trang được
+     * nhúng iframe từ frontend (khác origin) nên phải bỏ X-Frame-Options mặc định; CSP sandbox do
+     * controller tự gắn.
+     */
     @Bean
+    @Order(1)
+    SecurityFilterChain learningPackageFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher(LearningPackageService.PATH_PREFIX + "**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)

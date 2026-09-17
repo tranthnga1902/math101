@@ -101,6 +101,9 @@ public class ClassroomServiceImpl implements ClassroomService {
         classroom.setGradeId(request.gradeId());
         classroom.setStatus(request.status());
         classroom.setDescription(request.description());
+        if (request.startDate() != null) {
+            classroom.setStartDate(request.startDate());
+        }
     }
 
     private ClassroomResponse toResponse(Classroom classroom) {
@@ -108,6 +111,7 @@ public class ClassroomServiceImpl implements ClassroomService {
                 classroom.getDescription(), classroom.getCreatedBy(),
                 classTeachers.countByClassId(classroom.getId()), classStudents.countByClassId(classroom.getId()), classCourses.countByClassId(classroom.getId()),
                 classCurriculum.countByClassId(classroom.getId()), classDocuments.countByClassId(classroom.getId()),
+                classroom.getStartDate(),
                 classroom.getCreatedAt(), classroom.getUpdatedAt());
     }
 }

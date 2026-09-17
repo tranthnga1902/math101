@@ -4,6 +4,7 @@ import com.math10.common.entity.ContentGroup;
 import com.math10.documents.entity.DocumentAudience;
 import com.math10.documents.entity.DocumentStatus;
 import com.math10.documents.entity.DocumentType;
+import com.math10.documents.entity.FileFormat;
 
 import java.time.LocalDateTime;
 
@@ -25,6 +26,8 @@ public record DocumentResponse(
         String contentMarkdown,
         Long taxonomyNodeId,
         /** Để trống khi chưa ai phân loại — màn hình hiện "Chưa phân loại", không tự suy ra nhóm nào. */
-        ContentGroup contentGroup
+        ContentGroup contentGroup,
+        /** Null khi không đoán được — màn hình xếp vào "Khác". */
+        FileFormat fileFormat
 ) {
 }

@@ -38,6 +38,14 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional(readOnly = true)
+    public LessonResponse findById(Long id) {
+        Lesson lesson = lessonRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài học: " + id));
+        return toResponse(lesson);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public LessonResponse findPublishedByPublicCode(String publicCode) {
         Lesson lesson = lessonRepository.findByPublicCode(publicCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài public: " + publicCode));

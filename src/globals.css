@@ -93,3 +93,270 @@ a.bg-primary:hover {
 .thin-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--color-outline);
 }
+
+/* ==========================================================================
+   ĐỒNG NHẤT TOÀN BỘ TỪ PANEL TỚI NỘI DUNG (BE VIETNAM PRO & STITCH DESIGN)
+   Đồng bộ 100% font chữ, bề mặt (surface), đường viền và màu nền giữa:
+   - Sidebar Panel (admin-full-sidebar, teacher-sidebar)
+   - Header Topbar (teacher-topbar, global-search)
+   - Sub-panels (cw-nav-panel, docs-filter, pdf-thumbs, mapping-panel, classroom panels)
+   - Drawers & Modals (admin-drawer, admin-modal, account-detail, audit-detail)
+   - Vùng nội dung chính (cw-canvas, tables, cards, forms, inputs, buttons)
+   ========================================================================== */
+
+/* 1. Thiết lập font mặc định hệ thống cho html, body và toàn bộ ứng dụng */
+html,
+body,
+#root {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+}
+
+/* 2. Áp dụng font Be Vietnam Pro đồng nhất cho mọi Panel và Khối nội dung */
+.admin-shell,
+.admin-shell :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.teacher-shell,
+.teacher-sidebar,
+.teacher-sidebar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-full-sidebar,
+.admin-full-sidebar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.teacher-topbar,
+.teacher-topbar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-shell-v2,
+.cw-shell-v2 :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-nav-panel,
+.cw-nav-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-detail-panel,
+.cw-detail-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-canvas,
+.cw-canvas :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.classroom-master-detail,
+.classroom-master-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.classroom-module,
+.classroom-module :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.class-detail-page,
+.class-detail-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.docs-page,
+.docs-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.docs-filter,
+.docs-filter :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.sgk-page,
+.sgk-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.mapping-workspace,
+.mapping-workspace :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.mapping-tool,
+.mapping-tool :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.accounts-page,
+.accounts-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.account-panel,
+.account-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.account-detail,
+.account-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.audit-page,
+.audit-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.audit-detail,
+.audit-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.taxonomy-page,
+.taxonomy-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.curriculum-workspace,
+.curriculum-workspace :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-calendar-panel,
+.admin-calendar-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-drawer,
+.admin-drawer :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-modal,
+.admin-modal :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+[class*="admin-"],
+[class*="admin-"] :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])) {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* 3. Ép font-family cho tất cả form controls bên trong mọi Panel và Nội dung */
+.admin-shell :is(input, button, select, textarea),
+.teacher-sidebar :is(input, button, select, textarea),
+.admin-drawer :is(input, button, select, textarea),
+.admin-modal :is(input, button, select, textarea),
+.cw-nav-panel :is(input, button, select, textarea),
+.cw-detail-panel :is(input, button, select, textarea),
+.classroom-master-detail :is(input, button, select, textarea),
+.docs-page :is(input, button, select, textarea),
+.sgk-page :is(input, button, select, textarea),
+.accounts-page :is(input, button, select, textarea),
+.audit-page :is(input, button, select, textarea),
+[class*="admin-"] :is(input, button, select, textarea) {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* 4. Ép các class font-mono về Be Vietnam Pro để loại bỏ hoàn toàn chữ lệch điệu */
+.font-mono,
+.admin-shell .font-mono,
+.admin-drawer .font-mono,
+.admin-modal .font-mono,
+.cw-nav-panel .font-mono,
+.cw-detail-panel .font-mono,
+[class*="admin-"] .font-mono {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* 5. Đồng bộ màu nền, viền và phân cách giữa Panel và Nội dung */
+.admin-shell,
+.teacher-shell.admin-shell {
+  background-color: #f8fafc !important;
+}
+
+.admin-shell .teacher-main {
+  background-color: #f8fafc !important;
+}
+
+.admin-shell .teacher-sidebar {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+.admin-shell .teacher-topbar {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.admin-shell .accounts-page,
+.admin-shell .audit-page,
+.admin-shell .docs-page,
+.admin-shell .sgk-page,
+.admin-shell .taxonomy-page,
+.admin-shell .classroom-master-detail,
+.admin-shell .classroom-module,
+.admin-shell .curriculum-workspace {
+  background-color: #f8fafc !important;
+}
+
+.docs-filter {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+.cw-nav-panel {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.admin-drawer,
+.account-detail,
+.audit-detail {
+  background-color: #ffffff !important;
+  border-left: 1px solid #e2e8f0 !important;
+}
+
+/* 6. Bảo vệ icon Material Symbols luôn dùng font glyph */
+.material-symbols-outlined,
+[class*="material-symbols"],
+.admin-shell .material-symbols-outlined,
+.admin-drawer .material-symbols-outlined,
+.admin-modal .material-symbols-outlined,
+[class*="admin-"] .material-symbols-outlined {
+  font-family: "Material Symbols Outlined" !important;
+}
+
+/* 7. Bảo vệ công thức toán học KaTeX giữ nguyên bộ font toán chuyên dụng */
+.katex,
+.katex * {
+  font-family: KaTeX_Main, "Times New Roman", serif !important;
+}
+.katex .mathnormal {
+  font-family: KaTeX_Math !important;
+}
+.katex .amsrm {
+  font-family: KaTeX_AMS !important;
+}
+.katex .mathcal {
+  font-family: KaTeX_Caligraphic !important;
+}
+.katex .mathfrak {
+  font-family: KaTeX_Fraktur !important;
+}
+.katex .mathtt {
+  font-family: KaTeX_Typewriter !important;
+}
+.katex .mathsf {
+  font-family: KaTeX_SansSerif !important;
+}
+
+/* Keep the program navigator and chapter table within the available workspace. */
+.curriculum-workspace-container {
+  position: relative;
+  min-width: 0;
+}
+.curriculum-workspace-container > main {
+  container-type: inline-size;
+  overflow-wrap: anywhere;
+}
+.program-nav-collapsed { width: 64px; }
+.program-nav-expanded { max-width: 100%; }
+.program-chapters table { table-layout: fixed; }
+.program-chapters th:nth-child(1),
+.program-chapters th:nth-child(2) { width: 40px; }
+.program-chapters th:nth-child(4) { width: 100px; }
+.program-chapters th:nth-child(5) { width: 260px; }
+.program-chapter-title,
+.program-lesson-title {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-lesson-title { flex: 1; }
+.program-chapters td:nth-child(3) > div { min-width: 0; }
+.program-chapters td:nth-child(3) > div > div { flex-shrink: 0; }
+.program-chapters > div:first-child {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.program-chapters > div:first-child > div:last-child {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.program-chapters input { max-width: 100%; }
+@container (max-width: 760px) {
+  .program-chapters th,
+  .program-chapters td { padding: 8px 4px; }
+  .program-chapters th:nth-child(1),
+  .program-chapters th:nth-child(2) { width: 28px; }
+  .program-chapters th:nth-child(4) { width: 64px; white-space: normal; }
+  .program-chapters th:nth-child(5) { width: 112px; }
+  .program-chapters td:last-child > div { flex-wrap: wrap; gap: 4px; }
+  .program-chapters td:last-child > div > button {
+    font-size: 0;
+    gap: 0;
+    padding: 6px;
+    min-width: 28px;
+    min-height: 28px;
+  }
+}
+@container (max-width: 440px) {
+  .program-chapters th:nth-child(2),
+  .program-chapters td:nth-child(2),
+  .program-chapters th:nth-child(4),
+  .program-chapters td:nth-child(4) { display: none; }
+  .program-chapters th:nth-child(5) { width: 68px; }
+  .program-chapters th { white-space: normal; }
+}
+@media (max-width: 1023px) {
+  .curriculum-workspace-container > .program-nav-expanded {
+    position: absolute;
+    inset: 0 auto 0 0;
+    box-shadow: 8px 0 24px rgb(0 0 0 / 12%);
+  }
+  .curriculum-workspace-container > main { padding: 12px; }
+}
+

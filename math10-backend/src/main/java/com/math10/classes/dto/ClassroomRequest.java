@@ -13,6 +13,10 @@ public record ClassroomRequest(
         Long gradeId,
         @NotNull(message = "Trạng thái là bắt buộc")
         ClassStatus status,
-        String description
+        String description,
+        java.time.LocalDate startDate
 ) {
+    public ClassroomRequest(String code, String name, Long gradeId, ClassStatus status, String description) {
+        this(code, name, gradeId, status, description, null);
+    }
 }

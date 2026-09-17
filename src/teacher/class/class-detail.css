@@ -1,0 +1,81 @@
+.class-detail-page {
+  font-size: 14px;
+  line-height: 1.5;
+  width: 100%;
+  min-height: 0;
+}
+
+.class-detail-page :where(button, input, select, textarea, small, summary) {
+  font: inherit;
+}
+
+.class-detail-page :where(h3, h4) {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.class-detail-page :where(button, select, input) {
+  min-height: 40px;
+}
+
+.class-detail-page :where(button, select, input, [role="button"]):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.class-detail-page .status-chip {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+/* ── Tab bar — underline style ────────────────────────────────── */
+
+.class-detail-page .class-detail-tabs {
+  border-radius: 0;
+  border-width: 0 0 1px;
+  background: transparent;
+  padding: 0;
+  gap: 16px;
+}
+
+.class-detail-page .class-detail-tabs button {
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent !important; /* xóa bg-primary của Tailwind */
+  color: #64748b;                      /* màu tab inactive rõ ràng — không dùng inherit */
+  padding: 8px 4px;
+  min-height: 0;                       /* override rule min-height: 40px ở trên */
+}
+
+/* Active tab: chữ xanh primary, underline xanh primary — không dùng currentColor */
+.class-detail-page .class-detail-tabs button[aria-selected="true"] {
+  color: var(--color-primary, #176b50) !important;
+  border-bottom-color: var(--color-primary, #176b50);
+  font-weight: 700;
+}
+
+.class-detail-page .class-detail-tabs button:hover:not([aria-selected="true"]) {
+  color: #0f172a;
+}
+
+/* ── Article & DL resets ──────────────────────────────────────── */
+
+.class-detail-page article {
+  box-shadow: none;
+}
+
+.class-detail-page dl > div {
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
+}
+
+@media (max-width: 640px) {
+  .class-detail-page { padding: 12px; }
+  .class-detail-page .class-detail-tabs { gap: 12px; }
+  .class-detail-page label select { display: block; margin: 8px 0 0; width: 100%; }
+}

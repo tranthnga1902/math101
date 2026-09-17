@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 // Vite sẽ bundle worker vào asset và trả URL khi build; dev thì ?url trỏ tới dev server.
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { anhCache as cache, resolveApiUrl, useAuthedImage } from "./lib/authedImage";
+import { youtubeThumbnailUrl } from "./components/YoutubeVideoModal";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -25,15 +26,14 @@ export function PdfThumbnail({ fileUrl, accessToken, pageNumber = 1, className, 
   // ĐỀ THI dùng kích thước nhỏ hơn (renderScale thấp hơn → ảnh bìa nhỏ hơn)
   const effectiveScale = docType === "DE_THI" ? Math.min(renderScale, 0.2) : renderScale;
 
-  // Ưu tiên ảnh bìa backend đã render sẵn; nó đi qua endpoint có xác thực nên phải tải kèm token.
-  const bia = useAuthedImage(thumbnailUrl, accessToken);
-  const dataUrl = bia.src ?? rendered;
+  const ytThumb = youtubeThumbnailUrl(fileUrl);
+  // Ưu tiên ảnh bìa backend đã render sẵn hoặc ảnh bìa YouTube nếu là link video
+  const bia = useAuthedImage(thumbnailUrl || ytThumb, accessToken);
+  const dataUrl = bia.src ?? ytThumb ?? rendered;
 
-  // Render live từ PDF khi không có ảnh bìa sẵn — hoặc khi có mà tải hỏng. Bìa hỏng thường là
-  // tài liệu cũ upload trước lúc có bước render bìa, và với người dùng thì "không thấy gì" và
-  // "bìa chưa được sinh" trông y hệt nhau; vẽ lấy trang đầu vẫn hơn một ô xám.
+  // Render live từ PDF khi không có ảnh bìa sẵn và không phải YouTube — hoặc khi có mà tải hỏng.
   useEffect(() => {
-    if (!fileUrl || (thumbnailUrl && !bia.loi)) return;
+    if (!fileUrl || ytThumb || docType === "VIDEO" || (thumbnailUrl && !bia.loi)) return;
     // fileUrl từ API luôn là đường dẫn tương đối tới endpoint có xác thực của backend —
     // đọc file qua đó thì không phụ thuộc cấu hình CORS của domain R2, và bucket để private được.
     const resolved = resolveApiUrl(fileUrl);

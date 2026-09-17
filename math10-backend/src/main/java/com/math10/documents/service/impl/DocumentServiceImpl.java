@@ -42,6 +42,11 @@ import com.math10.common.storage.StorageService;
 import com.math10.common.storage.StorageUrlSupport;
 import com.math10.documents.service.PdfMarkdownService;
 import com.math10.documents.service.PdfThumbnailService;
+import com.math10.programs.support.VideoThumbnails;
+import com.math10.documents.entity.FileFormat;
+import com.math10.documents.service.LearningPackageService;
+import com.math10.documents.service.OfficePdfConverter;
+import com.math10.documents.support.FileFormatDetector;
 import com.math10.enrollments.entity.ClassStudent;
 import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.lessons.entity.Lesson;
@@ -95,6 +100,8 @@ public class DocumentServiceImpl implements DocumentService {
     private final StorageUrlSupport storageUrls;
     private final PdfThumbnailService pdfThumbnailService;
     private final PdfMarkdownService pdfMarkdownService;
+    private final OfficePdfConverter officePdfConverter;
+    private final LearningPackageService learningPackages;
     private final AuditService audit;
 
     /**
@@ -217,21 +224,33 @@ public class DocumentServiceImpl implements DocumentService {
         String fileUrl;
         String thumbnailUrl = null;
         String resolvedTitle;
+        FileFormat fileFormat;
 
         if (docType == DocumentType.VIDEO) {
-            if (videoUrl == null || videoUrl.isBlank() || !videoUrl.trim().matches("(?i)^https://(www\\.|m\\.|music\\.)?youtube\\.com/(watch\\?[^#]*v=[A-Za-z0-9_-]{11}.*|(?:embed|shorts|live)/[A-Za-z0-9_-]{11}.*)$|^https://youtu\\.be/[A-Za-z0-9_-]{11}.*$")) {
+            if (videoUrl == null || videoUrl.isBlank()) {
+                throw new BusinessException("Link video YouTube là bắt buộc");
+            }
+            String trimmed = videoUrl.trim();
+            if (!trimmed.toLowerCase().startsWith("http://") && !trimmed.toLowerCase().startsWith("https://")) {
+                trimmed = "https://" + trimmed;
+            }
+            String ytId = VideoThumbnails.layMa(trimmed);
+            if (ytId == null) {
                 throw new BusinessException("Link YouTube không hợp lệ. Hãy dùng link youtube.com hoặc youtu.be");
             }
-            fileUrl = videoUrl.trim();
-            resolvedTitle = title == null || title.isBlank() ? "Video" : title.trim();
+            fileUrl = "https://www.youtube.com/watch?v=" + ytId;
+            thumbnailUrl = VideoThumbnails.suyRa(fileUrl);
+            resolvedTitle = title == null || title.isBlank() ? "Video YouTube" : title.trim();
+            fileFormat = FileFormat.VIDEO;
         } else {
             if (file == null || file.isEmpty() || file.getOriginalFilename() == null) {
                 throw new BusinessException("File tài liệu là bắt buộc");
             }
-            String mime = Optional.ofNullable(file.getContentType()).orElse("application/octet-stream");
-            if (!ALLOWED_MIME_TYPES.contains(mime)) {
-                throw new BusinessException("Chỉ hỗ trợ PDF, DOC hoặc DOCX");
+            fileFormat = FileFormatDetector.detect(file.getOriginalFilename(), file::getInputStream);
+            if (docType == DocumentType.VIDEO && fileFormat != FileFormat.VIDEO) {
+                throw new BusinessException("Loại Video chỉ nhận file .mp4, .webm, .mov, .m4v hoặc link YouTube");
             }
+            String mime = fileFormat == FileFormat.PDF ? "application/pdf" : "";
             try {
                 fileUrl = storageService.upload(file, "documents");
             } catch (IOException e) {
@@ -258,6 +277,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setOwnerId(ownerId);
         document.setFileUrl(fileUrl);
         document.setThumbnailUrl(thumbnailUrl);
+        document.setFileFormat(fileFormat);
         return map(documents.save(document));
     }
 
@@ -344,6 +364,7 @@ public class DocumentServiceImpl implements DocumentService {
         audit.record("DELETE", "DOCUMENT", id,
                 "title=%s,docType=%s,status=%s".formatted(document.getTitle(), document.getDocType(), document.getStatus()), null);
         document.markDeleted();
+        lessonDocuments.findByDocumentId(id).forEach(com.math10.common.entity.BaseEntity::markDeleted);
     }
 
     @Override
@@ -472,6 +493,65 @@ public class DocumentServiceImpl implements DocumentService {
         return fileBytes(document(row.getDocumentId()));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readDocumentPreviewPdf(Long id) {
+        Document document = document(id);
+        checkCanRead(document);
+        return previewPdf(document);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readLessonDocumentPreviewPdf(Long lessonId, Long id) {
+        return previewPdf(readableLessonDocument(lessonId, id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String launchDocumentPackage(Long id) {
+        Document document = document(id);
+        checkCanRead(document);
+        return packageLaunch(document);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String launchLessonDocumentPackage(Long lessonId, Long id) {
+        return packageLaunch(readableLessonDocument(lessonId, id));
+    }
+
+    private Document readableLessonDocument(Long lessonId, Long id) {
+        LessonDocument row = requireLessonDocument(lessonId, id);
+        if ("STUDENT".equals(currentUserService.requireRoleCode())) {
+            ensureStudentCanRead(lessonId, row);
+        } else {
+            checkLessonOwnership(lesson(lessonId));
+        }
+        return document(row.getDocumentId());
+    }
+
+    private byte[] previewPdf(Document document) {
+        String extension = FileFormatDetector.extensionOf(document.getFileUrl());
+        if ("pdf".equals(extension)) {
+            return fileBytes(document);
+        }
+        FileFormat format = document.getFileFormat();
+        boolean office = format == FileFormat.WORD || format == FileFormat.EXCEL || format == FileFormat.POWERPOINT
+                || Set.of("doc", "docx", "xls", "xlsx", "ppt", "pptx").contains(extension);
+        if (!office) {
+            throw new BusinessException("Tài liệu này không xem được ở dạng trang");
+        }
+        return officePdfConverter.toPdf(document.getFileUrl(), extension, () -> fileBytes(document));
+    }
+
+    private String packageLaunch(Document document) {
+        if (!"zip".equals(FileFormatDetector.extensionOf(document.getFileUrl()))) {
+            throw new BusinessException("Tài liệu này không phải gói SCORM/xAPI");
+        }
+        return learningPackages.launchPath(document.getId(), document.getFileUrl(), () -> fileBytes(document));
+    }
+
     private byte[] fileBytes(Document document) {
         if (document.getFileUrl() == null || document.getFileUrl().isBlank()) {
             throw new BusinessException("Tài liệu này không có file để xem");
@@ -489,13 +569,15 @@ public class DocumentServiceImpl implements DocumentService {
                 throw new AccessDeniedException("Bạn không có quyền xem tài liệu của bài học này");
             }
             return lessonDocuments.findByLessonIdOrderByDisplayOrderAsc(lesson.getId()).stream()
-                    .map(row -> mapLessonDocument(row, false))
+                    .map(row -> mapLessonDocument(row, true))
+                    .filter(java.util.Objects::nonNull)
                     .filter(row -> row.audience() == DocumentAudience.STUDENT_ALLOWED)
                     .toList();
         }
         checkLessonOwnership(lesson);
         return lessonDocuments.findByLessonIdOrderByDisplayOrderAsc(lesson.getId()).stream()
                 .map(this::mapLessonDocument)
+                .filter(java.util.Objects::nonNull)
                 .toList();
     }
 
@@ -720,6 +802,7 @@ public class DocumentServiceImpl implements DocumentService {
         Document textbook = new Document();
         textbook.setTitle(title == null || title.isBlank() ? file.getOriginalFilename() : title.trim());
         textbook.setDocType(docType);
+        textbook.setFileFormat(FileFormat.PDF);
         textbook.setAudience(audience);
         textbook.setGradeId(gradeId);
         if (subjectId != null) {
@@ -830,19 +913,6 @@ public class DocumentServiceImpl implements DocumentService {
         return mapTextbook(documents.save(doc));
     }
 
-    @Override
-    @Transactional
-    public TextbookListResponse setPageOffset(Long id, Integer pdfPageForBookPageOne) {
-        Document doc = document(id);
-        if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
-            throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
-        }
-        if (pdfPageForBookPageOne == null || pdfPageForBookPageOne < 1) {
-            throw new BusinessException("PDF page cho trang sách 1 phải >= 1");
-        }
-        doc.setBasePageOffset(pdfPageForBookPageOne);
-        return mapTextbook(documents.save(doc));
-    }
 
     @Override
     @Transactional
@@ -1000,7 +1070,8 @@ public class DocumentServiceImpl implements DocumentService {
                 document.getFolderId(),
                 document.getContentMarkdown(),
                 document.getTaxonomyNodeId(),
-                document.getContentGroup()
+                document.getContentGroup(),
+                document.getFileFormat()
         );
     }
 
@@ -1036,7 +1107,10 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private LessonDocumentResponse mapLessonDocument(LessonDocument row, boolean exposeFileUrl) {
-        Document document = document(row.getDocumentId());
+        Document document = documents.findById(row.getDocumentId()).orElse(null);
+        if (document == null) {
+            return null;
+        }
         return new LessonDocumentResponse(
                 row.getId(),
                 row.getLessonId(),
@@ -1048,7 +1122,8 @@ public class DocumentServiceImpl implements DocumentService {
                 row.isRequired(),
                 row.getTeacherNote(),
                 row.getStartPage(),
-                row.getDisplayOrder()
+                row.getDisplayOrder(),
+                DocumentUrls.thumbnailUrl(document.getId(), document.getThumbnailUrl())
         );
     }
 

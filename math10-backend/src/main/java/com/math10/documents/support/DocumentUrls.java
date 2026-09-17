@@ -1,5 +1,6 @@
 package com.math10.documents.support;
 
+import java.net.URI;
 import java.util.Locale;
 import java.util.Map;
 
@@ -26,7 +27,7 @@ public final class DocumentUrls {
         if (fileUrl == null || fileUrl.isBlank() || documentId == null) {
             return fileUrl;
         }
-        if (VIDEO.equals(docType)) {
+        if (isExternalVideo(docType, fileUrl)) {
             return fileUrl;
         }
         return "/api/documents/" + documentId + "/content." + extensionOf(fileUrl);
@@ -36,10 +37,30 @@ public final class DocumentUrls {
         if (fileUrl == null || fileUrl.isBlank() || lessonId == null || lessonDocumentId == null) {
             return fileUrl;
         }
-        if (VIDEO.equals(docType)) {
+        if (isExternalVideo(docType, fileUrl)) {
             return fileUrl;
         }
         return "/api/lessons/" + lessonId + "/documents/" + lessonDocumentId + "/content." + extensionOf(fileUrl);
+    }
+
+    /**
+     * Chỉ link YouTube mới được trả nguyên. Video tải lên nằm trên R2 nên phải đi qua backend như
+     * mọi file khác — xét theo host chứ không theo docType, kẻo lộ URL R2 của video tải lên.
+     */
+    static boolean isExternalVideo(String docType, String fileUrl) {
+        if (!VIDEO.equals(docType)) {
+            return false;
+        }
+        try {
+            String host = URI.create(fileUrl.trim()).getHost();
+            if (host == null) {
+                return false;
+            }
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("youtu.be") || host.equals("youtube.com") || host.endsWith(".youtube.com");
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     public static String thumbnailUrl(Long documentId, String thumbnailUrl) {

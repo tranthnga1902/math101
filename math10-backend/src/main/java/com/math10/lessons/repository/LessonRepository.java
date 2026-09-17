@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecificationExecutor<Lesson> {
+    @Query(value = "select * from lessons where id=:id and deleted_at is null for no key update", nativeQuery = true)
+    Optional<Lesson> findForAttachment(@Param("id") Long id);
 
     List<Lesson> findByChapterIdOrderByOrderIndexAsc(Long chapterId);
 

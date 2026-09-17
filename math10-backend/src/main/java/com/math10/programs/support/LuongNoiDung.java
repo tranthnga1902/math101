@@ -5,6 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * Luật đọc của luồng nội dung, để đúng một chỗ.
  *
@@ -253,7 +256,9 @@ public class LuongNoiDung {
      * có cửa mở nhầm người, mà lệch thì không có gì báo.
      */
     public String docDuoc(String vai) {
-        return "STUDENT".equals(vai) ? " and pr.audience='STUDENT_ALLOWED'" : "";
+        return "STUDENT".equals(vai)
+                ? " and pr.audience='STUDENT_ALLOWED' and (pr.resource_type<>'DOCUMENT' or d.audience='STUDENT_ALLOWED')"
+                : "";
     }
 
     /**
@@ -390,6 +395,14 @@ public class LuongNoiDung {
      * admin và giáo viên. Đổi chỗ ấy mà quên chỗ này thì thành hỏi luật học sinh cho người lớn.
      */
     public boolean moDuocTep(Long tepId, Long hocSinhId) {
+        return moDuocNguon("d.file_asset_id", tepId, hocSinhId);
+    }
+
+    public boolean moDuocMuc(Long mucId, Long hocSinhId) {
+        return moDuocNguon("pr.id", mucId, hocSinhId);
+    }
+
+    private boolean moDuocNguon(String cot, Long nguonId, Long hocSinhId) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(
                   select 1 from program_resources pr
@@ -400,9 +413,102 @@ public class LuongNoiDung {
                   join course_instances ci on ci.template_id=pt.id and ci.deleted_at is null
                   join class_courses cc on cc.course_instance_id=ci.id and cc.deleted_at is null
                   join class_students cs on cs.class_id=cc.class_id and cs.deleted_at is null
-                  where d.file_asset_id=? and cs.student_id=? and""" + BAI_MO
+                  """ + " where " + cot + "=? and cs.student_id=? and" + BAI_MO
                         + " and" + docDuocDayDu("STUDENT")
                         + " and" + toiDuocLop("STUDENT", hocSinhId) + ")",
-                Boolean.class, tepId, hocSinhId));
+                Boolean.class, nguonId, hocSinhId));
+    }
+
+    /** Một mục học liệu đã lọc xong quyền đọc, đủ để tầng trình bày chỉ việc vẽ ra. */
+    public record MucHocLieu(
+            Long id, String loaiNguon, Long nguonId, String tieuDe, boolean riengLop, int thuTu,
+            /* Chương/bài mà nơi đến trỏ vào — rỗng với HE_THONG và MACH, để màn hình gom chương → bài. */
+            Long chuongId, String chuongTen, Integer chuongThuTu,
+            Long baiId, String baiTen, Integer baiThuTu) {
+    }
+
+    /**
+     * Toàn bộ mục học liệu một lớp được thấy cho một buổi cụ thể — điểm vào duy nhất cho tab
+     * <em>Học liệu</em> của Chi tiết lớp, để Controller không tự ráp lại ba trục quyền đọc.
+     *
+     * <p>{@code tietIds} là các {@code program_periods} thuộc buổi đó, do người gọi tính sẵn từ lịch
+     * ({@code class_schedule} → {@code course_delivery_session_units}). Hàm này cố ý không tự tra —
+     * biết buổi nào gồm những tiết nào là câu hỏi của miền lịch, còn hàm này chỉ trả lời quyền đọc và
+     * nơi đến; ghép hai miền vào một hàm thì lần sau lịch đổi hình dạng, quyền đọc phải đổi theo dù
+     * không liên quan. Buổi chưa gán tiết nào thì truyền danh sách rỗng — vẫn trả đúng phần "riêng
+     * lớp", không phải lỗi.
+     *
+     * <p>Nơi đến hỏi bốn nhánh, cùng tinh thần {@code else false} như {@link #toiDuocBai(String)}:
+     * {@code HE_THONG} luôn khớp (đây là nhánh mang cả "một lớp" — {@code HE_THONG} + {@code lop_id}
+     * — tài liệu luôn hiện cho lớp này, không phụ thuộc buổi nào); {@code TIET}/{@code BAI}/
+     * {@code MACH} chỉ khớp khi neo của dòng trúng đúng tiết, đúng bài, hoặc đúng mạch đang dạy trong
+     * {@code tietIds}. {@code CHUYEN_DE} không có nhánh — nút chuyên đề không thuộc về một buổi nào,
+     * nó hiện ở màn Lộ trình, không phải ở đây.
+     *
+     * <p>Cột {@code lop_id} hỏi riêng, tách khỏi bốn nhánh trên: dòng không hẹp lớp
+     * ({@code lop_id is null}) thì mọi lớp học đúng nội dung ấy đều thấy; dòng hẹp lớp thì chỉ đúng
+     * lớp ấy — bất kể lớp đọc là chính lớp truy vấn hay lớp khác, việc so khớp {@code lop_id} nằm
+     * trong {@code where}, không nằm trong nhánh nơi đến, vì hai câu hỏi ("đi tới nội dung nào" và
+     * "có hẹp riêng cho lớp nào không") độc lập với nhau.
+     */
+    public List<MucHocLieu> hocLieuChoBuoi(Long classId, List<Long> tietIds, Long nguoiDoc, String vai) {
+        return hocLieu(classId, tietIds, nguoiDoc, vai, false);
+    }
+
+    /** Học liệu tổng của lớp không phụ thuộc việc đã tạo lịch hay chưa. */
+    public List<MucHocLieu> hocLieuChoLop(Long classId, Long nguoiDoc, String vai) {
+        return hocLieu(classId, List.of(), nguoiDoc, vai, true);
+    }
+
+    private List<MucHocLieu> hocLieu(Long classId, List<Long> tietIds, Long nguoiDoc, String vai,
+                                    boolean toanLop) {
+        String dsTiet = tietIds.isEmpty()
+                ? "-1"
+                : tietIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        String sql = """
+                select pr.id, pr.resource_type, pr.resource_ref_id, pr.title, pr.lop_id, pr.order_index,
+                       cc.id chuong_id, cc.title chuong_ten, cc.order_index chuong_thu_tu,
+                       lb.id bai_id, lb.title bai_ten, lb.order_index bai_thu_tu
+                  from program_resources pr
+                """ + NOI_NGUON + NOI_CHUONG + """
+                  left join lateral (
+                    select l.id, l.title, l.order_index from lessons l
+                     where l.deleted_at is null
+                       and l.id = case pr.noi_den_loai
+                                    when 'BAI'  then pr.lesson_id
+                                    when 'TIET' then (select p.lesson_id from program_periods p
+                                                       where p.id=pr.neo and p.deleted_at is null)
+                                  end) lb on true
+                 where
+                """ + docDuocDayDu(vai)
+                + " and" + toiDuocLop(vai, nguoiDoc)
+                + " and (pr.lop_id is null or pr.lop_id=" + classId + ")"
+                + "\n   and (pr.noi_den_loai='HE_THONG'"
+                + (toanLop ? "\n or (pr.noi_den_loai in ('BAI','TIET','MACH') and exists("
+                    + "select 1 from class_courses cc join course_instances ci on ci.id=cc.course_instance_id"
+                    + " and ci.deleted_at is null join program_templates pt on pt.id=ci.template_id"
+                    + " and pt.deleted_at is null where cc.class_id=" + classId
+                    + " and cc.deleted_at is null and " + thuocChuongTrinh("pt.program_id") + "))" : "")
+                + "\n     or (pr.noi_den_loai='TIET' and pr.neo in (" + dsTiet + "))"
+                + "\n     or (pr.noi_den_loai='BAI' and exists(select 1 from program_periods p3"
+                + "\n           where p3.id in (" + dsTiet + ") and p3.lesson_id=pr.lesson_id"
+                + "\n             and p3.deleted_at is null))"
+                + "\n     or (pr.noi_den_loai='MACH' and exists(select 1 from program_periods p3"
+                + "\n           where p3.id in (" + dsTiet + ") and p3.strand_id=pr.neo"
+                + "\n             and p3.deleted_at is null)))"
+                + "\n order by pr.lop_id nulls first, cc.order_index nulls first, lb.order_index nulls first, pr.order_index";
+        return jdbc.query(sql, (rs, i) -> new MucHocLieu(
+                rs.getLong("id"),
+                rs.getString("resource_type"),
+                rs.getLong("resource_ref_id"),
+                rs.getString("title"),
+                rs.getObject("lop_id") != null,
+                rs.getInt("order_index"),
+                rs.getObject("chuong_id", Long.class),
+                rs.getString("chuong_ten"),
+                rs.getObject("chuong_thu_tu", Integer.class),
+                rs.getObject("bai_id", Long.class),
+                rs.getString("bai_ten"),
+                rs.getObject("bai_thu_tu", Integer.class)));
     }
 }

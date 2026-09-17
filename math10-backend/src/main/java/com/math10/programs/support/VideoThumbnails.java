@@ -23,23 +23,32 @@ public final class VideoThumbnails {
     private static final Pattern[] DANG = {
             Pattern.compile("[?&]v=" + MA),                       // youtube.com/watch?v=…
             Pattern.compile("youtu\\.be/" + MA),                  // youtu.be/…
-            Pattern.compile("youtube\\.com/embed/" + MA),         // nhúng
-            Pattern.compile("youtube\\.com/shorts/" + MA),        // shorts
-            Pattern.compile("youtube\\.com/live/" + MA),          // phát trực tiếp
+            Pattern.compile("youtube(?:-nocookie)?\\.com/embed/" + MA), // nhúng
+            Pattern.compile("youtube(?:-nocookie)?\\.com/shorts/" + MA), // shorts
+            Pattern.compile("youtube(?:-nocookie)?\\.com/live/" + MA),  // phát trực tiếp
+            Pattern.compile("youtube(?:-nocookie)?\\.com/v/" + MA),     // v/
     };
 
     private VideoThumbnails() {
     }
 
     /**
-     * @return địa chỉ ảnh bìa suy được, hoặc {@code null} nếu đường dẫn không phải YouTube.
+     * @return mã 11 ký tự của video YouTube, hoặc {@code null} nếu không phải.
      */
-    public static String suyRa(String videoUrl) {
+    public static String layMa(String videoUrl) {
         if (videoUrl == null || videoUrl.isBlank()) return null;
         for (Pattern dang : DANG) {
             Matcher khop = dang.matcher(videoUrl);
-            if (khop.find()) return "https://img.youtube.com/vi/" + khop.group(1) + "/hqdefault.jpg";
+            if (khop.find()) return khop.group(1);
         }
         return null;
+    }
+
+    /**
+     * @return địa chỉ ảnh bìa suy được, hoặc {@code null} nếu đường dẫn không phải YouTube.
+     */
+    public static String suyRa(String videoUrl) {
+        String ma = layMa(videoUrl);
+        return ma != null ? "https://img.youtube.com/vi/" + ma + "/hqdefault.jpg" : null;
     }
 }

@@ -22,6 +22,22 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * @deprecated API lịch phân phối chương theo ngày (program_schedules).
+ *
+ * <p>Endpoint {@code GET /api/program-schedules/current} vẫn đang được dùng bởi
+ * màn hình học sinh "Hôm nay" (TodayPage) để hiển thị "Chương trình hiện tại".
+ * KHÔNG xóa controller này cho đến khi student flow được chuyển sang dùng
+ * class_schedule hoặc một API mới.
+ *
+ * <p>Endpoint CRUD (POST, PUT, DELETE) chỉ nên dùng qua admin nếu cần maintain
+ * dữ liệu legacy. Khi thiết kế tính năng mới, dùng course_delivery_sessions +
+ * class_schedule thay vì program_schedules.
+ *
+ * <p>Admin UI không còn màn hình nào nhập trực tiếp vào program_schedules.
+ */
+@SuppressWarnings("DeprecatedIsStillUsed")
+@Deprecated(since = "2026-09", forRemoval = false)
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/program-schedules")

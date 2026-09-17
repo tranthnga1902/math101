@@ -45,6 +45,12 @@ public interface DocumentService {
     byte[] readDocumentBytes(Long id);
     byte[] readDocumentThumbnailBytes(Long id);
     byte[] readLessonDocumentBytes(Long lessonId, Long id);
+    /** PDF để xem trong app: PDF trả nguyên, Word/Excel/PowerPoint đổi sang PDF. */
+    byte[] readDocumentPreviewPdf(Long id);
+    byte[] readLessonDocumentPreviewPdf(Long lessonId, Long id);
+    /** Đường dẫn khởi chạy gói SCORM/xAPI (kèm token), sau khi kiểm quyền đọc. */
+    String launchDocumentPackage(Long id);
+    String launchLessonDocumentPackage(Long lessonId, Long id);
     List<LessonDocumentResponse> listLessonDocuments(Long lessonId);
     LessonDocumentResponse attachToLesson(Long lessonId, LessonDocumentRequest request);
     LessonDocumentResponse updateLessonDocument(Long lessonId, Long id, LessonDocumentUpdateRequest request);
@@ -65,7 +71,6 @@ public interface DocumentService {
     TextbookDetailResponse getTextbook(Long id);
     TextbookOpenResponse openTextbook(Long id, Integer bookPage);
     TextbookListResponse updateTextbook(Long id, DocumentUpdateRequest request);
-    TextbookListResponse setPageOffset(Long id, Integer pdfPageForBookPageOne);
     TextbookListResponse publishTextbook(Long id);
     TextbookListResponse hideTextbook(Long id);
 

@@ -2,10 +2,12 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getCurrentProgramChapter,
+  getHomNay,
   getMyAssignments,
   getMyCourses,
   getStudentProgress,
   type AuthSession,
+  type HomNayTienDoLop,
   type Progress,
   type StudentAssignment,
   type StudentCourse,
@@ -179,13 +181,40 @@ export function TodayPage({
     enabled: !!firstCourse,
   });
 
+  const homNay = useQuery({
+    queryKey: ["student-hom-nay", session.userId],
+    queryFn: () => getHomNay(session),
+  });
+  const tienDoLop: HomNayTienDoLop | null = homNay.data?.tienDoLop ?? null;
+
   const pending = (assignments.data ?? []).filter((item) => item.progressStatus !== "COMPLETED").slice(0, 3);
   const recent = (assignments.data ?? []).filter((item) => item.gradingStatus === "RETURNED" && item.score!=null).slice(0, 2);
+
+  const TIEN_DO_UI: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
+    ON_TRACK: { bg: "#f0fdf4", border: "#86efac", text: "#166534", icon: "✅", label: "Đúng tiến độ" },
+    AHEAD:    { bg: "#eff6ff", border: "#93c5fd", text: "#1e40af", icon: "🚀", label: "Nhanh hơn kế hoạch" },
+    BEHIND:   { bg: "#fef2f2", border: "#fca5a5", text: "#991b1b", icon: "⚠️", label: "Chậm hơn kế hoạch" },
+  };
 
   return (
     <div className="space-y-6">
       {courses.error && <ErrorBox message={(courses.error as Error).message} />}
       {assignments.error && <ErrorBox message={(assignments.error as Error).message} />}
+
+      {/* Card tiến độ lớp */}
+      {tienDoLop && (()=>{
+        const ui = TIEN_DO_UI[tienDoLop.trangThai] ?? TIEN_DO_UI.ON_TRACK;
+        return <section style={{background:ui.bg,border:`1.5px solid ${ui.border}`,color:ui.text,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div>
+            <p style={{fontWeight:700,fontSize:14}}>{ui.icon} Tiến độ lớp: {ui.label}</p>
+            <p style={{fontSize:12,marginTop:2,opacity:0.85}}>
+              Kế hoạch hôm nay: {tienDoLop.theoKeHoach} tiết · Lớp đã dạy: {tienDoLop.thucTe} tiết
+              {tienDoLop.lech > 0 && ` · ${tienDoLop.trangThai === "BEHIND" ? "Trễ" : "Sớm"} ${tienDoLop.lech} tiết`}
+            </p>
+          </div>
+          {tienDoLop.canhBao && <span style={{fontSize:18}}>⚠️</span>}
+        </section>;
+      })()}
       {currentChapter.data && (
         /* Ngày nghỉ phải nhìn ra ngay là ngày nghỉ. Vẫn tô màu "đang học" và vẫn chỉ vào Chương 5
            thì học sinh mở sách ra học mùng ba Tết — đúng cái mà bảng kỳ nghỉ sinh ra để chặn. */
