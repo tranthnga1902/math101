@@ -1,10 +1,11 @@
 package com.math10.documents.controller;
 
 import com.math10.common.dto.ApiResponse;
+import com.math10.common.entity.ContentGroup;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.documents.dto.DocumentResponse;
 import com.math10.documents.dto.DocumentUpdateRequest;
 import com.math10.documents.dto.TextbookListResponse;
-import com.math10.documents.dto.TextbookPageOffsetRequest;
 import com.math10.documents.entity.DocumentAudience;
 import com.math10.documents.entity.DocumentType;
 import com.math10.documents.service.DocumentService;
@@ -31,6 +32,7 @@ import java.util.List;
 public class AdminDocumentController {
 
     private final DocumentService documentService;
+    private final com.math10.documents.service.AdminDocumentFolderService folderService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
@@ -51,9 +53,23 @@ public class AdminDocumentController {
             @RequestParam(required = false) Long gradeId,
             @RequestParam(required = false) Long taxonomyNodeId,
             @RequestParam(required = false) MultipartFile file,
-            @RequestParam(required = false) String videoUrl
+            @RequestParam(required = false) String videoUrl,
+            @RequestParam(required = false) Long folderId
     ) {
-        return ApiResponse.created("Tải tài liệu lên thành công", documentService.upload(title, docType, audience, gradeId, taxonomyNodeId, file, videoUrl));
+        // Kiểm thư mục trước khi ghi file lên R2 — sai thư mục thì dừng, không để lại tài liệu lạc chỗ.
+        folderService.requireSharedFolder(folderId);
+        DocumentResponse created = documentService.upload(title, docType, audience, gradeId, taxonomyNodeId, file, videoUrl);
+        if (folderId != null) {
+            folderService.moveDocuments(List.of(created.id()), folderId);
+            created = withFolder(created, folderId);
+        }
+        return ApiResponse.created("Tải tài liệu lên thành công", created);
+    }
+
+    private static DocumentResponse withFolder(DocumentResponse d, Long folderId) {
+        return new DocumentResponse(d.id(), d.title(), d.docType(), d.audience(), d.fileUrl(), d.gradeId(), d.chapterId(),
+                d.status(), d.subjectId(), d.totalPages(), d.basePageOffset(), d.createdAt(), d.thumbnailUrl(), folderId,
+                d.contentMarkdown(), d.taxonomyNodeId(), d.contentGroup(), d.fileFormat());
     }
 
     /** Tài liệu học của một mục trong cây phân loại (Chuyên đề / Bài / Dạng). */
@@ -72,6 +88,28 @@ public class AdminDocumentController {
     }
 
     public record TaxonomyNodeAssignRequest(Long taxonomyNodeId) {
+    }
+
+    /**
+     * Xếp tài liệu vào nhóm nội dung, hoặc gỡ ra khi {@code contentGroup} là null.
+     *
+     * <p>Đường riêng chứ không gộp vào PUT: xem {@code DocumentService#setContentGroup}.
+     */
+    @PatchMapping("/{id}/content-group")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DocumentResponse> setContentGroup(@PathVariable Long id, @RequestBody ContentGroupAssignRequest request) {
+        return ApiResponse.ok(request.contentGroup() == null ? "Đã gỡ phân loại tài liệu" : "Đã phân loại tài liệu",
+                documentService.setContentGroup(id, request.contentGroup()));
+    }
+
+    public record ContentGroupAssignRequest(ContentGroup contentGroup) {
+    }
+
+    /** Còn bao nhiêu tài liệu chưa ai phân loại — con số này là lý do bộ lọc có mặt. */
+    @GetMapping("/content-groups")
+    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    public ApiResponse<ContentGroupCounts> contentGroupCounts() {
+        return ApiResponse.ok("Bộ đếm nhóm nội dung", documentService.countsByContentGroup());
     }
 
     @PutMapping("/{id}")
@@ -140,12 +178,6 @@ public class AdminDocumentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<TextbookListResponse> updateTextbook(@PathVariable Long id, @Valid @RequestBody DocumentUpdateRequest request) {
         return ApiResponse.ok("Cập nhật sách giáo khoa thành công", documentService.updateTextbook(id, request));
-    }
-
-    @PatchMapping("/textbooks/{id}/page-offset")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<TextbookListResponse> setPageOffset(@PathVariable Long id, @Valid @RequestBody TextbookPageOffsetRequest request) {
-        return ApiResponse.ok("Đặt khớp trang thành công", documentService.setPageOffset(id, request.pdfPageForBookPageOne()));
     }
 
     @PatchMapping("/textbooks/{id}/publish")

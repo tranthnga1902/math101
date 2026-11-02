@@ -35,26 +35,26 @@ public class ChapterController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<ChapterResponse> create(@Valid @RequestBody ChapterRequest request) {
         return ApiResponse.created("Tạo chương thành công", chapterService.create(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<ChapterResponse> update(@PathVariable Long id, @Valid @RequestBody ChapterRequest request) {
         return ApiResponse.ok("Cập nhật chương thành công", chapterService.update(id, request));
     }
 
     @PatchMapping("/reorder")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> reorder(@Valid @RequestBody ReorderRequest request) {
         chapterService.reorder(request);
         return ApiResponse.ok("Sắp xếp chương thành công", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         chapterService.softDelete(id);
         return ApiResponse.noContent("Xóa chương thành công");

@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import {
   getLessonDocumentQuestions,
   getLessonDocuments,
+  getSharedTeacherResources,
+  getMyAssignments,
   getMyCourses,
   markLessonProgress,
   openLessonDocumentFile,
@@ -15,15 +17,19 @@ import {
   type LessonDocumentQuestion,
   type StudentCourse,
 } from "../api";
-import { flattenLessons, formatPercent } from "./format";
+import { assignmentGate, flattenLessons, formatPercent, lessonCompletion, lessonExercises } from "./format";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
+import { LessonContentRenderer } from "../components/lesson-editor";
+import { DocumentPreview } from "../components/DocumentPreview";
 
 type LessonDetailPageProps = {
   session: AuthSession;
   lessonId: number;
   onBack: () => void;
   onOpenLesson: (lessonId: number) => void;
+  /** Mở màn hình làm bài của một bài giao — cùng đường với trang Bài tập. */
+  onOpenWorksheet: (assignmentId: number) => void;
 };
 
 type FlatLesson = ReturnType<typeof flattenLessons>[number];
@@ -42,11 +48,19 @@ export function LessonDetailPage({
   lessonId,
   onBack,
   onOpenLesson,
+  onOpenWorksheet,
 }: LessonDetailPageProps) {
   const coursesQuery = useQuery({
     queryKey: ["student-courses", session.userId],
     queryFn: () => getMyCourses(session),
   });
+  // Cùng key với trang Bài tập để hai nơi dùng chung một bản dữ liệu.
+  const assignmentsQuery = useQuery({
+    queryKey: ["student-assignments", session.userId],
+    queryFn: () => getMyAssignments(session),
+  });
+  const exerciseRef = useRef<HTMLElement>(null);
+  const [highlightExercises, setHighlightExercises] = useState(false);
   const ctx = useMemo(() => findLessonContext(coursesQuery.data ?? [], lessonId), [coursesQuery.data, lessonId]);
 
   const docsQuery = useQuery({
@@ -54,6 +68,7 @@ export function LessonDetailPage({
     queryFn: () => getLessonDocuments(session, lessonId),
     enabled: Boolean(ctx),
   });
+  const teacherResources = useQuery({queryKey:["student-teacher-resources",lessonId],queryFn:()=>getSharedTeacherResources(session,lessonId),enabled:Boolean(ctx)});
 
   const [docQuestions, setDocQuestions] = useState<Record<number, LessonDocumentQuestion[]>>({});
   const [docAnswers, setDocAnswers] = useState<Record<number, Record<number, string>>>({});
@@ -86,6 +101,12 @@ export function LessonDetailPage({
     try {
       await markLessonProgress(session, ctx.lesson.id, true);
       await coursesQuery.refetch();
+      // Gợi ý chuyển sang bài tập, không khóa gì cả: học sinh vẫn làm bài lúc nào cũng được.
+      if (exerciseRef.current) {
+        exerciseRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        setHighlightExercises(true);
+        window.setTimeout(() => setHighlightExercises(false), 2400);
+      }
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -120,7 +141,10 @@ export function LessonDetailPage({
   const next = currentIndex >= 0 && currentIndex < courseLessons.length - 1 ? courseLessons[currentIndex + 1] : null;
   const docs = docsQuery.data ?? [];
   const videoDocs = docs.filter((doc) => doc.docType === "VIDEO");
-  const learningDocs = docs.filter((doc) => doc.docType !== "VIDEO");
+  const htmlLessonDocs = docs.filter((doc) => doc.docType === "HTML_LESSON_CONTENT");
+  const learningDocs = docs.filter((doc) => doc.docType !== "VIDEO" && doc.docType !== "HTML_LESSON_CONTENT");
+  const exercises = lessonExercises(lesson.id, assignmentsQuery.data ?? []);
+  const completion = lessonCompletion(lesson, exercises);
   const hasQuiz = docs.some((doc) => (docQuestions[doc.id] ?? []).length > 0);
   const quizPassed = !hasQuiz || docs.every((doc) => {
     const qs = docQuestions[doc.id] ?? [];
@@ -169,7 +193,11 @@ export function LessonDetailPage({
               {videoDocs.length ? `${videoDocs.length} video · ` : ""}{learningDocs.length} tài liệu đính kèm
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-on-surface-variant">Tiến độ bài học</span>
+              <span className="text-xs text-on-surface-variant">
+                {completion.done ? "Bài học đã xong"
+                  : completion.theoryDone ? `Còn ${completion.required - completion.submittedRequired} bài tập bắt buộc`
+                  : "Tiến độ bài học"}
+              </span>
               <span className="text-xs font-medium text-primary">{formatPercent(lesson.completionPercent)}</span>
             </div>
           </div>
@@ -182,16 +210,46 @@ export function LessonDetailPage({
           <div className="bg-error-container text-on-error-container px-4 py-2 rounded-lg text-sm">{error}</div>
         )}
 
-        <section className="prose prose-sm max-w-none text-on-surface">
-          {lesson.contentHtml ? (
-            <div
-              className="space-y-4 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: renderMathContent(lesson.contentHtml) }}
-            />
-          ) : (
-            <p className="text-on-surface-variant">{lesson.summary || "Giáo viên chưa nhập nội dung bài giảng."}</p>
-          )}
+        <section className="max-w-none text-on-surface">
+          <LessonContentRenderer content={lesson.contentHtml} fallbackSummary={lesson.summary} />
         </section>
+
+        {!!htmlLessonDocs.length && (
+          <section className="rounded-xl border border-primary/30 bg-primary-container/20 p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[22px]">html</span>
+              <div>
+                <h2 className="text-base font-semibold text-on-surface">Bài học tương tác HTML</h2>
+                <p className="text-xs text-on-surface-variant">Nội dung bài học dạng trang web trực quan, có thể xem trực tiếp</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {htmlLessonDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="rounded-xl border border-primary/20 bg-surface-container-lowest p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                >
+                  <div className="min-w-0">
+                    <span className="inline-block text-[10px] uppercase font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full mb-1">
+                      Nội dung lý thuyết
+                    </span>
+                    <b className="block text-sm font-semibold">{doc.title}</b>
+                    {doc.teacherNote && <p className="mt-1 text-xs text-on-surface-variant">{doc.teacherNote}</p>}
+                    <small className="mt-1 block text-xs text-on-surface-variant">{doc.required ? "Bài học bắt buộc" : "Bài học tham khảo"}</small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openDocument(doc)}
+                    className="inline-flex h-10 px-4 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium hover:bg-primary/90 transition-colors shadow-xs"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">play_lesson</span>
+                    Mở bài học HTML
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {!!videoDocs.length && (
           <section className="border-t border-outline-variant pt-6 space-y-3">
@@ -226,13 +284,29 @@ export function LessonDetailPage({
             {learningDocs.map((doc, index) => {
               const qs = docQuestions[doc.id] ?? [];
               return (
-                <article key={doc.id} className="border border-outline-variant rounded-xl p-4 flex flex-col md:flex-row gap-4">
-                  <div className="flex-1 space-y-1">
+                <article key={doc.id} className="border border-outline-variant rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start bg-surface-container-lowest hover:border-primary/40 transition-colors">
+                  <DocumentPreview
+                    fileUrl={doc.fileUrl}
+                    thumbnailUrl={doc.thumbnailUrl}
+                    title={doc.title}
+                    docType={doc.docType}
+                    pageNumber={doc.startPage || 1}
+                    accessToken={session.accessToken}
+                    variant="thumbnail"
+                    className="w-24 h-32 sm:w-28 sm:h-36 cursor-pointer hover:opacity-95 shadow-sm"
+                    onClick={() => void openDocument(doc)}
+                  />
+                  <div className="flex-1 min-w-0 space-y-1">
                     <small className="text-xs text-on-surface-variant">
                       Bước {index + 1} · {doc.docType} · {doc.required ? "Bắt buộc" : "Tham khảo"}
                       {doc.startPage ? ` · Mở trang ${doc.startPage}` : ""}
                     </small>
-                    <b className="block text-sm">{doc.title}</b>
+                    <b
+                      className="block text-sm text-on-surface hover:text-primary cursor-pointer transition-colors"
+                      onClick={() => void openDocument(doc)}
+                    >
+                      {doc.title}
+                    </b>
                     {doc.teacherNote && <p className="text-xs text-on-surface-variant">{doc.teacherNote}</p>}
                     {!!qs.length && (
                       <div className="mt-3 space-y-2">
@@ -307,6 +381,15 @@ export function LessonDetailPage({
           </section>
         )}
 
+        {!!teacherResources.data?.length && (
+          <section className="border-t border-outline-variant pt-6 space-y-3">
+            <div><p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Bổ sung, không thuộc nội dung chuẩn</p><h2 className="mt-1 text-lg font-semibold">Từ giáo viên của em</h2></div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {teacherResources.data.map(resource=><article key={resource.id} className="rounded-xl border border-outline-variant bg-surface-container-low p-4"><p className="text-xs text-on-surface-variant">{resource.teacher_name} · {resource.class_name}</p><h3 className="mt-1 font-semibold">{resource.title}</h3>{resource.description&&<p className="mt-1 text-sm text-on-surface-variant">{resource.description}</p>}{resource.external_url&&<a className="mt-3 inline-flex text-sm font-medium text-primary hover:underline" href={resource.external_url} target="_blank" rel="noreferrer">Mở học liệu</a>}</article>)}
+            </div>
+          </section>
+        )}
+
         {!!lesson.worksheets.length && (
           <section className="border-t border-outline-variant pt-6 space-y-3">
             <h2 className="text-lg font-semibold">Bài tập thực hành</h2>
@@ -324,6 +407,55 @@ export function LessonDetailPage({
           </section>
         )}
 
+        {!!exercises.length && (
+          <section
+            ref={exerciseRef}
+            id="bai-tap-sau-bai-hoc"
+            className={`border-t border-outline-variant pt-6 space-y-3 scroll-mt-24 rounded-xl transition-shadow duration-500 ${
+              highlightExercises ? "ring-2 ring-primary ring-offset-4 ring-offset-surface-container-lowest" : ""
+            }`}
+          >
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">edit_note</span>
+                Bài tập sau bài học
+              </h2>
+              {completion.required > 0 && (
+                <span className="text-xs text-on-surface-variant">
+                  Đã nộp {completion.submittedRequired}/{completion.required} bài bắt buộc
+                </span>
+              )}
+            </div>
+            {exercises.map((assignment) => {
+              const gate = assignmentGate(assignment);
+              const submitted = assignment.gradingStatus !== "NOT_SUBMITTED";
+              return (
+                <article key={assignment.id} className="border border-outline-variant rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <small className="text-xs text-on-surface-variant">
+                      {assignment.requirement === "TU_CHON" ? "Tự chọn" : "Bắt buộc"}
+                      {gate.canView && assignment.items.length ? ` · ${assignment.items.length} câu` : ""}
+                      {` · ${gate.label}`}
+                    </small>
+                    <b className="block text-sm">{assignment.title || assignment.worksheetName}</b>
+                    <p className={`text-xs ${gate.urgent ? "text-error" : "text-on-surface-variant"}`}>
+                      {submitted ? "Đã nộp" : "Chưa nộp"} · {gate.note}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!gate.canView}
+                    onClick={() => onOpenWorksheet(assignment.id)}
+                    className="inline-flex h-10 px-4 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">{submitted ? "visibility" : "play_arrow"}</span>
+                    {!gate.canView ? "Chưa mở" : submitted ? "Xem lại" : "Bắt đầu làm bài"}
+                  </button>
+                </article>
+              );
+            })}
+          </section>
+        )}
         <footer className="border-t border-outline-variant pt-6 flex flex-col md:flex-row gap-3 justify-between">
           <div className="flex gap-2">
             <button type="button" onClick={onBack} className="inline-flex h-11 px-4 items-center gap-2 rounded-lg border border-outline-variant text-sm font-medium">
@@ -348,7 +480,7 @@ export function LessonDetailPage({
               className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-[18px]">check_circle</span>
-              {lesson.completionPercent >= 100 || lesson.completedAt ? "Đã hoàn thành" : "Đánh dấu đã học xong"}
+              {completion.theoryDone ? "Đã học xong lý thuyết" : "Hoàn thành lý thuyết"}
             </button>
             {next && (
               <button

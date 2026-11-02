@@ -1,8 +1,11 @@
 package com.math10.authentication.service.impl;
 
+import com.math10.audit.service.AuditService;
 import com.math10.authentication.dto.ChangePasswordRequest;
 import com.math10.authentication.dto.LoginRequest;
+import com.math10.authentication.repository.RefreshTokenRepository;
 import com.math10.common.exception.BusinessException;
+import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.configuration.security.JwtService;
 import com.math10.users.entity.User;
 import com.math10.users.entity.UserStatus;
@@ -24,14 +27,17 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceImplTest {
     @Mock UserRepository users;
+    @Mock RefreshTokenRepository refreshTokens;
     @Mock PasswordEncoder passwords;
     @Mock JwtService jwt;
+    @Mock ClassStudentRepository classStudents;
+    @Mock AuditService auditService;
     AuthServiceImpl service;
     User user;
 
     @BeforeEach
     void setUp() {
-        service = new AuthServiceImpl(users, passwords, jwt);
+        service = new AuthServiceImpl(users, refreshTokens, passwords, jwt, classStudents, auditService, 2_592_000L);
         user = new User();
         user.setId(1L);
         user.setUsername("student01");

@@ -30,7 +30,7 @@ public class AdminClassOverviewController {
                                                            @RequestParam(required = false) Long gradeId,
                                                            @RequestParam(required = false) String status) {
         StringBuilder sql = new StringBuilder("""
-                select c.id,c.code,c.name,c.grade_id,c.status,c.description,c.created_at,g.name grade_name,
+                select c.id,c.code,c.name,c.grade_id,c.status,c.description,c.start_date,c.created_at,g.name grade_name,
                        creator.full_name created_by_name,creator.role_code created_by_role,
                        (select string_agg(u.full_name,', ' order by u.full_name)
                           from class_teachers ct join users u on u.id=ct.teacher_id and u.deleted_at is null

@@ -16,6 +16,11 @@ public class AssignmentProgress extends BaseEntity {
  @Column(name="submitted_at") private LocalDateTime submittedAt;
  @Column(name="graded_at") private LocalDateTime gradedAt;
  @Column(name="returned_at") private LocalDateTime returnedAt;
+ /** Số lần đã nộp, dùng để đối chiếu với max_attempts của bài giao. */
+ @Column(name="attempt_no",nullable=false) private Integer attemptNo=0;
+ @Column(name="submitted_late",nullable=false) private boolean submittedLate=false;
+ /** Điểm gốc trước khi trừ phần trăm nộp muộn. */
+ @Column(name="raw_score") private java.math.BigDecimal rawScore;
  @Column private java.math.BigDecimal score;
  @Column(name="max_score",nullable=false) private java.math.BigDecimal maxScore=java.math.BigDecimal.TEN;
  @Column(name="correct_count") private Integer correctCount;

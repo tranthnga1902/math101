@@ -61,21 +61,284 @@ body {
   color: var(--color-on-surface);
 }
 
-/* Primary actions must remain readable even when legacy module CSS has a
-   more specific button color selector. This also keeps Material icons white. */
-button.bg-primary,
-a.bg-primary,
-[role="button"].bg-primary {
+/* ==========================================================================
+   ENFORCE WHITE TEXT ON ALL BLUE AND GREEN BUTTONS
+   Tất cả các phần có button màu xanh (xanh dương, xanh lá, xanh ngọc, xanh primary)
+   đều PHẢI có chữ màu trắng và icon màu trắng, không bị ghi đè bởi CSS module.
+   ========================================================================== */
+
+:is(button, a, [role="button"], label, input[type="button"], input[type="submit"]):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-primary-hover"],
+  [class*="bg-primary-dark"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-sky-500"],
+  [class*="bg-sky-600"],
+  [class*="bg-sky-700"],
+  [class*="bg-sky-800"],
+  [class*="bg-cyan-600"],
+  [class*="bg-cyan-700"],
+  [class*="bg-cyan-800"],
+  [class*="bg-[#176b50]"],
+  [class*="bg-[#11543e]"],
+  [class*="bg-[#187b57]"],
+  [class*="bg-[#13795b]"],
+  [class*="bg-[#16805b]"],
+  [class*="bg-[#006e2d]"],
+  [class*="bg-[#2563eb]"],
+  [class*="bg-[#1d4ed8]"],
+  [class*="bg-[#3b82f6]"],
+  [class*="bg-[#1e40af]"],
+  .btn-primary,
+  .btn-primary-profile,
+  .btn-submit-modal,
+  .primary-action,
+  .cw-btn-primary,
+  .cw-prog-add-btn,
+  .cw-nav-add-btn,
+  .clr-head-btn,
+  .km-btn-primary,
+  .docs-primary,
+  .doc-primary,
+  .sgk-primary,
+  .login-submit-button
+),
+:is(button, a, [role="button"]):is(
+  [class~="hover:bg-primary"]:hover,
+  [class*="hover:bg-primary/"]:hover,
+  [class*="hover:bg-blue-600"]:hover,
+  [class*="hover:bg-blue-700"]:hover,
+  [class*="hover:bg-emerald-600"]:hover,
+  [class*="hover:bg-emerald-700"]:hover
+) {
   color: #ffffff !important;
 }
-button.bg-primary .material-symbols-outlined,
-a.bg-primary .material-symbols-outlined,
-[role="button"].bg-primary .material-symbols-outlined {
+
+/* Đảm bảo toàn bộ chữ con bên trong button màu xanh luôn có màu trắng */
+:is(button, a, [role="button"], label, input[type="button"], input[type="submit"]):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-primary-hover"],
+  [class*="bg-primary-dark"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-sky-500"],
+  [class*="bg-sky-600"],
+  [class*="bg-sky-700"],
+  [class*="bg-sky-800"],
+  [class*="bg-cyan-600"],
+  [class*="bg-cyan-700"],
+  [class*="bg-cyan-800"],
+  [class*="bg-[#176b50]"],
+  [class*="bg-[#11543e]"],
+  [class*="bg-[#187b57]"],
+  [class*="bg-[#13795b]"],
+  [class*="bg-[#16805b]"],
+  [class*="bg-[#006e2d]"],
+  [class*="bg-[#2563eb]"],
+  [class*="bg-[#1d4ed8]"],
+  [class*="bg-[#3b82f6]"],
+  [class*="bg-[#1e40af]"],
+  .btn-primary,
+  .btn-primary-profile,
+  .btn-submit-modal,
+  .primary-action,
+  .cw-btn-primary,
+  .cw-prog-add-btn,
+  .cw-nav-add-btn,
+  .clr-head-btn,
+  .km-btn-primary,
+  .docs-primary,
+  .doc-primary,
+  .sgk-primary,
+  .login-submit-button
+) :is(span, p, strong, b, small, i, em, div, .material-symbols-outlined, [class*="material-symbols"]) {
   color: #ffffff !important;
 }
-button.bg-primary:hover:not(:disabled),
-a.bg-primary:hover {
+
+/* Đảm bảo toàn bộ icon SVG bên trong button màu xanh luôn có màu trắng */
+:is(button, a, [role="button"], label, input[type="button"], input[type="submit"]):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-primary-hover"],
+  [class*="bg-primary-dark"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-sky-500"],
+  [class*="bg-sky-600"],
+  [class*="bg-sky-700"],
+  [class*="bg-sky-800"],
+  [class*="bg-cyan-600"],
+  [class*="bg-cyan-700"],
+  [class*="bg-cyan-800"],
+  [class*="bg-[#176b50]"],
+  [class*="bg-[#11543e]"],
+  [class*="bg-[#187b57]"],
+  [class*="bg-[#13795b]"],
+  [class*="bg-[#16805b]"],
+  [class*="bg-[#006e2d]"],
+  [class*="bg-[#2563eb]"],
+  [class*="bg-[#1d4ed8]"],
+  [class*="bg-[#3b82f6]"],
+  [class*="bg-[#1e40af]"],
+  .btn-primary,
+  .btn-primary-profile,
+  .btn-submit-modal,
+  .primary-action,
+  .cw-btn-primary,
+  .cw-prog-add-btn,
+  .cw-nav-add-btn,
+  .clr-head-btn,
+  .km-btn-primary,
+  .docs-primary,
+  .doc-primary,
+  .sgk-primary,
+  .login-submit-button
+) svg {
   color: #ffffff !important;
+  stroke: currentColor;
+}
+
+/* Đảm bảo trạng thái hover, focus, active, disabled của button màu xanh luôn giữ chữ trắng */
+:is(button, a, [role="button"], label):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-[#176b50]"],
+  .btn-primary,
+  .primary-action,
+  .cw-btn-primary,
+  .login-submit-button
+):is(:hover, :focus, :active, :disabled, [disabled]) {
+  color: #ffffff !important;
+}
+
+:is(button, a, [role="button"], label):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-[#176b50]"],
+  .btn-primary,
+  .primary-action,
+  .cw-btn-primary,
+  .login-submit-button
+):is(:hover, :focus, :active, :disabled, [disabled]) :is(span, p, strong, b, small, i, em, div, .material-symbols-outlined, [class*="material-symbols"]) {
+  color: #ffffff !important;
+}
+
+:is(button, a, [role="button"], label):is(
+  .bg-primary,
+  [class~="bg-primary"],
+  [class*="bg-primary/"],
+  [class*="bg-emerald-500"],
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-700"],
+  [class*="bg-emerald-800"],
+  [class*="bg-green-500"],
+  [class*="bg-green-600"],
+  [class*="bg-green-700"],
+  [class*="bg-green-800"],
+  [class*="bg-teal-500"],
+  [class*="bg-teal-600"],
+  [class*="bg-teal-700"],
+  [class*="bg-teal-800"],
+  [class*="bg-blue-500"],
+  [class*="bg-blue-600"],
+  [class*="bg-blue-700"],
+  [class*="bg-blue-800"],
+  [class*="bg-blue-900"],
+  [class*="bg-[#176b50]"],
+  .btn-primary,
+  .primary-action,
+  .cw-btn-primary,
+  .login-submit-button
+):is(:hover, :focus, :active, :disabled, [disabled]) svg {
+  color: #ffffff !important;
+  stroke: currentColor;
 }
 
 /* Custom scrollbar used in lesson reader + sgk thumbnails. */
@@ -92,4 +355,306 @@ a.bg-primary:hover {
 }
 .thin-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--color-outline);
+}
+
+/* ==========================================================================
+   ĐỒNG NHẤT TOÀN BỘ TỪ PANEL TỚI NỘI DUNG (BE VIETNAM PRO & STITCH DESIGN)
+   Đồng bộ 100% font chữ, bề mặt (surface), đường viền và màu nền giữa:
+   - Sidebar Panel (admin-full-sidebar, teacher-sidebar)
+   - Header Topbar (teacher-topbar, global-search)
+   - Sub-panels (cw-nav-panel, docs-filter, pdf-thumbs, mapping-panel, classroom panels)
+   - Drawers & Modals (admin-drawer, admin-modal, account-detail, audit-detail)
+   - Vùng nội dung chính (cw-canvas, tables, cards, forms, inputs, buttons)
+   ========================================================================== */
+
+/* 1. Thiết lập font mặc định hệ thống cho html, body và toàn bộ ứng dụng */
+html,
+body,
+#root {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+}
+
+/* 2. Áp dụng font Be Vietnam Pro đồng nhất cho mọi Panel và Khối nội dung */
+.admin-shell,
+.admin-shell :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.teacher-shell,
+.teacher-sidebar,
+.teacher-sidebar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-full-sidebar,
+.admin-full-sidebar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.teacher-topbar,
+.teacher-topbar :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-shell-v2,
+.cw-shell-v2 :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-nav-panel,
+.cw-nav-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-detail-panel,
+.cw-detail-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.cw-canvas,
+.cw-canvas :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.classroom-master-detail,
+.classroom-master-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.classroom-module,
+.classroom-module :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.class-detail-page,
+.class-detail-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.docs-page,
+.docs-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.docs-filter,
+.docs-filter :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.sgk-page,
+.sgk-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.mapping-workspace,
+.mapping-workspace :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.mapping-tool,
+.mapping-tool :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.accounts-page,
+.accounts-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.account-panel,
+.account-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.account-detail,
+.account-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.audit-page,
+.audit-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.audit-detail,
+.audit-detail :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.taxonomy-page,
+.taxonomy-page :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.curriculum-workspace,
+.curriculum-workspace :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-calendar-panel,
+.admin-calendar-panel :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-drawer,
+.admin-drawer :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+.admin-modal,
+.admin-modal :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])),
+[class*="admin-"],
+[class*="admin-"] :where(*:not(.material-symbols-outlined):not([class*="katex"]):not([class*="material-symbols"])) {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* 3. Ép font-family cho tất cả form controls bên trong mọi Panel và Nội dung */
+.admin-shell :is(input, button, select, textarea),
+.teacher-sidebar :is(input, button, select, textarea),
+.admin-drawer :is(input, button, select, textarea),
+.admin-modal :is(input, button, select, textarea),
+.cw-nav-panel :is(input, button, select, textarea),
+.cw-detail-panel :is(input, button, select, textarea),
+.classroom-master-detail :is(input, button, select, textarea),
+.docs-page :is(input, button, select, textarea),
+.sgk-page :is(input, button, select, textarea),
+.accounts-page :is(input, button, select, textarea),
+.audit-page :is(input, button, select, textarea),
+[class*="admin-"] :is(input, button, select, textarea) {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* 4. Ép các class font-mono về Be Vietnam Pro để loại bỏ hoàn toàn chữ lệch điệu */
+.font-mono,
+.admin-shell .font-mono,
+.admin-drawer .font-mono,
+.admin-modal .font-mono,
+.cw-nav-panel .font-mono,
+.cw-detail-panel .font-mono,
+[class*="admin-"] .font-mono {
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* 5. Đồng bộ màu nền, viền và phân cách giữa Panel và Nội dung */
+.admin-shell,
+.teacher-shell.admin-shell {
+  background-color: #f8fafc !important;
+}
+
+.admin-shell .teacher-main {
+  background-color: #f8fafc !important;
+}
+
+.admin-shell .teacher-sidebar {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+.admin-shell .teacher-topbar {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.admin-shell .accounts-page,
+.admin-shell .audit-page,
+.admin-shell .docs-page,
+.admin-shell .sgk-page,
+.admin-shell .taxonomy-page,
+.admin-shell .classroom-master-detail,
+.admin-shell .classroom-module,
+.admin-shell .curriculum-workspace {
+  background-color: #f8fafc !important;
+}
+
+.docs-filter {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+.cw-nav-panel {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.admin-drawer,
+.account-detail,
+.audit-detail {
+  background-color: #ffffff !important;
+  border-left: 1px solid #e2e8f0 !important;
+}
+
+/* 6. Bảo vệ icon Material Symbols luôn dùng font glyph */
+.material-symbols-outlined,
+[class*="material-symbols"],
+.admin-shell .material-symbols-outlined,
+.admin-drawer .material-symbols-outlined,
+.admin-modal .material-symbols-outlined,
+[class*="admin-"] .material-symbols-outlined {
+  font-family: "Material Symbols Outlined" !important;
+}
+
+/* 7. Bảo vệ công thức toán học KaTeX giữ nguyên bộ font toán chuyên dụng */
+.katex,
+.katex * {
+  font-family: KaTeX_Main, "Times New Roman", serif !important;
+}
+.katex .mathnormal {
+  font-family: KaTeX_Math !important;
+}
+.katex .amsrm {
+  font-family: KaTeX_AMS !important;
+}
+.katex .mathcal {
+  font-family: KaTeX_Caligraphic !important;
+}
+.katex .mathfrak {
+  font-family: KaTeX_Fraktur !important;
+}
+.katex .mathtt {
+  font-family: KaTeX_Typewriter !important;
+}
+.katex .mathsf {
+  font-family: KaTeX_SansSerif !important;
+}
+
+/* Keep the program navigator and chapter table within the available workspace. */
+.curriculum-workspace-container {
+  position: relative;
+  min-width: 0;
+}
+.curriculum-workspace-container > main {
+  container-type: inline-size;
+  overflow-wrap: anywhere;
+}
+.program-nav-collapsed { width: 64px; }
+.program-nav-expanded { max-width: 100%; }
+.program-chapters table { table-layout: fixed; }
+.program-chapters th:nth-child(1),
+.program-chapters th:nth-child(2) { width: 40px; }
+.program-chapters th:nth-child(4) { width: 100px; }
+.program-chapters th:nth-child(5) { width: 260px; }
+.program-chapter-title,
+.program-lesson-title {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.program-lesson-title { flex: 1; }
+.program-chapters td:nth-child(3) > div { min-width: 0; }
+.program-chapters td:nth-child(3) > div > div { flex-shrink: 0; }
+.program-chapters > div:first-child {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.program-chapters > div:first-child > div:last-child {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.program-chapters input { max-width: 100%; }
+@container (max-width: 760px) {
+  .program-chapters th,
+  .program-chapters td { padding: 8px 4px; }
+  .program-chapters th:nth-child(1),
+  .program-chapters th:nth-child(2) { width: 28px; }
+  .program-chapters th:nth-child(4) { width: 64px; white-space: normal; }
+  .program-chapters th:nth-child(5) { width: 112px; }
+  .program-chapters td:last-child > div { flex-wrap: wrap; gap: 4px; }
+  .program-chapters td:last-child > div > button {
+    font-size: 0;
+    gap: 0;
+    padding: 6px;
+    min-width: 28px;
+    min-height: 28px;
+  }
+}
+@container (max-width: 440px) {
+  .program-chapters th:nth-child(2),
+  .program-chapters td:nth-child(2),
+  .program-chapters th:nth-child(4),
+  .program-chapters td:nth-child(4) { display: none; }
+  .program-chapters th:nth-child(5) { width: 68px; }
+  .program-chapters th { white-space: normal; }
+}
+@media (max-width: 1023px) {
+  .curriculum-workspace-container > .program-nav-expanded {
+    position: absolute;
+    inset: 0 auto 0 0;
+    box-shadow: 8px 0 24px rgb(0 0 0 / 12%);
+  }
+  .curriculum-workspace-container > main { padding: 12px; }
+}
+
+
+/* Phien xem ho: dai bang cam dinh dau man, khong the nham voi phien that. */
+.bang-xem-ho {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  background: #b45309;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+}
+.bang-xem-ho button {
+  flex: none;
+  padding: 5px 14px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bang-xem-ho button:hover { background: rgb(255 255 255 / 18%); }
+/* Vien cam bao quanh phan con lai: nhin lech mot chut la biet minh dang o trong mat nguoi khac. */
+.dang-xem-ho {
+  min-height: 100vh;
+  box-shadow: inset 0 0 0 3px #b45309;
 }

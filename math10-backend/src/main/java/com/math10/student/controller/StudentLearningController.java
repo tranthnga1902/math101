@@ -1,7 +1,15 @@
 package com.math10.student.controller;
 
+import com.math10.assignments.domain.AssignmentRows;
+import com.math10.assignments.domain.NguoiNhan;
+import com.math10.assignments.domain.AssignmentWindow;
+import com.math10.assignments.domain.McqGrading;
+import com.math10.assignments.entity.Assignment;
+import com.math10.assignments.entity.AssignmentProgress;
+import com.math10.assignments.entity.AssignmentState;
 import com.math10.common.dto.ApiResponse;
 import com.math10.configuration.security.CurrentUserService;
+import com.math10.programs.support.LuongNoiDung;
 import com.math10.student.dto.StudentAssignmentResponse;
 import com.math10.student.dto.StudentCourseResponse;
 import com.math10.taxonomy.dto.TaxonomyNodeResponse;
@@ -27,6 +35,7 @@ public class StudentLearningController {
     private final JdbcTemplate jdbc;
     private final CurrentUserService current;
     private final TaxonomyService taxonomyService;
+    private final LuongNoiDung luat;
 
     @GetMapping("/taxonomy")
     @PreAuthorize("hasRole('STUDENT')")
@@ -41,7 +50,9 @@ public class StudentLearningController {
         List<Map<String, Object>> courseRows = jdbc.queryForList("""
                 select distinct c.id,c.code,c.name,c.description,c.status
                 from courses c
-                join class_courses cc on cc.course_id=c.id and cc.deleted_at is null
+                join program_templates pt on pt.program_id=c.id and pt.deleted_at is null
+                join course_instances ci on ci.template_id=pt.id and ci.deleted_at is null
+                join class_courses cc on cc.course_instance_id=ci.id and cc.deleted_at is null
                 join class_students cs on cs.class_id=cc.class_id and cs.deleted_at is null
                 where cs.student_id=? and c.deleted_at is null and c.status='PUBLISHED'
                 order by c.name
@@ -53,7 +64,7 @@ public class StudentLearningController {
             List<Map<String, Object>> chapterRows = jdbc.queryForList("""
                     select id,title,order_index
                     from chapters
-                    where course_id=? and deleted_at is null and status='PUBLISHED'
+                    where course_id=? and deleted_at is null
                     order by order_index
                     """, courseId);
             List<StudentCourseResponse.Chapter> chapters = new ArrayList<>();
@@ -67,14 +78,15 @@ public class StudentLearningController {
                                coalesce(p.completion_percent,0) completion_percent
                         from lessons l
                         left join learning_progress p on p.lesson_id=l.id and p.student_id=? and p.deleted_at is null
-                        where l.chapter_id=? and l.deleted_at is null and l.status in ('PUBLISHED','HIDDEN')
+                        where l.chapter_id=? and l.deleted_at is null
                         order by l.order_index
                         """, studentId, chapterId);
                 List<StudentCourseResponse.Lesson> lessons = new ArrayList<>();
 
                 for (Map<String, Object> lesson : lessonRows) {
                     Long lessonId = num(lesson.get("id"));
-                    boolean locked = !"PUBLISHED".equals(str(lesson.get("status")));
+                    // Chương trình đã xuất bản (lọc ở câu trên) thì mọi bài đều mở — không khóa lẻ từng bài
+                    boolean locked = false;
                     List<StudentCourseResponse.Resource> resources = locked ? List.of() : resources(lessonId);
                     List<StudentCourseResponse.AttachedWorksheet> attached = locked ? List.of() : worksheets(lessonId);
                     lessons.add(new StudentCourseResponse.Lesson(
@@ -112,52 +124,115 @@ public class StudentLearningController {
         return ApiResponse.ok("My courses", result);
     }
 
+    /**
+     * Danh sách bài của học sinh. Trạng thái vòng đời và quyền thấy điểm đều tính bằng
+     * {@link AssignmentWindow} trên đối tượng dựng lại từ dòng truy vấn — cùng một luật với
+     * lúc nộp bài, không viết lại bằng SQL. Viết lại bằng SQL là chỗ hai bên lệch nhau.
+     */
     @GetMapping("/assignments")
     @PreAuthorize("hasRole('STUDENT')")
     public ApiResponse<List<StudentAssignmentResponse>> assignments() {
         Long studentId = current.requireUserId();
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                select distinct a.id,a.title,a.due_at,a.status,a.lesson_id,a.worksheet_id,w.name worksheet_name,a.created_at,
+                select distinct a.id,a.title,a.open_at,a.due_at,a.status,a.lesson_id,a.worksheet_id,w.name worksheet_name,a.created_at,
+                a.max_attempts,a.late_policy,a.late_penalty_percent,a.publish_score_at,a.requirement,
                 case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end progress_status,
                 coalesce(ap.completion_percent,0) completion_percent,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
-                case when ap.returned_at is not null then ap.score else null end score,
-                case when ap.returned_at is not null then ap.max_score else null end max_score
+                ap.score,ap.max_score,ap.graded_at,ap.returned_at,coalesce(ap.attempt_no,0) attempt_no,
+                coalesce(ap.submitted_late,false) submitted_late
                 from assignments a join class_students cs on cs.class_id=a.class_id and cs.deleted_at is null
                 left join worksheets w on w.id=a.worksheet_id and w.deleted_at is null
                 left join assignment_progress ap on ap.assignment_id=a.id and ap.student_id=cs.student_id and ap.deleted_at is null
-                where cs.student_id=? and a.deleted_at is null order by a.created_at desc
-                """, studentId);
-        return ApiResponse.ok("Assignments", rows.stream().map(assignment -> {
-            Long worksheetId = assignment.get("worksheet_id") == null ? null : num(assignment.get("worksheet_id"));
-            List<StudentAssignmentResponse.Item> content = worksheetId == null ? List.of() : jdbc.query("""
-                    select p.id,wi.order_index,p.public_code,p.qr_slug,p.statement_latex,p.difficulty,p.option_a,p.option_b,p.option_c,p.option_d
-                    from worksheet_items wi join problems p on p.id=wi.problem_id and p.deleted_at is null
-                    where wi.worksheet_id=? and wi.deleted_at is null order by wi.order_index
-                    """, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"),rs.getString("option_a"),rs.getString("option_b"),rs.getString("option_c"),rs.getString("option_d")), worksheetId);
-            return new StudentAssignmentResponse(
-                    num(assignment.get("id")),
-                    str(assignment.get("title")),
-                    dateTime(assignment.get("due_at")),
-                    str(assignment.get("status")),
-                    assignment.get("lesson_id") == null ? null : num(assignment.get("lesson_id")),
+                where cs.student_id=? and a.deleted_at is null
+                """ + " and " + NguoiNhan.NHAN_DUOC + " order by a.created_at desc", studentId);
+        LocalDateTime now = LocalDateTime.now();
+        List<StudentAssignmentResponse> result = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Assignment assignment = AssignmentRows.assignment(row);
+            AssignmentState state = AssignmentWindow.stateOf(assignment, now);
+            // Bài giáo viên đang soạn thì học sinh không được biết là nó tồn tại.
+            if (!state.visibleToStudent()) continue;
+            AssignmentProgress progress = AssignmentRows.progress(row);
+            Long worksheetId = assignment.getWorksheetId();
+            // Chưa tới giờ mở: hiện tên bài, không hiện một câu hỏi nào.
+            List<StudentAssignmentResponse.Item> content = worksheetId == null || !state.contentVisibleToStudent()
+                    ? List.of()
+                    : items(worksheetId, assignment.getWorksheetVersionId());
+            boolean released = AssignmentWindow.scoreVisible(assignment, progress, now);
+            result.add(new StudentAssignmentResponse(
+                    assignment.getId(),
+                    str(row.get("title")),
+                    assignment.getOpenAt(),
+                    assignment.getDueAt(),
+                    assignment.getStatus(),
+                    state.name(),
+                    assignment.getLessonId(),
                     worksheetId,
-                    str(assignment.get("worksheet_name")),
-                    str(assignment.get("progress_status")),
-                    integer(assignment.get("completion_percent")),str(assignment.get("grading_status")),
-                    assignment.get("score")==null?null:new java.math.BigDecimal(assignment.get("score").toString()),
-                    assignment.get("max_score")==null?null:new java.math.BigDecimal(assignment.get("max_score").toString()),
+                    str(row.get("worksheet_name")),
+                    str(row.get("progress_status")),
+                    integer(row.get("completion_percent")), str(row.get("grading_status")),
+                    released ? progress.getScore() : null,
+                    released ? progress.getMaxScore() : null,
+                    AssignmentWindow.attemptsLeft(assignment, progress),
+                    progress.isSubmittedLate(),
+                    str(row.get("requirement")) == null ? "BAT_BUOC" : str(row.get("requirement")),
                     content
-            );
-        }).toList());
+            ));
+        }
+        return ApiResponse.ok("Assignments", result);
     }
 
+    /**
+     * Đề bài gửi cho học sinh. Có lấy {@code correct_option} lên nhưng <b>chỉ để phân loại</b>
+     * trắc nghiệm hay tự luận — giá trị của nó không đi vào {@code Item}, nên đáp án không rời
+     * khỏi server qua đường này.
+     */
+    private List<StudentAssignmentResponse.Item> items(Long worksheetId, Long worksheetVersionId) {
+        String versionFilter=worksheetVersionId==null?"":" and wi.worksheet_version_id=?";
+        String sql="""
+                select coalesce(p.id,-wi.id) id,wi.order_index,p.public_code,p.qr_slug,
+                       coalesce(p.statement_latex,wi.content_snapshot) statement_latex,
+                       coalesce(p.difficulty,'STANDARD') difficulty,
+                       coalesce(p.option_a,wi.option_a_snapshot) option_a,
+                       coalesce(p.option_b,wi.option_b_snapshot) option_b,
+                       coalesce(p.option_c,wi.option_c_snapshot) option_c,
+                       coalesce(p.option_d,wi.option_d_snapshot) option_d,
+                       coalesce(p.correct_option,wi.answer_snapshot) correct_option
+                from worksheet_items wi left join problems p on p.id=wi.problem_id and p.deleted_at is null
+                where wi.worksheet_id=? and wi.deleted_at is null"""+versionFilter+" order by wi.order_index";
+        Object[] args=worksheetVersionId==null?new Object[]{worksheetId}:new Object[]{worksheetId,worksheetVersionId};
+        return jdbc.query(sql, (rs, n) -> new StudentAssignmentResponse.Item(rs.getLong("id"), rs.getInt("order_index"), rs.getString("public_code"), rs.getString("qr_slug"), rs.getString("statement_latex"), rs.getString("difficulty"), rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), !McqGrading.laTracNghiem(rs.getString("option_a"), rs.getString("option_b"), rs.getString("option_c"), rs.getString("option_d"), rs.getString("correct_option"))), args);
+    }
+
+    /**
+     * Học liệu của một bài, đọc chung ống với mọi cửa còn lại.
+     *
+     * <p>Trước lát này hàm đọc thẳng {@code lesson_resources} — bảng không có cột trạng thái lẫn cột
+     * đối tượng — nên màn học sinh mở nhiều nhất là cửa duy nhất không hỏi ai đọc được. Không phải
+     * vì ai đó bỏ qua luật, mà vì bảng ấy không có gì để hỏi.
+     *
+     * <p>Ba giá trị cuối là chỗ nội dung trong dòng thành nội dung trong kho: đường dẫn lấy của
+     * video hoặc của tài liệu tùy mục trỏ đâu, tệp đính kèm và đoạn văn bản đi theo tài liệu. Mục
+     * trỏ vào phiếu bài tập hay chuyên đề thì cả ba đều rỗng — chúng có đường xem riêng, ở đây chỉ
+     * cần hiện tên.
+     *
+     * <p>Luật "tài liệu có tệp thì không phát đường dẫn kho" nằm ở {@link LuongNoiDung#DUONG_DAN},
+     * không viết lại ở đây: màn Hôm nay phát cùng thứ học liệu ấy cho cùng học sinh ấy, và hai bản
+     * chép của một biểu thức lọc là chỗ một bản sẽ rụng mất mệnh đề {@code case}.
+     */
     private List<StudentCourseResponse.Resource> resources(Long lessonId) {
         return jdbc.query("""
-                select id,type,title,external_url,file_asset_id,text_content,order_index
-                from lesson_resources
-                where lesson_id=? and deleted_at is null
-                order by order_index
-                """, (rs, n) -> new StudentCourseResponse.Resource(rs.getLong("id"), rs.getString("type"), rs.getString("title"), rs.getString("external_url"), rs.getObject("file_asset_id", Long.class), rs.getString("text_content"), rs.getInt("order_index")), lessonId);
+                select pr.id,pr.resource_type type,pr.title,pr.order_index,
+                """ + LuongNoiDung.DUONG_DAN + """
+                 external_url,
+                       d.file_asset_id,d.content_markdown text_content
+                from program_resources pr
+                """ + LuongNoiDung.NOI_NGUON
+                + "where" + LuongNoiDung.toiDuocBai(String.valueOf(lessonId))
+                + " and" + luat.docDuocDayDu()
+                + " and" + luat.toiDuocLop(current.requireRoleCode(), current.requireUserId())
+                + " order by pr.order_index",
+                (rs, n) -> new StudentCourseResponse.Resource(rs.getLong("id"), rs.getString("type"), rs.getString("title"), rs.getString("external_url"), rs.getObject("file_asset_id", Long.class), rs.getString("text_content"), rs.getInt("order_index")));
     }
 
     private List<StudentCourseResponse.AttachedWorksheet> worksheets(Long lessonId) {

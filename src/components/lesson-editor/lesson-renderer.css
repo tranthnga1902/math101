@@ -1,0 +1,228 @@
+/* -------------------------------------------------------------
+   LESSON CONTENT RENDERER & BLOCK STYLES
+   Thiết kế chuẩn hóa cho khối sư phạm Toán 10 (Single Source of Truth)
+   ------------------------------------------------------------- */
+
+.lesson-rendered-content {
+  color: #1e293b;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+/* Headings */
+.lesson-rendered-content h1,
+.tiptap-editor-canvas h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.lesson-rendered-content h2,
+.tiptap-editor-canvas h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #176b50;
+  border-bottom: 1px solid #cbd5e1;
+  padding-bottom: 0.375rem;
+  margin-top: 1.75rem;
+  margin-bottom: 0.875rem;
+}
+
+.lesson-rendered-content h3,
+.tiptap-editor-canvas h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-top: 1.25rem;
+  margin-bottom: 0.625rem;
+}
+
+/* Paragraphs & Lists */
+.lesson-rendered-content p,
+.tiptap-editor-canvas p {
+  margin-bottom: 0.75rem;
+}
+
+.lesson-rendered-content ul,
+.tiptap-editor-canvas ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lesson-rendered-content ol,
+.tiptap-editor-canvas ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lesson-rendered-content li,
+.tiptap-editor-canvas li {
+  margin-bottom: 0.25rem;
+}
+
+/* Callout Blocks (Khối sư phạm) */
+.lesson-callout {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0.625rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+}
+
+/* 1. Definition (Định nghĩa) -> Green Brand */
+.callout-definition {
+  border-left: 4px solid #176b50 !important;
+  background-color: #f0fdf4 !important;
+  border-color: #bbf7d0;
+}
+.callout-definition .callout-header {
+  background-color: rgba(23, 107, 80, 0.08);
+  color: #11543e;
+}
+
+/* 2. Example (Ví dụ) -> Amber / Yellow */
+.callout-example {
+  border-left: 4px solid #f59e0b !important;
+  background-color: #fffbeb !important;
+  border-color: #fde68a;
+}
+.callout-example .callout-header {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+}
+
+/* 3. Note (Ghi chú) -> Neutral / Sky Blue */
+.callout-note {
+  border-left: 4px solid #0284c7 !important;
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd;
+}
+.callout-note .callout-header {
+  background-color: rgba(2, 132, 199, 0.08);
+  color: #0369a1;
+}
+
+/* 4. Warning (Cảnh báo / Lưu ý) -> Rose / Red */
+.callout-warning {
+  border-left: 4px solid #e11d48 !important;
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3;
+}
+.callout-warning .callout-header {
+  background-color: rgba(225, 29, 72, 0.08);
+  color: #9f1239;
+}
+
+/* Header & Body của Callout */
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.callout-body {
+  padding: 0.875rem 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+.callout-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Formula Block */
+.lesson-formula-display {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+  overflow-x: auto;
+  position: relative;
+}
+
+.lesson-formula-display:hover .formula-copy-btn {
+  opacity: 1;
+}
+
+.formula-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: #475569;
+  cursor: pointer;
+}
+.formula-copy-btn:hover {
+  color: #176b50;
+  border-color: #176b50;
+}
+
+/* Tables */
+.lesson-rendered-content table,
+.tiptap-editor-canvas table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.lesson-rendered-content th,
+.tiptap-editor-canvas th {
+  background-color: #f1f5f9;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+}
+
+.lesson-rendered-content td,
+.tiptap-editor-canvas td {
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.lesson-rendered-content tr:nth-child(even),
+.tiptap-editor-canvas tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+/* Images */
+.lesson-rendered-content img,
+.tiptap-editor-canvas img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem auto;
+  display: block;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}

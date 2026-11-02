@@ -43,6 +43,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Dữ liệu đầu vào không hợp lệ", errors);
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> typeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        return ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Tham số không hợp lệ: " + ex.getName(), null);
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> unreadable(HttpMessageNotReadableException ex) {

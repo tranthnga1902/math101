@@ -10,6 +10,8 @@ public interface LessonService {
 
     List<LessonResponse> findByChapter(Long chapterId);
 
+    LessonResponse findById(Long id);
+
     LessonResponse findPublishedByPublicCode(String publicCode);
 
     LessonResponse create(LessonRequest request);

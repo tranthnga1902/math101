@@ -4,6 +4,7 @@ import {
   Calculator,
   ClipboardCheck,
   ClipboardList,
+  FileCheck,
   FileText,
   Home,
   Settings,
@@ -21,12 +22,14 @@ type NavItem = { id: string; icon: LucideIcon; label: string };
 
 const MAIN_NAV: NavItem[] = [
   { id: "teacher-overview", icon: Home, label: "Trang chủ" },
+  { id: "teacher-classes", icon: Users, label: "Lớp học" },
   { id: "teacher-content", icon: BookOpen, label: "Nội dung học" },
   { id: "teacher-documents", icon: FileText, label: "Tài liệu của tôi" },
+  { id: "teacher-pipeline", icon: Calculator, label: "Tạo đề" },
+  { id: "teacher-exams", icon: FileCheck, label: "Kì thi" },
   { id: "teacher-worksheets", icon: FileText, label: "Phiếu và đề" },
   { id: "teacher-tasks", icon: ClipboardList, label: "Nhiệm vụ" },
   { id: "teacher-grading", icon: ClipboardCheck, label: "Chấm bài" },
-  { id: "teacher-classes", icon: Users, label: "Lớp học" },
   { id: "teacher-reports", icon: TrendingUp, label: "Báo cáo" },
   { id: "teacher-notifications", icon: Bell, label: "Thông báo" },
 ];

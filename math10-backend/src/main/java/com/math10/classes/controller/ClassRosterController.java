@@ -1,5 +1,6 @@
 package com.math10.classes.controller;
 
+import com.math10.audit.service.AuditService;
 import com.math10.classes.dto.RosterImportPreviewResponse;
 import com.math10.classes.dto.RosterImportResult;
 import com.math10.classes.service.ClassAccessGuard;
@@ -35,13 +36,15 @@ public class ClassRosterController {
     private final ClassRosterImportService rosterImport;
     private final ClassStudentRepository classStudents;
     private final ClassAccessGuard guard;
+    private final AuditService audit;
 
     @GetMapping
     public ApiResponse<List<Map<String, Object>>> list(@PathVariable Long classId) {
         guard.requireTeacher(classId);
         return ApiResponse.ok("Học sinh của lớp", jdbc.queryForList("""
                 select cs.id,cs.student_id,cs.created_at joined_at,
-                       u.full_name,u.username,u.email,u.phone,u.status
+                       u.full_name,u.username,u.email,u.phone,u.status,u.avatar_url,
+                       u.date_of_birth,u.gender
                 from class_students cs
                 join users u on u.id=cs.student_id and u.deleted_at is null
                 where cs.class_id=? and cs.deleted_at is null
@@ -67,12 +70,19 @@ public class ClassRosterController {
                 """, keyword, keyword, keyword, classId));
     }
 
+    /**
+     * Nhật ký chỉ ghi mã học sinh và việc có tạo tài khoản mới hay không — không ghi lại thân
+     * yêu cầu, vì {@link AddStudentRequest} mang cả mật khẩu khởi tạo và bảng nhật ký thì mọi
+     * quản trị viên đều đọc được.
+     */
     @PostMapping("/students")
     @Transactional
     public ApiResponse<Long> addStudent(@PathVariable Long classId, @RequestBody AddStudentRequest request) {
         guard.requireTeacher(classId);
         Long studentId = rosterImport.addSingle(classId, request.userId(), request.fullName(),
                 request.username(), request.email(), request.phone(), request.password());
+        audit.record("ADD_STUDENT", "CLASS", classId, null,
+                "studentId=%d,newAccount=%b".formatted(studentId, request.userId() == null));
         return ApiResponse.created("Đã thêm học sinh vào lớp", studentId);
     }
 
@@ -85,6 +95,8 @@ public class ClassRosterController {
         if (!row.getClassId().equals(classId)) throw new ResourceNotFoundException("Không tìm thấy học sinh trong lớp");
         row.markDeleted();
         classStudents.save(row);
+        audit.record("REMOVE_STUDENT", "CLASS", classId,
+                "studentId=%d,enrollmentId=%d".formatted(row.getStudentId(), enrollmentId), null);
         return ApiResponse.noContent("Đã gỡ học sinh khỏi lớp");
     }
 
@@ -117,7 +129,10 @@ public class ClassRosterController {
     public ApiResponse<RosterImportResult> confirm(@PathVariable Long classId,
                                                     @Valid @RequestBody ObjectKeyRequest request) {
         guard.requireTeacher(classId);
-        return ApiResponse.created("Nhập danh sách hoàn tất", rosterImport.confirm(classId, request.objectKey()));
+        RosterImportResult result = rosterImport.confirm(classId, request.objectKey());
+        audit.record("IMPORT_ROSTER", "CLASS", classId, null,
+                "created=%d,enrolled=%d,skipped=%d".formatted(result.created(), result.enrolled(), result.skipped()));
+        return ApiResponse.created("Nhập danh sách hoàn tất", result);
     }
 
     public record PresignRequest(@NotBlank(message = "Thiếu tên file") String fileName, String contentType) {}

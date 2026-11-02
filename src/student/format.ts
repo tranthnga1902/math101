@@ -51,6 +51,74 @@ export function assignmentKind(item: StudentAssignment): "worksheet" | "lesson" 
   return item.worksheetId ? "worksheet" : "lesson";
 }
 
+/**
+ * Học sinh mở được bài này không, nộp được không, và vì sao không.
+ *
+ * Đây là bản chiếu của luật server (`AssignmentWindow`) để màn hình không mời học sinh bấm vào
+ * thứ chắc chắn bị từ chối. Server vẫn là nơi chặn thật — sửa ở đây không mở được cửa nào.
+ */
+export function assignmentGate(item: StudentAssignment): {
+  label: string; urgent: boolean; canView: boolean; canSubmit: boolean; note: string;
+} {
+  const state = item.state ?? "OPEN";
+  const returned = item.gradingStatus === "RETURNED";
+  const outOfAttempts = item.attemptsLeft !== null && item.attemptsLeft <= 0;
+  const canView = state === "OPEN" || state === "LATE_OPEN" || state === "CLOSED";
+  const canSubmit = (state === "OPEN" || state === "LATE_OPEN") && !returned && !outOfAttempts;
+
+  if (state === "SCHEDULED") {
+    const openAt = item.openAt ? new Date(item.openAt).toLocaleString("vi-VN") : "";
+    return { label: openAt ? `Mở lúc ${openAt}` : "Chưa tới giờ mở", urgent: false, canView, canSubmit, note: "Chưa tới giờ mở bài" };
+  }
+  if (state === "CLOSED") {
+    return { label: "Đã đóng", urgent: false, canView, canSubmit, note: item.dueAt ? "Đã quá hạn nộp" : "Bài đã đóng" };
+  }
+
+  const due = dueDateLabel(item.dueAt);
+  const label = state === "LATE_OPEN" ? "Quá hạn — còn nhận muộn" : due.text;
+  const note = returned ? "Đã trả điểm"
+    : outOfAttempts ? "Đã hết lượt nộp"
+    : item.attemptsLeft === null ? "Nộp lại thoải mái"
+    : `Còn ${item.attemptsLeft} lượt nộp`;
+  return { label, urgent: state === "LATE_OPEN" || due.urgent, canView, canSubmit, note };
+}
+
 export function formatPercent(value: number): string {
   return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
+}
+
+/** Ngày trần "2092-02-14" đọc theo giờ địa phương, không qua UTC — lệch múi giờ là lệch một ngày. */
+export function ngayVN(ngay: string): string {
+  return new Date(`${ngay}T00:00:00`).toLocaleDateString("vi-VN");
+}
+
+/**
+ * Ngày đi học lại là ngày kế sau ngày nghỉ cuối cùng.
+ *
+ * <p>Hiện thẳng ngày nghỉ cuối thì nửa lớp hiểu hôm đó còn nghỉ, nửa lớp hiểu đã đi học. Cộng ngày
+ * bằng {@code Date} chứ không qua chuỗi ISO: {@code toISOString} quy về UTC nên ở múi giờ +7 nó trả
+ * lại đúng ngày vừa cộng thêm, tức là mất luôn phép cộng.
+ */
+export function ngayDiHocLai(ngayNghiCuoi: string): string {
+  const ngay = new Date(`${ngayNghiCuoi}T00:00:00`);
+  ngay.setDate(ngay.getDate() + 1);
+  return ngay.toLocaleDateString("vi-VN");
+}
+/** Bài tập của một bài học: bài giao gắn `lessonId` này và có phiếu để làm. */
+export function lessonExercises(lessonId: number, assignments: StudentAssignment[]): StudentAssignment[] {
+  return assignments.filter((a) => a.lessonId === lessonId && !!a.worksheetId);
+}
+
+/**
+ * Bài học xong khi học xong lý thuyết VÀ đã nộp mọi bài tập bắt buộc của bài đó.
+ * Tính lúc đọc, không lưu cột riêng — nguồn sự thật vẫn là tiến độ bài học và bài nộp.
+ */
+export function lessonCompletion(
+  lesson: { completionPercent: number; completedAt?: string | null },
+  exercises: StudentAssignment[],
+): { theoryDone: boolean; required: number; submittedRequired: number; done: boolean } {
+  const theoryDone = lesson.completionPercent >= 100 || !!lesson.completedAt;
+  const required = exercises.filter((a) => (a.requirement ?? "BAT_BUOC") === "BAT_BUOC");
+  const submittedRequired = required.filter((a) => a.gradingStatus !== "NOT_SUBMITTED").length;
+  return { theoryDone, required: required.length, submittedRequired, done: theoryDone && submittedRequired === required.length };
 }

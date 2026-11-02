@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getClassCurriculum,
+  getClassProgramCurriculum,
   getClassDocuments,
   getMyClasses,
   getMyClassSubmissionLog,
@@ -10,11 +11,15 @@ import {
   openDocumentFile,
   type AuthSession,
   type ClassDocumentItem,
+  type ClassProgramResource,
   type MyClass,
   type MyClassTask,
 } from "../api";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { dueDateLabel } from "./format";
+import { ClassSessionsTab } from "./ClassSessionsTab";
+import { ClassMaterialsTab } from "../teacher/class/ClassDetailTabs";
+import { DocumentPreview } from "../components/DocumentPreview";
 
 type MyClassesPageProps = {
   session: AuthSession;
@@ -106,29 +111,244 @@ function ClassCard({ row, onOpen }: { row: MyClass; onOpen: () => void }) {
 }
 
 function CurriculumTab({ session, classId }: { session: AuthSession; classId: number }) {
-  const { data, isLoading } = useQuery({
+  const programQuery = useQuery({
+    queryKey: ["student-class-program-curriculum", session.userId, classId],
+    queryFn: () => getClassProgramCurriculum(session, classId),
+  });
+  const customQuery = useQuery({
     queryKey: ["my-class-curriculum", session.userId, classId],
     queryFn: () => getClassCurriculum(session, classId),
   });
-  const rows = data ?? [];
+
+  const [expandedChapters, setExpandedChapters] = useState<Record<number, boolean>>({});
+  const [docError, setDocError] = useState("");
+
+  const programCourses = programQuery.data?.courses ?? [];
+  const customRows = customQuery.data ?? [];
+  const isLoading = programQuery.isLoading || customQuery.isLoading;
+
+  const toggleChapter = (id: number) => {
+    setExpandedChapters(prev => ({
+      ...prev,
+      [id]: prev[id] === undefined ? false : !prev[id],
+    }));
+  };
+
+  const handleOpenDoc = (doc: ClassProgramResource) => {
+    setDocError("");
+    if (!doc.fileUrl) {
+      setDocError(`Tài liệu "${doc.title}" chưa có tệp đính kèm.`);
+      return;
+    }
+    void openDocumentFile(session, doc.fileUrl, doc.title, doc.startPage).catch(err => {
+      setDocError(err instanceof Error ? err.message : "Không thể mở tài liệu");
+    });
+  };
+
   if (isLoading) return <p className="text-sm text-on-surface-variant">Đang tải chương trình học…</p>;
-  if (!rows.length) return <p className="text-sm text-on-surface-variant">Giáo viên chưa xếp chương trình học cho lớp này.</p>;
+
+  if (!programCourses.length && !customRows.length) {
+    return <p className="text-sm text-on-surface-variant">Giáo viên chưa xếp chương trình học cho lớp này.</p>;
+  }
+
   return (
-    <ol className="flex flex-col gap-2">
-      {rows.map((row, index) => (
-        <li key={row.id} className="border border-outline-variant rounded-lg p-3 flex items-start gap-3">
-          <span className="w-7 h-7 shrink-0 rounded-full bg-primary-container text-on-primary-container text-sm font-bold flex items-center justify-center">
-            {index + 1}
-          </span>
-          <div className="min-w-0">
-            <p className="font-semibold text-on-surface">{row.title}</p>
-            {row.parent_title && <p className="text-xs text-on-surface-variant">{row.parent_title}</p>}
-            {row.note && <p className="text-sm text-on-surface-variant mt-1">{row.note}</p>}
-            <p className="text-xs text-on-surface-variant mt-1">{row.document_count} tài liệu liên quan</p>
+    <div className="flex flex-col gap-6">
+      {docError && (
+        <div className="p-3 bg-error-container/40 text-error border border-error/20 rounded-lg text-xs flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">error</span>
+          {docError}
+        </div>
+      )}
+
+      {/* ── Khóa học & Cấu trúc bài học chuẩn ── */}
+      {programCourses.map(course => (
+        <div key={course.courseInstanceId} className="flex flex-col gap-3">
+          {/* Tiêu đề khóa học */}
+          <div className="flex items-center justify-between gap-3 p-3 bg-surface-container rounded-xl border border-outline-variant/60 flex-wrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="material-symbols-outlined text-primary text-[22px]">auto_stories</span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-on-surface truncate">{course.courseInstanceName}</h3>
+                <p className="text-xs text-on-surface-variant">
+                  {course.programName} {course.schoolYear ? `· Năm học ${course.schoolYear}` : ""}
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-primary-container text-on-primary-container">
+              {course.totalLessons} bài học · {course.totalDocuments} tài liệu
+            </span>
           </div>
-        </li>
+
+          {/* Tài liệu chung của khóa */}
+          {course.commonDocuments.length > 0 && (
+            <div className="border border-outline-variant rounded-xl bg-surface-container-lowest p-3 flex flex-col gap-2">
+              <h4 className="text-xs font-bold text-on-surface flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-primary">folder_special</span>
+                Tài liệu chung của khóa học
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {course.commonDocuments.map(doc => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-outline-variant bg-surface hover:border-primary/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                        {doc.resourceType === "VIDEO" ? "smart_display" : "description"}
+                      </span>
+                      <p className="text-xs font-semibold text-on-surface truncate" title={doc.title}>
+                        {doc.title}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDoc(doc)}
+                      className="px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded shrink-0"
+                    >
+                      Xem
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Danh sách chương & bài học */}
+          <div className="flex flex-col gap-2.5">
+            {course.chapters.map(chapter => {
+              const isOpen = expandedChapters[chapter.id] ?? true;
+              const docCount = chapter.lessons.reduce((sum, l) => sum + l.documents.length, 0);
+
+              return (
+                <div
+                  key={chapter.id}
+                  className="border border-outline-variant rounded-xl bg-surface-container-lowest overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleChapter(chapter.id)}
+                    className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-surface-container-low transition-colors select-none"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[20px] text-on-surface-variant">
+                        {isOpen ? "folder_open" : "folder"}
+                      </span>
+                      <span className="text-sm font-bold text-on-surface truncate">{chapter.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-on-surface-variant">
+                        {chapter.lessons.length} bài · {docCount} tài liệu
+                      </span>
+                      <span className="material-symbols-outlined text-[18px] text-on-surface-variant" style={{ transform: isOpen ? "rotate(180deg)" : "none" }}>
+                        expand_more
+                      </span>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-outline-variant divide-y divide-outline-variant/60 bg-surface">
+                      {chapter.lessons.map(lesson => (
+                        <div key={lesson.id} className="p-3 pl-4 flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">
+                                {lesson.orderIndex}
+                              </span>
+                              <h4 className="text-xs font-bold text-on-surface truncate">{lesson.title}</h4>
+                            </div>
+                            {lesson.totalPeriods != null && (
+                              <span className="text-[11px] text-on-surface-variant px-1.5 py-0.5 rounded bg-surface-container-high">
+                                {lesson.totalPeriods} tiết
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Tài liệu đính kèm theo bài */}
+                          {lesson.documents.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1 pl-7">
+                              {lesson.documents.map(doc => (
+                                <div
+                                  key={doc.id}
+                                  className="flex items-center justify-between gap-2 p-2 rounded-lg border border-outline-variant/70 bg-surface-container-lowest hover:border-primary/50 transition-colors"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                                      {doc.resourceType === "VIDEO" ? "smart_display" : "picture_as_pdf"}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium text-on-surface truncate" title={doc.title}>
+                                        {doc.title}
+                                      </p>
+                                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                        {doc.required && (
+                                          <span className="text-[10px] px-1 py-0.2 rounded bg-error-container text-on-error-container font-bold">
+                                            Bắt buộc
+                                          </span>
+                                        )}
+                                        {doc.startPage && (
+                                          <span className="text-[10px] text-on-surface-variant">
+                                            Trang {doc.startPage}
+                                          </span>
+                                        )}
+                                        {doc.teacherNote && (
+                                          <span className="text-[10px] italic text-on-surface-variant truncate" title={doc.teacherNote}>
+                                            · {doc.teacherNote}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDoc(doc)}
+                                    className="h-7 px-2.5 text-xs font-semibold text-primary hover:bg-primary-container/20 rounded flex items-center gap-1 shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">visibility</span>
+                                    Xem
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-on-surface-variant/60 italic pl-7">
+                              Chưa có tài liệu đính kèm
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {!chapter.lessons.length && (
+                        <p className="p-3 text-xs text-on-surface-variant text-center">Chương chưa có bài học.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ))}
-    </ol>
+
+      {/* ── Chuyên đề bổ sung riêng của lớp (nếu có) ── */}
+      {customRows.length > 0 && (
+        <div className="border border-outline-variant rounded-xl bg-surface-container-lowest p-4 flex flex-col gap-3">
+          <h3 className="text-sm font-bold text-on-surface">Chuyên đề bổ sung riêng của lớp</h3>
+          <ol className="flex flex-col gap-2">
+            {customRows.map((row, index) => (
+              <li key={row.id} className="border border-outline-variant rounded-lg p-3 flex items-start gap-3 bg-surface">
+                <span className="w-6 h-6 shrink-0 rounded-full bg-primary-container text-on-primary-container text-xs font-bold flex items-center justify-center">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-on-surface">{row.title}</p>
+                  {row.parent_title && <p className="text-xs text-on-surface-variant">{row.parent_title}</p>}
+                  {row.note && <p className="text-xs text-on-surface-variant mt-1 italic">Ghi chú: {row.note}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -150,7 +370,8 @@ function DocumentsTab({ session, classId }: { session: AuthSession; classId: num
   };
 
   if (isLoading) return <p className="text-sm text-on-surface-variant">Đang tải tài liệu…</p>;
-  if (!rows.length) return <p className="text-sm text-on-surface-variant">Lớp chưa có tài liệu nào được gắn.</p>;
+  // Tài liệu gắn thẳng vào lớp là đường cũ; lớp không có gì ở đây thì khỏi hiện cả mục.
+  if (!rows.length) return null;
 
   const groups: Array<[string, string, ClassDocumentItem[]]> = [
     ["BAT_BUOC", "Tài liệu bắt buộc", rows.filter((row) => row.requirement === "BAT_BUOC")],
@@ -158,7 +379,8 @@ function DocumentsTab({ session, classId }: { session: AuthSession; classId: num
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 mt-4">
+      <h3 className="font-semibold">Tài liệu giáo viên giao trực tiếp</h3>
       {error && <p className="text-sm text-error">{error}</p>}
       {groups.map(([key, label, list]) =>
         list.length ? (
@@ -174,9 +396,14 @@ function DocumentsTab({ session, classId }: { session: AuthSession; classId: num
                 onClick={() => open(row)}
                 className="text-left border border-outline-variant rounded-lg p-3 hover:bg-surface-container-low transition-colors flex items-start gap-3"
               >
-                <span className="material-symbols-outlined text-primary shrink-0">
-                  {row.doc_type === "VIDEO" ? "smart_display" : "description"}
-                </span>
+                <DocumentPreview
+                  fileUrl={row.file_url}
+                  title={row.title}
+                  docType={row.doc_type}
+                  accessToken={session.accessToken}
+                  variant="compact"
+                  className="w-14 h-18 shrink-0 shadow-xs"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-on-surface truncate">{row.title}</p>
                   <p className="text-xs text-on-surface-variant">
@@ -215,18 +442,25 @@ function TaskRow({
   onMarkDone: () => void;
   marking: boolean;
 }) {
-  const due = dueDateLabel(row.due_at);
+  const scheduled = row.state === "SCHEDULED";
+  const closed = row.state === "CLOSED";
+  const due = scheduled
+    ? { text: row.open_at ? `Mở lúc ${new Date(row.open_at).toLocaleString("vi-VN")}` : "Chưa tới giờ mở", urgent: false }
+    : row.state === "LATE_OPEN"
+      ? { text: "Quá hạn — còn nhận muộn", urgent: true }
+      : dueDateLabel(row.due_at);
   const openable = !!(row.worksheet_id || row.lesson_id || row.document_id);
   // Phiếu bài tập có luồng nộp riêng (làm xong rồi bấm "Nộp bài"), nên chỉ bài học và tài liệu
   // mới cần nút đánh dấu — đây cũng là đường duy nhất để bài tự chọn được ghi nhận.
-  const markable = !row.worksheet_id && !row.submitted_at;
+  // Ngoài cửa nộp thì server từ chối, đừng mời học sinh bấm.
+  const markable = !row.worksheet_id && !row.submitted_at && (row.state === "OPEN" || row.state === "LATE_OPEN");
   return (
     <div className="border border-outline-variant rounded-lg p-3 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold text-on-surface">{row.title}</p>
           <p className="text-xs text-on-surface-variant mt-0.5">
-            {row.worksheet_name ?? row.document_title ?? "Bài học trên lớp"}
+            {scheduled ? "Chưa mở đề" : row.worksheet_name ?? row.document_title ?? "Bài học trên lớp"}
           </p>
         </div>
         <StateChip status={row.grading_status} />
@@ -235,6 +469,10 @@ function TaskRow({
       <div className="flex items-center gap-2 flex-wrap">
         <RequirementChip requirement={row.requirement} />
         <span className={`text-xs font-medium ${due.urgent ? "text-error" : "text-on-surface-variant"}`}>{due.text}</span>
+        {row.submitted_late && <span className="text-xs font-medium text-error">Đã nộp muộn</span>}
+        {!row.submitted_at && !scheduled && !closed && row.attempts_left !== null && (
+          <span className="text-xs font-medium text-on-surface-variant">Còn {row.attempts_left} lượt nộp</span>
+        )}
         {row.requirement === "BAT_BUOC" && row.score !== null && (
           <span className="text-xs font-bold text-primary data-tabular">
             Điểm {row.score}/{row.max_score ?? 10}
@@ -410,9 +648,10 @@ function LogTab({ session, classId }: { session: AuthSession; classId: number })
   );
 }
 
-type DetailTab = "curriculum" | "documents" | "tasks" | "log";
+type DetailTab = "sessions" | "curriculum" | "documents" | "tasks" | "log";
 
 const detailTabs: Array<[DetailTab, string]> = [
+  ["sessions", "Buổi học"],
   ["curriculum", "Chương trình học"],
   ["documents", "Tài liệu"],
   ["tasks", "Nhiệm vụ"],
@@ -432,7 +671,7 @@ function ClassDetailView({
   onOpenLesson: (lessonId: number) => void;
   onOpenWorksheet: (assignmentId: number) => void;
 }) {
-  const [tab, setTab] = useState<DetailTab>("curriculum");
+  const [tab, setTab] = useState<DetailTab>("sessions");
   return (
     <div className="flex flex-col gap-4">
       <button
@@ -487,7 +726,8 @@ function ClassDetailView({
       </div>
 
       {tab === "curriculum" && <CurriculumTab session={session} classId={row.id} />}
-      {tab === "documents" && <DocumentsTab session={session} classId={row.id} />}
+      {tab === "sessions" && <ClassSessionsTab session={session} classId={row.id}/>}
+      {tab === "documents" && <><ClassMaterialsTab session={session} classId={row.id}/><DocumentsTab session={session} classId={row.id} /></>}
       {tab === "tasks" && (
         <TasksTab session={session} classId={row.id} onOpenLesson={onOpenLesson} onOpenWorksheet={onOpenWorksheet} />
       )}

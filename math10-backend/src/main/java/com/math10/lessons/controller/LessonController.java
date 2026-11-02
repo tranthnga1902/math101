@@ -40,27 +40,33 @@ public class LessonController {
         return ApiResponse.ok("Lesson list loaded", lessonService.findByChapter(chapterId));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<LessonResponse> findById(@PathVariable Long id) {
+        return ApiResponse.ok("Lesson loaded", lessonService.findById(id));
+    }
+
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<LessonResponse> create(@Valid @RequestBody LessonRequest request) {
         return ApiResponse.created("Lesson created", lessonService.create(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<LessonResponse> update(@PathVariable Long id, @Valid @RequestBody LessonRequest request) {
         return ApiResponse.ok("Lesson updated", lessonService.update(id, request));
     }
 
     @PatchMapping("/reorder")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> reorder(@Valid @RequestBody ReorderRequest request) {
         lessonService.reorder(request);
         return ApiResponse.ok("Lessons reordered", null);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'TEACHER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         lessonService.softDelete(id);
         return ApiResponse.noContent("Lesson deleted");

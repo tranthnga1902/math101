@@ -1,5 +1,6 @@
 package com.math10.audit.service.impl;
 
+import com.math10.audit.dto.AuditLogQuery;
 import com.math10.audit.dto.AuditLogResponse;
 import com.math10.audit.entity.AuditLog;
 import com.math10.audit.repository.AuditLogRepository;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -41,8 +44,10 @@ public class AuditServiceImpl implements AuditService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AuditLogResponse> findAll(Pageable pageable) {
-        return repository.findAll(pageable).map(log -> new AuditLogResponse(
+    public Page<AuditLogResponse> search(AuditLogQuery query, Pageable pageable) {
+        LocalDateTime from = query.days() == null ? null : LocalDateTime.now().minusDays(query.days());
+        return repository.search(query.actorUserId(), query.actorRole(), query.targetType(), query.targetId(),
+                query.action(), from, pageable).map(log -> new AuditLogResponse(
                 log.getId(), log.getActorUserId(), log.getAction(), log.getTargetType(), log.getTargetId(),
                 log.getIpAddress(), log.getOldData(), log.getNewData(), log.getCreatedAt()
         ));

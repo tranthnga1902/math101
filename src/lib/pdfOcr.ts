@@ -93,17 +93,27 @@ async function renderPageToCanvas(pdf: pdfjsLib.PDFDocumentProxy, pageNumber: nu
 
 export async function ocrPdfToMarkdown({
   fileUrl,
+  file,
+  bareText,
   accessToken,
   onProgress,
   isCancelled,
 }: {
-  fileUrl: string;
+  /** Đường dẫn tới file trên máy chủ. Bỏ qua khi đã có sẵn `file` trong tay trình duyệt. */
+  fileUrl?: string;
+  /** File người dùng vừa chọn: đọc thẳng, không phải tải lại từ máy chủ. */
+  file?: Blob;
+  /**
+   * Chỉ lấy chữ, không thêm tiêu đề "## Trang N" và lời cảnh báo. Bộ tách câu của đường ống đề thi
+   * đọc từng dòng, nên mỗi dòng trang trí là một khối rác nằm giữa các câu.
+   */
+  bareText?: boolean;
   accessToken?: string;
   onProgress?: (progress: OcrProgress) => void;
   isCancelled?: () => boolean;
 }): Promise<OcrResult> {
   onProgress?.({ phase: "download", page: 0, total: 0 });
-  const bytes = await fetchPdfBytes(fileUrl, accessToken);
+  const bytes = file ? await file.arrayBuffer() : await fetchPdfBytes(fileUrl ?? "", accessToken);
   const pdf = await pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise;
   const total = Math.min(pdf.numPages, MAX_PAGES);
 
@@ -121,7 +131,7 @@ export async function ocrPdfToMarkdown({
       try {
         const { data } = await worker.recognize(canvas);
         const body = tidy(data.text);
-        if (body) sections.push(`## Trang ${pageNumber}\n\n${body}`);
+        if (body) sections.push(bareText ? body : `## Trang ${pageNumber}\n\n${body}`);
       } finally {
         // Thả ảnh ngay: 40 canvas ~1800px giữ lại cùng lúc là vài trăm MB.
         canvas.width = 0;
@@ -133,6 +143,7 @@ export async function ocrPdfToMarkdown({
       throw new Error("Không nhận dạng được chữ nào — ảnh trong PDF có thể quá mờ hoặc bị nghiêng");
     }
     const truncated = pdf.numPages > total;
+    if (bareText) return { markdown: sections.join("\n\n"), pages: total, truncated };
     const header = [
       "## Nội dung nhận dạng tự động (OCR)",
       `Bản này do máy đọc từ PDF scan${truncated ? ` — chỉ ${total} trang đầu trong ${pdf.numPages} trang` : ""}. Công thức toán và ký hiệu có thể sai, cần đọc lại và sửa trước khi cho học sinh dùng.`,

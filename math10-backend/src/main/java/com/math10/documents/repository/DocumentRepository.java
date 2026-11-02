@@ -56,4 +56,10 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     /** Đếm tài liệu theo từng mục trong một truy vấn — tránh N+1 khi dựng cả cây phân loại. */
     @Query("select d.taxonomyNodeId, count(d) from Document d where d.taxonomyNodeId is not null group by d.taxonomyNodeId")
     List<Object[]> countGroupedByTaxonomyNode();
+
+    /** Số tài liệu nằm trực tiếp trong từng thư mục của thư viện dùng chung, một truy vấn cho cả cây. */
+    @Query("select d.folderId, count(d) from Document d where d.ownerId is null and d.folderId is not null group by d.folderId")
+    List<Object[]> countSharedGroupedByFolder();
+
+    List<Document> findByOwnerIdIsNullAndFolderIdIn(java.util.Collection<Long> folderIds);
 }

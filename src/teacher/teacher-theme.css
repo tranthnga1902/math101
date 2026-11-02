@@ -169,18 +169,42 @@
 .teacher-app button.primary,
 .teacher-app .primary-action,
 .teacher-app .cw-btn-primary,
-.teacher-app button[class*="bg-primary"] {
+.teacher-app button[class*="bg-primary"],
+.teacher-app button[class*="bg-blue-"],
+.teacher-app button[class*="bg-emerald-"] {
   border-radius: 9px;
   background: var(--color-primary);
-  color: var(--color-on-primary);
+  color: #ffffff !important;
   box-shadow: none;
+}
+
+.teacher-app button.primary *,
+.teacher-app .primary-action *,
+.teacher-app .cw-btn-primary *,
+.teacher-app button[class*="bg-primary"] *,
+.teacher-app button[class*="bg-blue-"] *,
+.teacher-app button[class*="bg-emerald-"] * {
+  color: #ffffff !important;
+}
+
+.teacher-app button.primary svg,
+.teacher-app .primary-action svg,
+.teacher-app .cw-btn-primary svg,
+.teacher-app button[class*="bg-primary"] svg,
+.teacher-app button[class*="bg-blue-"] svg,
+.teacher-app button[class*="bg-emerald-"] svg {
+  color: #ffffff !important;
+  stroke: currentColor;
 }
 
 .teacher-app button.primary:hover,
 .teacher-app .primary-action:hover,
 .teacher-app .cw-btn-primary:hover,
-.teacher-app button[class*="bg-primary"]:hover {
+.teacher-app button[class*="bg-primary"]:hover,
+.teacher-app button[class*="bg-blue-"]:hover,
+.teacher-app button[class*="bg-emerald-"]:hover {
   background: var(--color-primary-hover);
+  color: #ffffff !important;
 }
 
 .teacher-app table {

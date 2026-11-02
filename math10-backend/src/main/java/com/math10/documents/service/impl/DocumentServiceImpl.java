@@ -1,9 +1,12 @@
 package com.math10.documents.service.impl;
 
+import com.math10.audit.service.AuditService;
 import com.math10.chapters.repository.ChapterRepository;
 import com.math10.classes.repository.ClassDocumentRepository;
+import com.math10.common.entity.ContentGroup;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.configuration.security.CurrentUserService;
 import com.math10.configuration.security.SecurityService;
 import com.math10.documents.dto.DocumentOpenResponse;
@@ -39,6 +42,11 @@ import com.math10.common.storage.StorageService;
 import com.math10.common.storage.StorageUrlSupport;
 import com.math10.documents.service.PdfMarkdownService;
 import com.math10.documents.service.PdfThumbnailService;
+import com.math10.programs.support.VideoThumbnails;
+import com.math10.documents.entity.FileFormat;
+import com.math10.documents.service.LearningPackageService;
+import com.math10.documents.service.OfficePdfConverter;
+import com.math10.documents.support.FileFormatDetector;
 import com.math10.enrollments.entity.ClassStudent;
 import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.lessons.entity.Lesson;
@@ -76,6 +84,7 @@ public class DocumentServiceImpl implements DocumentService {
     private static final List<DocumentType> MATERIALS_EXCLUDED_TYPES =
             List.of(DocumentType.SGK, DocumentType.SBT, DocumentType.DE_THI);
 
+    private final com.math10.metadata.repository.MetadataOptionRepository metadataOptions;
     private final DocumentRepository documents;
     private final LessonDocumentRepository lessonDocuments;
     private final LessonDocumentQuestionRepository lessonDocumentQuestions;
@@ -92,6 +101,19 @@ public class DocumentServiceImpl implements DocumentService {
     private final StorageUrlSupport storageUrls;
     private final PdfThumbnailService pdfThumbnailService;
     private final PdfMarkdownService pdfMarkdownService;
+    private final OfficePdfConverter officePdfConverter;
+    private final LearningPackageService learningPackages;
+    private final AuditService audit;
+
+    /**
+     * Ghi nhật ký ngay tại tầng nghiệp vụ chứ không ở controller: cùng một phép đổi trạng thái
+     * được gọi từ cả {@code AdminDocumentController} lẫn {@code TeacherDocumentController}, đặt ở
+     * đây thì không có đường nào lọt.
+     */
+    private void ghiTrangThai(String action, Document doc, DocumentStatus truoc) {
+        audit.record(action, "DOCUMENT", doc.getId(),
+                "status=%s".formatted(truoc), "status=%s".formatted(doc.getStatus()));
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -149,6 +171,37 @@ public class DocumentServiceImpl implements DocumentService {
         return map(documents.save(document));
     }
 
+    /**
+     * Gán hoặc gỡ nhóm nội dung. {@code null} là "gỡ phân loại", nói ra bằng một lời gọi riêng.
+     *
+     * <p>Không nhét trường này vào {@code updateDocument}: thân PUT hiện chỉ mang tên/loại/phạm vi,
+     * nên mỗi lần Admin đổi tên tài liệu là nhóm nội dung nhận null và bay mất — mất dữ liệu vì một
+     * trường không được gửi lên. Đường đi riêng thì gỡ chỉ xảy ra khi có người thật sự bấm gỡ.
+     */
+    @Override
+    @Transactional
+    public DocumentResponse setContentGroup(Long documentId, ContentGroup contentGroup) {
+        Document document = document(documentId);
+        if (document.getOwnerId() != null) {
+            throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không phân loại hộ được");
+        }
+        document.setContentGroup(contentGroup);
+        return map(documents.save(document));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContentGroupCounts countsByContentGroup() {
+        List<DocumentResponse> rows = listDocuments();
+        Map<ContentGroup, Long> theoNhom = new HashMap<>();
+        // Nêu đủ bốn nhóm kể cả nhóm rỗng: bộ lọc thiếu hẳn một dòng thì trông như nhóm đó không
+        // tồn tại, còn "Kiểm tra 0" nói đúng rằng chưa ai xếp tài liệu nào vào đó.
+        for (ContentGroup group : ContentGroup.values()) {
+            theoNhom.put(group, rows.stream().filter(row -> row.contentGroup() == group).count());
+        }
+        return new ContentGroupCounts(theoNhom, rows.stream().filter(row -> row.contentGroup() == null).count());
+    }
+
     @Override
     @Transactional(readOnly = true)
     public Map<Long, Integer> countsByTaxonomyNode() {
@@ -168,25 +221,45 @@ public class DocumentServiceImpl implements DocumentService {
         return uploadDocument(title, docType, audience, gradeId, chapterId, null, file, videoUrl, currentUserService.requireUserId());
     }
 
+    /** Loại tài liệu là danh mục admin tự thêm được, nên mã phải có trong danh mục đang dùng. */
+    private void ensureKnownDocType(DocumentType docType) {
+        if (docType == null || !metadataOptions.existsByCategoryAndValueAndActiveTrue("DOCUMENT_TYPE", docType.name())) {
+            throw new BusinessException("Loại tài liệu không có trong danh mục: " + docType);
+        }
+    }
+
     private DocumentResponse uploadDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, Long taxonomyNodeId, MultipartFile file, String videoUrl, Long ownerId) {
+        ensureKnownDocType(docType);
         String fileUrl;
         String thumbnailUrl = null;
         String resolvedTitle;
+        FileFormat fileFormat;
 
         if (docType == DocumentType.VIDEO) {
-            if (videoUrl == null || videoUrl.isBlank() || !videoUrl.trim().matches("(?i)^https://(www\\.|m\\.|music\\.)?youtube\\.com/(watch\\?[^#]*v=[A-Za-z0-9_-]{11}.*|(?:embed|shorts|live)/[A-Za-z0-9_-]{11}.*)$|^https://youtu\\.be/[A-Za-z0-9_-]{11}.*$")) {
+            if (videoUrl == null || videoUrl.isBlank()) {
+                throw new BusinessException("Link video YouTube là bắt buộc");
+            }
+            String trimmed = videoUrl.trim();
+            if (!trimmed.toLowerCase().startsWith("http://") && !trimmed.toLowerCase().startsWith("https://")) {
+                trimmed = "https://" + trimmed;
+            }
+            String ytId = VideoThumbnails.layMa(trimmed);
+            if (ytId == null) {
                 throw new BusinessException("Link YouTube không hợp lệ. Hãy dùng link youtube.com hoặc youtu.be");
             }
-            fileUrl = videoUrl.trim();
-            resolvedTitle = title == null || title.isBlank() ? "Video" : title.trim();
+            fileUrl = "https://www.youtube.com/watch?v=" + ytId;
+            thumbnailUrl = VideoThumbnails.suyRa(fileUrl);
+            resolvedTitle = title == null || title.isBlank() ? "Video YouTube" : title.trim();
+            fileFormat = FileFormat.VIDEO;
         } else {
             if (file == null || file.isEmpty() || file.getOriginalFilename() == null) {
                 throw new BusinessException("File tài liệu là bắt buộc");
             }
-            String mime = Optional.ofNullable(file.getContentType()).orElse("application/octet-stream");
-            if (!ALLOWED_MIME_TYPES.contains(mime)) {
-                throw new BusinessException("Chỉ hỗ trợ PDF, DOC hoặc DOCX");
+            fileFormat = FileFormatDetector.detect(file.getOriginalFilename(), file::getInputStream);
+            if (docType == DocumentType.VIDEO && fileFormat != FileFormat.VIDEO) {
+                throw new BusinessException("Loại Video chỉ nhận file .mp4, .webm, .mov, .m4v hoặc link YouTube");
             }
+            String mime = fileFormat == FileFormat.PDF ? "application/pdf" : "";
             try {
                 fileUrl = storageService.upload(file, "documents");
             } catch (IOException e) {
@@ -213,6 +286,7 @@ public class DocumentServiceImpl implements DocumentService {
         document.setOwnerId(ownerId);
         document.setFileUrl(fileUrl);
         document.setThumbnailUrl(thumbnailUrl);
+        document.setFileFormat(fileFormat);
         return map(documents.save(document));
     }
 
@@ -224,6 +298,7 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException("Giáo viên không thể chuyển tài liệu thành sách giáo khoa");
         }
         document.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         document.setDocType(request.docType());
         document.setAudience(request.audience());
         document.setGradeId(request.gradeId());
@@ -235,16 +310,22 @@ public class DocumentServiceImpl implements DocumentService {
     @Transactional
     public DocumentResponse archiveMyDocument(Long id) {
         Document document = ownedDocument(id);
+        DocumentStatus truoc = document.getStatus();
         document.setStatus(DocumentStatus.HIDDEN);
-        return map(documents.save(document));
+        DocumentResponse saved = map(documents.save(document));
+        ghiTrangThai("ARCHIVE", document, truoc);
+        return saved;
     }
 
     @Override
     @Transactional
     public DocumentResponse restoreMyDocument(Long id) {
         Document document = ownedDocument(id);
+        DocumentStatus truoc = document.getStatus();
         document.setStatus(DocumentStatus.DRAFT);
-        return map(documents.save(document));
+        DocumentResponse saved = map(documents.save(document));
+        ghiTrangThai("RESTORE", document, truoc);
+        return saved;
     }
 
     private Document ownedDocument(Long id) {
@@ -263,6 +344,7 @@ public class DocumentServiceImpl implements DocumentService {
             throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể chỉnh sửa");
         }
         document.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         document.setDocType(request.docType());
         document.setAudience(request.audience());
         document.setGradeId(request.gradeId());
@@ -290,7 +372,10 @@ public class DocumentServiceImpl implements DocumentService {
         if (document.getOwnerId() != null) {
             throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể xóa");
         }
+        audit.record("DELETE", "DOCUMENT", id,
+                "title=%s,docType=%s,status=%s".formatted(document.getTitle(), document.getDocType(), document.getStatus()), null);
         document.markDeleted();
+        lessonDocuments.findByDocumentId(id).forEach(com.math10.common.entity.BaseEntity::markDeleted);
     }
 
     @Override
@@ -419,6 +504,69 @@ public class DocumentServiceImpl implements DocumentService {
         return fileBytes(document(row.getDocumentId()));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readDocumentPreviewPdf(Long id) {
+        Document document = document(id);
+        checkCanRead(document);
+        return previewPdf(document);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] readLessonDocumentPreviewPdf(Long lessonId, Long id) {
+        return previewPdf(readableLessonDocument(lessonId, id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String launchDocumentPackage(Long id) {
+        Document document = document(id);
+        checkCanRead(document);
+        return packageLaunch(document);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String launchLessonDocumentPackage(Long lessonId, Long id) {
+        return packageLaunch(readableLessonDocument(lessonId, id));
+    }
+
+    private Document readableLessonDocument(Long lessonId, Long id) {
+        LessonDocument row = requireLessonDocument(lessonId, id);
+        if ("STUDENT".equals(currentUserService.requireRoleCode())) {
+            ensureStudentCanRead(lessonId, row);
+        } else {
+            checkLessonOwnership(lesson(lessonId));
+        }
+        return document(row.getDocumentId());
+    }
+
+    private byte[] previewPdf(Document document) {
+        String extension = FileFormatDetector.extensionOf(document.getFileUrl());
+        if ("pdf".equals(extension)) {
+            return fileBytes(document);
+        }
+        FileFormat format = document.getFileFormat();
+        boolean office = format == FileFormat.WORD || format == FileFormat.EXCEL || format == FileFormat.POWERPOINT
+                || Set.of("doc", "docx", "xls", "xlsx", "ppt", "pptx").contains(extension);
+        if (!office) {
+            throw new BusinessException("Tài liệu này không xem được ở dạng trang");
+        }
+        return officePdfConverter.toPdf(document.getFileUrl(), extension, () -> fileBytes(document));
+    }
+
+    private String packageLaunch(Document document) {
+        String extension = FileFormatDetector.extensionOf(document.getFileUrl());
+        if ("html".equals(extension) || "htm".equals(extension)) {
+            return learningPackages.launchHtmlPath(document.getId(), document.getFileUrl(), () -> fileBytes(document));
+        }
+        if (!"zip".equals(extension)) {
+            throw new BusinessException("Tài liệu này không phải gói SCORM/xAPI hay trang HTML");
+        }
+        return learningPackages.launchPath(document.getId(), document.getFileUrl(), () -> fileBytes(document));
+    }
+
     private byte[] fileBytes(Document document) {
         if (document.getFileUrl() == null || document.getFileUrl().isBlank()) {
             throw new BusinessException("Tài liệu này không có file để xem");
@@ -436,13 +584,15 @@ public class DocumentServiceImpl implements DocumentService {
                 throw new AccessDeniedException("Bạn không có quyền xem tài liệu của bài học này");
             }
             return lessonDocuments.findByLessonIdOrderByDisplayOrderAsc(lesson.getId()).stream()
-                    .map(row -> mapLessonDocument(row, false))
+                    .map(row -> mapLessonDocument(row, true))
+                    .filter(java.util.Objects::nonNull)
                     .filter(row -> row.audience() == DocumentAudience.STUDENT_ALLOWED)
                     .toList();
         }
         checkLessonOwnership(lesson);
         return lessonDocuments.findByLessonIdOrderByDisplayOrderAsc(lesson.getId()).stream()
                 .map(this::mapLessonDocument)
+                .filter(java.util.Objects::nonNull)
                 .toList();
     }
 
@@ -667,6 +817,7 @@ public class DocumentServiceImpl implements DocumentService {
         Document textbook = new Document();
         textbook.setTitle(title == null || title.isBlank() ? file.getOriginalFilename() : title.trim());
         textbook.setDocType(docType);
+        textbook.setFileFormat(FileFormat.PDF);
         textbook.setAudience(audience);
         textbook.setGradeId(gradeId);
         if (subjectId != null) {
@@ -759,6 +910,7 @@ public class DocumentServiceImpl implements DocumentService {
     public TextbookListResponse updateTextbook(Long id, DocumentUpdateRequest request) {
         Document doc = document(id);
         doc.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         doc.setDocType(request.docType());
         doc.setAudience(request.audience());
         doc.setGradeId(request.gradeId());
@@ -777,19 +929,6 @@ public class DocumentServiceImpl implements DocumentService {
         return mapTextbook(documents.save(doc));
     }
 
-    @Override
-    @Transactional
-    public TextbookListResponse setPageOffset(Long id, Integer pdfPageForBookPageOne) {
-        Document doc = document(id);
-        if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
-            throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
-        }
-        if (pdfPageForBookPageOne == null || pdfPageForBookPageOne < 1) {
-            throw new BusinessException("PDF page cho trang sách 1 phải >= 1");
-        }
-        doc.setBasePageOffset(pdfPageForBookPageOne);
-        return mapTextbook(documents.save(doc));
-    }
 
     @Override
     @Transactional
@@ -798,8 +937,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
             throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
         }
+        DocumentStatus truoc = doc.getStatus();
         doc.setStatus(DocumentStatus.PUBLISHED);
-        return mapTextbook(documents.save(doc));
+        TextbookListResponse saved = mapTextbook(documents.save(doc));
+        ghiTrangThai("PUBLISH", doc, truoc);
+        return saved;
     }
 
     @Override
@@ -809,8 +951,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (!TEXTBOOK_TYPES.contains(doc.getDocType())) {
             throw new ResourceNotFoundException("Không tìm thấy sách giáo khoa");
         }
+        DocumentStatus truoc = doc.getStatus();
         doc.setStatus(DocumentStatus.HIDDEN);
-        return mapTextbook(documents.save(doc));
+        TextbookListResponse saved = mapTextbook(documents.save(doc));
+        ghiTrangThai("HIDE", doc, truoc);
+        return saved;
     }
 
     @Override
@@ -940,7 +1085,9 @@ public class DocumentServiceImpl implements DocumentService {
                 thumbnailUrl(document),
                 document.getFolderId(),
                 document.getContentMarkdown(),
-                document.getTaxonomyNodeId()
+                document.getTaxonomyNodeId(),
+                document.getContentGroup(),
+                document.getFileFormat()
         );
     }
 
@@ -976,7 +1123,10 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private LessonDocumentResponse mapLessonDocument(LessonDocument row, boolean exposeFileUrl) {
-        Document document = document(row.getDocumentId());
+        Document document = documents.findById(row.getDocumentId()).orElse(null);
+        if (document == null) {
+            return null;
+        }
         return new LessonDocumentResponse(
                 row.getId(),
                 row.getLessonId(),
@@ -988,7 +1138,8 @@ public class DocumentServiceImpl implements DocumentService {
                 row.isRequired(),
                 row.getTeacherNote(),
                 row.getStartPage(),
-                row.getDisplayOrder()
+                row.getDisplayOrder(),
+                DocumentUrls.thumbnailUrl(document.getId(), document.getThumbnailUrl())
         );
     }
 

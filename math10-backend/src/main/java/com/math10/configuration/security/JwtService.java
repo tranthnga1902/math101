@@ -24,10 +24,21 @@ public class JwtService {
     private final String jwtSecret;
     private final long expiresInSeconds;
 
+    /** Access token không thu hồi được, nên đời nó phải ngắn. Quá ngưỡng này là cấu hình sai. */
+    private static final long TOI_DA_GIAY = 24 * 60 * 60;
+
+    /** Phiên xem hộ không có refresh token, hết hạn là hết xem. 30 phút đủ để kiểm chứng một màn hình. */
+    private static final long XEM_HO_GIAY = 30 * 60;
+
     public JwtService(
             @Value("${math10.jwt-secret}") String jwtSecret,
             @Value("${math10.jwt-expiration}") long expiresInSeconds
     ) {
+        if (expiresInSeconds <= 0 || expiresInSeconds > TOI_DA_GIAY) {
+            throw new IllegalStateException(
+                    "math10.jwt-expiration tính bằng GIÂY và phải trong khoảng 1..%d, đang nhận %d."
+                            .formatted(TOI_DA_GIAY, expiresInSeconds));
+        }
         this.jwtSecret = jwtSecret;
         this.expiresInSeconds = expiresInSeconds;
     }
@@ -37,6 +48,22 @@ public class JwtService {
     }
 
     public String createAccessToken(User user) {
+        return ky(user, expiresInSeconds, null);
+    }
+
+    /**
+     * Token để giáo viên/admin nhìn bằng mắt học viên. Chủ thể vẫn là học viên nên mọi
+     * quyền đọc giữ nguyên; claim "act" ghi lại người thật để chặn ghi và để ghi nhật ký.
+     */
+    public String createImpersonationToken(User student, Long actorUserId) {
+        return ky(student, xemHoExpiresInSeconds(), actorUserId);
+    }
+
+    public long xemHoExpiresInSeconds() {
+        return Math.min(XEM_HO_GIAY, expiresInSeconds);
+    }
+
+    private String ky(User user, long songLau, Long actorUserId) {
         requireConfiguredSecret();
         long now = Instant.now().getEpochSecond();
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -44,7 +71,10 @@ public class JwtService {
         payload.put("email", user.getEmail());
         payload.put("role", user.getRoleCode());
         payload.put("iat", now);
-        payload.put("exp", now + expiresInSeconds);
+        payload.put("exp", now + songLau);
+        if (actorUserId != null) {
+            payload.put("act", actorUserId);
+        }
 
         String header = URL_ENCODER.encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
         String body = URL_ENCODER.encodeToString(toJson(payload).getBytes(StandardCharsets.UTF_8));
@@ -70,7 +100,8 @@ public class JwtService {
         return new Math10Principal(
                 longField(payload, "sub"),
                 stringField(payload, "email"),
-                stringField(payload, "role")
+                stringField(payload, "role"),
+                optionalLongField(payload, "act")
         );
     }
 
@@ -127,6 +158,12 @@ public class JwtService {
             throw new BusinessException("Token field is missing: " + field);
         }
         return matcher.group(1);
+    }
+
+    /** Claim có thể vắng mặt: token thường không mang "act". */
+    private static Long optionalLongField(String json, String field) {
+        Matcher matcher = Pattern.compile("\"" + Pattern.quote(field) + "\"\\s*:\\s*(\\d+)").matcher(json);
+        return matcher.find() ? Long.parseLong(matcher.group(1)) : null;
     }
 
     private static long longField(String json, String field) {

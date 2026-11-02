@@ -10,6 +10,9 @@ import org.hibernate.annotations.SQLRestriction;
 @Table(name="document_folders")
 @SQLRestriction("deleted_at IS NULL")
 public class DocumentFolder extends BaseEntity {
-    @Column(name="owner_id",nullable=false) private Long ownerId;
+    /** Null = thư mục của thư viện dùng chung do quản trị quản lý. */
+    @Column(name="owner_id") private Long ownerId;
+    /** Null = thư mục gốc. */
+    @Column(name="parent_id") private Long parentId;
     @Column(nullable=false,length=120) private String name;
 }

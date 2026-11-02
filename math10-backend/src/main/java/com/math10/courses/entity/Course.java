@@ -29,4 +29,13 @@ public class Course extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private CourseStatus status = CourseStatus.DRAFT;
+
+    @Column(name = "book_series_id")
+    private Long bookSeriesId;
+
+    @Column(name = "published_by")
+    private Long publishedBy;
+
+    @Column(name = "published_at")
+    private java.time.LocalDateTime publishedAt;
 }

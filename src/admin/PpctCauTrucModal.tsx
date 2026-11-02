@@ -1,0 +1,32 @@
+import React, {useState} from "react";
+import {AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Download, FileUp, Loader2, X} from "lucide-react";
+import {AuthSession, ProgramImportPreview, confirmProgramCourse, downloadProgramCourseTemplate, previewProgramCourse} from "../api";
+
+type Props={session:AuthSession;programId:number;programName:string;isOpen:boolean;onClose:()=>void;onSuccess:(courseId?:number)=>void};
+
+export const PpctCauTrucModal:React.FC<Props>=({session,programId,programName,isOpen,onClose,onSuccess})=>{
+ const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<ProgramImportPreview|null>(null);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(""),[done,setDone]=useState(false);
+ const [open,setOpen]=useState<Record<string,boolean>>({});
+ if(!isOpen)return null;
+ const inspect=async()=>{if(!file)return;setBusy(true);setError("");try{const p=await previewProgramCourse(session,file,programId);setPreview(p);setOpen(Object.fromEntries(p.derived.strands.map(s=>[s.code,true])));}catch(e){setError(e instanceof Error?e.message:"Không đọc được file PPCT");}finally{setBusy(false)}};
+ const confirm=async()=>{if(!preview||preview.errors.length)return;setBusy(true);setError("");try{const result=await confirmProgramCourse(session,preview.previewToken);setDone(true);onSuccess(result.courseId);}catch(e){setError(e instanceof Error?e.message:"Không nhập được chương trình");}finally{setBusy(false)}};
+ const close=()=>{setFile(null);setPreview(null);setDone(false);setError("");onClose()};
+ return <div className="km-dialog-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}>
+  <div className="km-dialog" style={{width:"min(980px,96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
+   <div className="km-dialog-head"><div><div className="km-eyebrow">NHẬP CHƯƠNG TRÌNH TỪ TỆP</div><h3 className="km-dialog-title">PPCT bốn tầng</h3><p style={{margin:"5px 0 0",color:"#64748b",fontSize:13}}>Mạch → Chương → Bài học → Tiết · nguồn hiện tại: {programName}</p></div><button className="km-close-btn" onClick={close}><X size={18}/></button></div>
+   <div className="km-dialog-body" style={{overflowY:"auto"}}>
+    {error&&<div style={{padding:12,marginBottom:14,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:8,display:"flex",gap:8}}><AlertCircle size={18}/>{error}</div>}
+    {done?<div style={{padding:48,textAlign:"center"}}><CheckCircle2 size={50} color="#16a34a"/><h3>Đã nhập chương trình</h3><p>Chương trình mới được tạo ở trạng thái Nháp. PPCT là dữ liệu tham chiếu; lịch từng lớp được quản lý riêng.</p></div>:!preview?<>
+     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><p style={{margin:0,color:"#475569"}}>Word/PDF: hệ thống tự nhận diện bảng và phân tầng. Excel: một dòng một tiết.</p><button className="km-btn-ghost" onClick={()=>void downloadProgramCourseTemplate(session)}><Download size={15}/> Tải file Excel mẫu</button></div>
+     <label style={{display:"grid",placeItems:"center",padding:38,border:"2px dashed #cbd5e1",borderRadius:10,background:"#f8fafc",cursor:"pointer"}}><FileUp size={42} color="#2563eb"/><strong style={{marginTop:10}}>{file?.name??"Chọn file PPCT Word, PDF hoặc Excel"}</strong><span style={{color:"#64748b",fontSize:13,marginTop:5}}>.docx, PDF có thể chọn chữ, .xlsx hoặc .xls · tối đa 10 MB</span><input hidden type="file" accept=".docx,.pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={e=>{setFile(e.target.files?.[0]??null);setPreview(null);setError("")}}/></label>
+    </>:<>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>{[["Mạch",preview.derived.strands.length],["Chương",preview.derived.chapterCount],["Bài học",preview.derived.lessonCount],["Tiết",preview.derived.periodCount]].map(([k,v])=><div key={k} style={{border:"1px solid #e2e8f0",padding:12,borderRadius:8}}><div style={{color:"#64748b",fontSize:12}}>{k}</div><strong style={{fontSize:22}}>{v}</strong></div>)}</div>
+     {(preview.errors.length>0||preview.warnings.length>0)&&<div style={{marginBottom:14}}><strong>{preview.errors.length} lỗi · {preview.warnings.length} cảnh báo</strong>{[...preview.errors,...preview.warnings].map((x,i)=><button key={i} style={{display:"block",width:"100%",textAlign:"left",border:0,background:preview.errors.includes(x)?"#fef2f2":"#fffbeb",padding:"8px 10px",marginTop:4,color:"#334155"}} onClick={()=>document.getElementById(`ppct-row-${x.row}`)?.scrollIntoView({behavior:"smooth"})}>Dòng {x.row||"Thông tin"} · {x.column}: {x.message}</button>)}</div>}
+     <div style={{display:"flex",flexDirection:"column",gap:8}}>{preview.derived.strands.map(s=><div key={s.code} style={{border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden"}}><button onClick={()=>setOpen(o=>({...o,[s.code]:!o[s.code]}))} style={{border:0,width:"100%",padding:12,background:"#f8fafc",display:"flex",alignItems:"center",gap:8,textAlign:"left"}}>{open[s.code]?<ChevronDown size={17}/>:<ChevronRight size={17}/>}<strong style={{flex:1}}>{s.name}</strong><span>{s.totalPeriods} tiết</span></button>{open[s.code]&&s.chapters.map((c,ci)=><div key={`${c.numeral}-${ci}`} style={{padding:"10px 14px 10px 38px",borderTop:"1px solid #e2e8f0"}}><strong>Chương {c.numeral}{c.name&&c.name!==`Chương ${c.numeral}`?` · ${c.name}`:""}</strong><span style={{float:"right",color:"#64748b"}}>{c.totalPeriods} tiết</span>{c.lessons.map((l,li)=><div id={`ppct-row-${l.periods[0]?.row}`} key={li} style={{padding:"7px 0 0 20px",fontSize:13,color:"#475569"}}>{l.name} · {l.totalPeriods} tiết · tuần {l.firstWeek===l.lastWeek?l.firstWeek:`${l.firstWeek}–${l.lastWeek}`}</div>)}</div>)}</div>)}</div>
+    </>}
+   </div>
+   <div className="km-dialog-foot"><button className="km-btn-ghost" onClick={close}>{done?"Đóng":"Hủy"}</button>{!done&&!preview&&<button className="km-btn-primary" disabled={!file||busy} onClick={()=>void inspect()}>{busy?<Loader2 className="spin" size={16}/>:null} Xem trước và soát lỗi</button>}{!done&&preview&&<><button className="km-btn-ghost" onClick={()=>setPreview(null)}>Chọn file khác</button><button className="km-btn-primary" disabled={busy||preview.errors.length>0} onClick={()=>void confirm()}>{busy?<Loader2 className="spin" size={16}/>:null} Xác nhận nhập</button></>}</div>
+  </div>
+ </div>;
+};

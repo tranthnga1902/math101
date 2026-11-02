@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getClassRoster, getRosterCandidates, addRosterStudent, removeRosterStudent,
-  uploadClassRoster, confirmClassRoster, downloadRosterTemplate,
+  uploadClassRoster, confirmClassRoster, downloadRosterTemplate, impersonateStudent,
   type AuthSession, type RosterImportPreview, type RosterImportResult, type RosterRowStatus,
 } from "../../api";
 import { messageOf } from "../../lib/errors";
@@ -55,6 +55,12 @@ export function ClassRosterPanel({ session, classId }: { session: AuthSession; c
     onSuccess: async () => { await invalidate(); setPickedId(0); setDraft(emptyDraft); setNotice("Đã thêm học sinh vào lớp."); },
   });
   const removeMutation = useMutation({ mutationFn: (id: number) => removeRosterStudent(session, classId, id), onSuccess: invalidate });
+  // App.tsx cầm phiên đăng nhập, panel này nằm sâu mấy tầng — báo lên bằng sự kiện cửa sổ,
+  // đúng lối "math10:admin-navigation" đã dùng sẵn, thay vì xâu prop qua từng tầng.
+  const xemHoMutation = useMutation({
+    mutationFn: (studentId: number) => impersonateStudent(session, studentId),
+    onSuccess: phien => window.dispatchEvent(new CustomEvent("math10:xem-ho", { detail: phien })),
+  });
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadClassRoster(session, classId, file),
     onSuccess: data => { setPreview(data); setResult(null); },
@@ -64,7 +70,7 @@ export function ClassRosterPanel({ session, classId }: { session: AuthSession; c
     onSuccess: async data => { await invalidate(); setPreview(null); setResult(data); },
   });
 
-  const error = [rosterQuery, addMutation, removeMutation, uploadMutation, confirmMutation]
+  const error = [rosterQuery, addMutation, removeMutation, uploadMutation, confirmMutation, xemHoMutation]
     .map(q => (q.isError ? messageOf(q.error) : "")).find(Boolean) ?? "";
   const canAdd = mode === "existing" ? pickedId > 0 : Boolean(draft.fullName && draft.username && draft.email && draft.password);
 
@@ -156,7 +162,10 @@ export function ClassRosterPanel({ session, classId }: { session: AuthSession; c
               <td className="px-3 py-2 border-b border-outline-variant text-on-surface-variant">{row.username ? `@${row.username}` : "—"}</td>
               <td className="px-3 py-2 border-b border-outline-variant text-on-surface-variant truncate max-w-[220px]">{row.email}</td>
               <td className="px-3 py-2 border-b border-outline-variant text-on-surface-variant data-tabular">{new Date(row.joined_at).toLocaleDateString("vi-VN")}</td>
-              <td className="px-3 py-2 border-b border-outline-variant text-right">
+              <td className="px-3 py-2 border-b border-outline-variant text-right whitespace-nowrap">
+                <button onClick={() => xemHoMutation.mutate(row.id)} disabled={row.status !== "ACTIVE" || xemHoMutation.isPending}
+                  title="Mở màn hình đúng như em ấy nhìn thấy (chỉ đọc)"
+                  className="px-2.5 py-1 mr-1 text-xs font-semibold text-primary hover:bg-primary-container/30 rounded transition-colors disabled:opacity-50">Xem bằng mắt em</button>
                 <button onClick={() => { if (confirm(`Gỡ ${row.full_name} khỏi lớp?`)) removeMutation.mutate(row.id); }}
                   className="px-2.5 py-1 text-xs font-semibold text-error hover:bg-error-container/30 rounded transition-colors">Gỡ</button>
               </td>

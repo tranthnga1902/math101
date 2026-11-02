@@ -1,5 +1,7 @@
 package com.math10.documents.service;
 
+import com.math10.common.entity.ContentGroup;
+import com.math10.documents.dto.ContentGroupCounts;
 import com.math10.documents.dto.DocumentOpenResponse;
 import com.math10.documents.dto.DocumentResponse;
 import com.math10.documents.dto.DocumentUpdateRequest;
@@ -29,6 +31,8 @@ public interface DocumentService {
     List<DocumentResponse> listByTaxonomyNode(Long taxonomyNodeId);
     DocumentResponse attachToTaxonomyNode(Long documentId, Long taxonomyNodeId);
     Map<Long, Integer> countsByTaxonomyNode();
+    DocumentResponse setContentGroup(Long documentId, ContentGroup contentGroup);
+    ContentGroupCounts countsByContentGroup();
     List<DocumentResponse> listMyDocuments();
     DocumentResponse uploadMyDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, MultipartFile file, String videoUrl);
     DocumentResponse updateMyDocument(Long id, DocumentUpdateRequest request);
@@ -41,6 +45,12 @@ public interface DocumentService {
     byte[] readDocumentBytes(Long id);
     byte[] readDocumentThumbnailBytes(Long id);
     byte[] readLessonDocumentBytes(Long lessonId, Long id);
+    /** PDF để xem trong app: PDF trả nguyên, Word/Excel/PowerPoint đổi sang PDF. */
+    byte[] readDocumentPreviewPdf(Long id);
+    byte[] readLessonDocumentPreviewPdf(Long lessonId, Long id);
+    /** Đường dẫn khởi chạy gói SCORM/xAPI (kèm token), sau khi kiểm quyền đọc. */
+    String launchDocumentPackage(Long id);
+    String launchLessonDocumentPackage(Long lessonId, Long id);
     List<LessonDocumentResponse> listLessonDocuments(Long lessonId);
     LessonDocumentResponse attachToLesson(Long lessonId, LessonDocumentRequest request);
     LessonDocumentResponse updateLessonDocument(Long lessonId, Long id, LessonDocumentUpdateRequest request);
@@ -61,7 +71,6 @@ public interface DocumentService {
     TextbookDetailResponse getTextbook(Long id);
     TextbookOpenResponse openTextbook(Long id, Integer bookPage);
     TextbookListResponse updateTextbook(Long id, DocumentUpdateRequest request);
-    TextbookListResponse setPageOffset(Long id, Integer pdfPageForBookPageOne);
     TextbookListResponse publishTextbook(Long id);
     TextbookListResponse hideTextbook(Long id);
 

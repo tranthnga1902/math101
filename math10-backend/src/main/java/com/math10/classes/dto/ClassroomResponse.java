@@ -8,6 +8,7 @@ public record ClassroomResponse(Long id, String code, String name, Long gradeId,
                                 String description, Long createdBy,
                                 long teacherCount, long studentCount, long courseCount,
                                 long curriculumCount, long documentCount,
+                                java.time.LocalDate startDate,
                                 @Schema(type = "string", format = "date-time") LocalDateTime createdAt,
                                 @Schema(type = "string", format = "date-time") LocalDateTime updatedAt) {
 }
