@@ -24,3 +24,10 @@
 .fee-actions button:disabled{opacity:.5;cursor:not-allowed}
 
 @media(max-width:900px){.fee-grid{grid-template-columns:1fr}}
+
+.fee-amount{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fee-plan-table td:first-child{width:110px;font-weight:600}
+.fee-plan-total td{border-bottom:0;background:#f8fafc;font-weight:700;color:#0f172a}
+.finance-status[data-plan=MOI]{background:#eef6f2;color:#11543e}
+.finance-status[data-plan=DOI]{background:#fef3c7;color:#92400e}
+.finance-status[data-plan=KHOA]{background:#e2e8f0;color:#334155}

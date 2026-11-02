@@ -30,7 +30,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Chạy gói SCORM/xAPI ngay trong app ở mức cơ bản: giải nén gói ra đĩa, tìm trang khởi chạy, phục
+ * Chạy gói SCORM/xAPI và trang HTML (một file, hoặc gói .zip có index.html) ngay trong app ở mức cơ bản: giải nén gói ra đĩa, tìm trang khởi chạy, phục
  * vụ từng file qua {@code /api/doc-packages/{token}/...} và gắn sẵn API SCORM giả lập vào trang HTML.
  *
  * <p><b>Vì sao cần token trong đường dẫn:</b> trang trong iframe tự tải CSS/JS/ảnh theo đường dẫn
@@ -66,8 +66,20 @@ public class LearningPackageService {
 
     /** Giải nén (nếu chưa) và trả đường dẫn khởi chạy tương đối với {@link #PATH_PREFIX}. */
     public String launchPath(Long documentId, String cacheKey, Supplier<byte[]> zipBytes) {
+        return launch(documentId, cacheKey, temp -> extractZip(temp, zipBytes.get()));
+    }
+
+    /**
+     * Trang HTML một file: đặt vào thư mục riêng thành index.html rồi phục vụ y như gói, để đi chung
+     * đường có token và CSP sandbox — không bao giờ trả HTML người dùng tải lên từ origin của API.
+     */
+    public String launchHtmlPath(Long documentId, String cacheKey, Supplier<byte[]> htmlBytes) {
+        return launch(documentId, cacheKey, temp -> Files.write(temp.resolve("index.html"), htmlBytes.get()));
+    }
+
+    private String launch(Long documentId, String cacheKey, Extractor extractor) {
         String folder = OfficePdfConverter.sha256(cacheKey);
-        Path dir = unpack(folder, zipBytes);
+        Path dir = unpack(folder, extractor);
         String entry;
         try {
             entry = Files.readString(dir.resolve(ENTRY_FILE), StandardCharsets.UTF_8).strip();
@@ -112,7 +124,34 @@ public class LearningPackageService {
         return file;
     }
 
-    private Path unpack(String folder, Supplier<byte[]> zipBytes) {
+    @FunctionalInterface
+    private interface Extractor {
+        void writeInto(Path temp) throws IOException;
+    }
+
+    private static void extractZip(Path temp, byte[] zipBytes) throws IOException {
+        long total = 0;
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                Path target = temp.resolve(entry.getName().replace('\\', '/')).normalize();
+                if (!target.startsWith(temp)) {
+                    throw new BusinessException("Gói học liệu chứa đường dẫn không hợp lệ");
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(target);
+                    continue;
+                }
+                Files.createDirectories(target.getParent());
+                total += Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
+                if (total > MAX_UNPACKED_BYTES) {
+                    throw new BusinessException("Gói học liệu giải nén ra quá lớn (trên 1 GB)");
+                }
+            }
+        }
+    }
+
+    private Path unpack(String folder, Extractor extractor) {
         Path dir = cacheDir.resolve(folder);
         if (Files.exists(dir.resolve(READY_MARKER))) {
             return dir;
@@ -121,25 +160,7 @@ public class LearningPackageService {
         try {
             Files.createDirectories(cacheDir);
             temp = Files.createTempDirectory(cacheDir, "tmp-");
-            long total = 0;
-            try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes.get()))) {
-                ZipEntry entry;
-                while ((entry = zip.getNextEntry()) != null) {
-                    Path target = temp.resolve(entry.getName().replace('\\', '/')).normalize();
-                    if (!target.startsWith(temp)) {
-                        throw new BusinessException("Gói học liệu chứa đường dẫn không hợp lệ");
-                    }
-                    if (entry.isDirectory()) {
-                        Files.createDirectories(target);
-                        continue;
-                    }
-                    Files.createDirectories(target.getParent());
-                    total += Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
-                    if (total > MAX_UNPACKED_BYTES) {
-                        throw new BusinessException("Gói học liệu giải nén ra quá lớn (trên 1 GB)");
-                    }
-                }
-            }
+            extractor.writeInto(temp);
             String entry = findLaunchEntry(temp);
             Files.writeString(temp.resolve(ENTRY_FILE), entry, StandardCharsets.UTF_8);
             Files.writeString(temp.resolve(READY_MARKER), "ok", StandardCharsets.UTF_8);

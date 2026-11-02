@@ -35,13 +35,13 @@ export function AdminDrawer({
   return (
     <>
       <div 
-        className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.4)]" 
+        className="fixed inset-0 z-[110] bg-[rgba(15,23,42,0.4)]" 
         onClick={onClose}
         aria-hidden="true"
       />
       <div 
         className={cn(
-          "fixed top-0 right-0 bottom-0 z-50 bg-white shadow-2xl flex flex-col admin-drawer font-sans",
+          "fixed top-0 right-0 bottom-0 z-[111] bg-white shadow-2xl flex flex-col admin-drawer font-sans",
           sizeClasses[size]
         )}
       >

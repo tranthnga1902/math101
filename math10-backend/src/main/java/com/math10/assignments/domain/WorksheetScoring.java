@@ -12,6 +12,11 @@ import java.util.Map;
 /**
  * Cách tính điểm cho phiếu có cả câu trắc nghiệm lẫn câu tự luận.
  *
+ * <p>Điểm từng câu vẫn chia đều thang 10 cho số câu, <b>không</b> theo {@code max_score} của câu.
+ * {@code max_score} là trọng số lúc soạn đề, còn màn chấm tay của giáo viên nhập điểm trên thang
+ * {@link #diemToiDaMoiCau} — cho hai thang đó chạy lẫn nhau thì điểm người chấm và điểm máy chấm
+ * không còn cùng đơn vị để cộng.
+ *
  * <p>Một câu là <b>tự luận</b> khi {@link McqGrading.Key#multipleChoice()} false — cờ này do
  * {@code WorksheetAnswerKeys} suy ra từ đề. Không dùng "đáp án đúng đang để trống" làm phép thử:
  * để trống còn có nghĩa là giáo viên quên nhập đáp án cho một câu trắc nghiệm, và nếu coi hai
@@ -62,7 +67,12 @@ public final class WorksheetScoring {
         if (keys == null || keys.isEmpty()) throw new BusinessException("Đề chưa có câu hỏi");
         List<Long> missing = new ArrayList<>();
         for (McqGrading.Key key : keys) {
-            if (!laTuLuan(key) && !McqGrading.isOption(key.correctOption())) missing.add(key.problemId());
+            if (laTuLuan(key)) continue;
+            // MCQ vẫn soát chặt bằng A/B/C/D như trước; các kiểu mới có luật riêng của chúng.
+            boolean hong = ChamDiemCauHoi.MCQ.equals(key.kieu())
+                    ? !McqGrading.isOption(key.correctOption())
+                    : !ChamDiemCauHoi.dapAnHopLe(key.cau());
+            if (hong) missing.add(key.problemId());
         }
         if (!missing.isEmpty()) {
             throw new BusinessException("Đề có câu chưa được cấu hình đáp án đúng: " + missing);
@@ -82,8 +92,8 @@ public final class WorksheetScoring {
         Map<Long, BigDecimal> ket = new LinkedHashMap<>();
         for (McqGrading.Key key : keys) {
             if (laTuLuan(key)) continue;
-            boolean dung = McqGrading.isCorrect(key, baiLam == null ? null : baiLam.get(key.problemId()));
-            ket.put(key.problemId(), dung ? toiDa : BigDecimal.ZERO);
+            BigDecimal tiLe = ChamDiemCauHoi.tiLe(key.cau(), baiLam == null ? null : baiLam.get(key.problemId()));
+            ket.put(key.problemId(), toiDa.multiply(tiLe).setScale(2, RoundingMode.HALF_UP));
         }
         return ket;
     }
@@ -200,10 +210,10 @@ public final class WorksheetScoring {
             String traLoi = baiLam == null ? null : baiLam.get(key.problemId());
             if (laTuLuan(key)) {
                 if (chuanHoaTuLuan(traLoi) == null) throw new BusinessException("Bạn phải trả lời đầy đủ tất cả câu hỏi");
-            } else {
-                if (McqGrading.normalize(traLoi) == null) throw new BusinessException("Bạn phải trả lời đầy đủ tất cả câu hỏi");
-                if (!McqGrading.isOption(traLoi)) throw new BusinessException("Đáp án không hợp lệ");
+                continue;
             }
+            if (McqGrading.normalize(traLoi) == null) throw new BusinessException("Bạn phải trả lời đầy đủ tất cả câu hỏi");
+            if (!ChamDiemCauHoi.baiLamHopLe(key.cau(), traLoi)) throw new BusinessException("Đáp án không hợp lệ");
         }
     }
 }

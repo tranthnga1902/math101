@@ -104,3 +104,21 @@ export function ngayDiHocLai(ngayNghiCuoi: string): string {
   ngay.setDate(ngay.getDate() + 1);
   return ngay.toLocaleDateString("vi-VN");
 }
+/** Bài tập của một bài học: bài giao gắn `lessonId` này và có phiếu để làm. */
+export function lessonExercises(lessonId: number, assignments: StudentAssignment[]): StudentAssignment[] {
+  return assignments.filter((a) => a.lessonId === lessonId && !!a.worksheetId);
+}
+
+/**
+ * Bài học xong khi học xong lý thuyết VÀ đã nộp mọi bài tập bắt buộc của bài đó.
+ * Tính lúc đọc, không lưu cột riêng — nguồn sự thật vẫn là tiến độ bài học và bài nộp.
+ */
+export function lessonCompletion(
+  lesson: { completionPercent: number; completedAt?: string | null },
+  exercises: StudentAssignment[],
+): { theoryDone: boolean; required: number; submittedRequired: number; done: boolean } {
+  const theoryDone = lesson.completionPercent >= 100 || !!lesson.completedAt;
+  const required = exercises.filter((a) => (a.requirement ?? "BAT_BUOC") === "BAT_BUOC");
+  const submittedRequired = required.filter((a) => a.gradingStatus !== "NOT_SUBMITTED").length;
+  return { theoryDone, required: required.length, submittedRequired, done: theoryDone && submittedRequired === required.length };
+}

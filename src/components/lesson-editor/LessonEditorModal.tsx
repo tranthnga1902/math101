@@ -26,6 +26,7 @@ import {
   extractHtmlMetadata,
 } from "./converter";
 import { LessonContentRenderer } from "./LessonContentRenderer";
+import { isFullHtmlDocument } from "./IsolatedHtmlFrame";
 import type { Lesson, LessonInput } from "../../api";
 
 import {
@@ -225,8 +226,12 @@ export function LessonEditorModal({
         setSummary(meta.summary);
       }
 
+      // Trang HTML có CSS/script riêng: chuyển khối sẽ mất định dạng, nên giữ nguyên mã gốc
+      const fullPage = isFullHtmlDocument(text);
+      if (fullPage) setImportStrategy("raw");
+
       // Nạp vào editor nếu theo chiến lược cấu trúc khối
-      if (importStrategy === "structured" && editor) {
+      if (!fullPage && importStrategy === "structured" && editor) {
         const converted = convertLegacyHtmlToStructured(text);
         editor.commands.setContent(converted);
       }
@@ -480,21 +485,8 @@ export function LessonEditorModal({
               </label>
             </div>
 
-            {/* Trạng thái */}
-            <label className="editor-field">
-              <span className="editor-field-label">Trạng thái xuất bản</span>
-              <select
-                className="editor-field-input"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                {statusOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* Không chọn trạng thái từng bài: xuất bản chương trình là học sinh thấy toàn bộ */}
+            <p className="editor-field-label">Bài học hiển thị cho học sinh khi chương trình được xuất bản.</p>
 
             {/* Tóm tắt bài học */}
             <label className="editor-field">

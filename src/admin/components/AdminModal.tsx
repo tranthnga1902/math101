@@ -30,7 +30,7 @@ export function AdminModal({
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.4)] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[110] bg-[rgba(15,23,42,0.4)] flex items-center justify-center p-4">
       <div 
         className="absolute inset-0" 
         onClick={onClose}

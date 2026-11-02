@@ -40,7 +40,7 @@ public class FinanceController {
         @NotNull @DecimalMin("1") @DecimalMax("999999999999") @Digits(integer=12,fraction=0) BigDecimal unitPrice,
         @NotNull @DecimalMin("0") @Digits(integer=12,fraction=0) BigDecimal discountAmount,
         @Min(1) @Max(36) int installments,@NotNull LocalDate firstDueDate,
-        @Min(1) @Max(12) int periodMonths, boolean bankQr,boolean cash) {}
+        @Min(1) @Max(12) int periodMonths, boolean prorate,boolean bankQr,boolean cash) {}
     public record TransactionInput(@NotNull @DecimalMin("1") @Digits(integer=12,fraction=0) BigDecimal amount,
         @NotBlank @Pattern(regexp="BANK_QR|CASH") String method,@Size(max=1000) String note) {}
     public record ConfirmationInput(@NotBlank @Size(max=160) String transactionReference,
@@ -76,19 +76,28 @@ public class FinanceController {
         requireCourse(courseId);
         activeAccount(x.paymentAccountId());
         jdbc.update("""
-          insert into course_fee_policies(course_instance_id,payment_account_id,calculation,unit_price,discount_amount,installments,first_due_date,period_months,bank_qr,cash,updated_by)
-          values(?,?,?,?,?,?,?,?,?,?,?) on conflict(course_instance_id) do update set
+          insert into course_fee_policies(course_instance_id,payment_account_id,calculation,unit_price,discount_amount,installments,first_due_date,period_months,prorate,bank_qr,cash,updated_by)
+          values(?,?,?,?,?,?,?,?,?,?,?,?) on conflict(course_instance_id) do update set
           payment_account_id=excluded.payment_account_id,calculation=excluded.calculation,unit_price=excluded.unit_price,
           discount_amount=excluded.discount_amount,installments=excluded.installments,first_due_date=excluded.first_due_date,
-          period_months=excluded.period_months,bank_qr=excluded.bank_qr,cash=excluded.cash,updated_by=excluded.updated_by,updated_at=now()
-          """,courseId,x.paymentAccountId(),x.calculation(),x.unitPrice(),x.discountAmount(),x.installments(),x.firstDueDate(),x.periodMonths(),x.bankQr(),x.cash(),current.requireUserId());
+          period_months=excluded.period_months,prorate=excluded.prorate,bank_qr=excluded.bank_qr,cash=excluded.cash,updated_by=excluded.updated_by,updated_at=now()
+          """,courseId,x.paymentAccountId(),x.calculation(),x.unitPrice(),x.discountAmount(),x.installments(),x.firstDueDate(),x.periodMonths(),x.prorate(),x.bankQr(),x.cash(),current.requireUserId());
         audit.record("UPDATE_FEE_POLICY","COURSE_INSTANCE",courseId,null,"{\"updated\":true}");
         return ApiResponse.ok("Đã lưu chính sách; khoản thu đã lập giữ nguyên số tiền và tài khoản",null);
     }
 
+    /** Xem trước bảng chia kỳ và số tiền từng học sinh, trước khi lập khoản thu. */
+    @GetMapping("/courses/{courseId}/fees/preview")
+    public ApiResponse<FeeDraftService.Preview> preview(@PathVariable long courseId) {
+        return ApiResponse.ok("Học phí dự kiến",drafts.preview(courseId));
+    }
+
+    /** mode=ADD chỉ thêm học sinh chưa có khoản thu; mode=SYNC lập lại khoản nháp đã lệch khi lớp đổi. */
     @PostMapping("/courses/{courseId}/fees") @Transactional
-    public ApiResponse<Integer> generate(@PathVariable long courseId) {
-        return ApiResponse.created("?? l?p kho?n thu nh?p",drafts.generate(courseId));
+    public ApiResponse<FeeDraftService.SyncResult> generate(@PathVariable long courseId,
+        @RequestParam(defaultValue="ADD") String mode) {
+        var r=drafts.generate(courseId,"SYNC".equals(mode));
+        return ApiResponse.created("Đã lập "+r.rows()+" khoản thu nháp",r);
     }
 
     private static final String FEE_SELECT="""

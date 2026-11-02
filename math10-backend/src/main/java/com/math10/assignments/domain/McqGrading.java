@@ -39,11 +39,31 @@ public final class McqGrading {
      * <p>Với {@code multipleChoice} true mà {@code correctOption} null thì đề hỏng, không phải
      * đề tự luận: {@link #requireGradable} chặn.
      */
-    public record Key(Long problemId, String correctOption, boolean multipleChoice) {
+    public record Key(Long problemId, String correctOption, boolean multipleChoice,
+                      String kieu, String payload, BigDecimal diemToiDa) {
+
+        public Key {
+            // Đề cũ không ghi kiểu câu. Suy từ cờ sẵn có để mọi phiếu đã chấm giữ nguyên điểm:
+            // máy chấm được thì là trắc nghiệm một phương án, còn lại là tự luận.
+            if (kieu == null || kieu.isBlank()) {
+                kieu = multipleChoice ? ChamDiemCauHoi.MCQ : ChamDiemCauHoi.TU_LUAN;
+            }
+            if (diemToiDa == null || diemToiDa.signum() <= 0) diemToiDa = BigDecimal.ONE;
+        }
 
         /** Câu trắc nghiệm — dạng gọn cho những chỗ chỉ làm việc với đề trắc nghiệm. */
         public Key(Long problemId, String correctOption) {
-            this(problemId, correctOption, true);
+            this(problemId, correctOption, true, null, null, null);
+        }
+
+        /** Đề chưa biết kiểu câu: chỉ biết máy chấm được hay phải người chấm. */
+        public Key(Long problemId, String correctOption, boolean multipleChoice) {
+            this(problemId, correctOption, multipleChoice, null, null, null);
+        }
+
+        /** Dạng câu mà {@link ChamDiemCauHoi} làm việc trực tiếp. */
+        public ChamDiemCauHoi.Cau cau() {
+            return new ChamDiemCauHoi.Cau(problemId, kieu, correctOption, payload, diemToiDa);
         }
     }
 
@@ -101,9 +121,9 @@ public final class McqGrading {
      * đã chặn từ trước. Hàm này để riêng cho bảng thống kê dùng lại đúng phép so sánh.
      */
     public static boolean isCorrect(Key key, String answer) {
-        String expected = normalize(key.correctOption());
-        String actual = normalize(answer);
-        return expected != null && expected.equals(actual);
+        // "Đúng" nghĩa là trọn điểm câu đó. Với câu đúng/sai 4 ý thì trúng ba ý vẫn chưa phải đúng —
+        // nó được 0.5 điểm, và bảng thống kê "bao nhiêu câu đúng" không được đếm nó vào cột đúng.
+        return ChamDiemCauHoi.tiLe(key.cau(), answer).compareTo(BigDecimal.ONE) == 0;
     }
 
     /** Đề phải có câu, và câu nào cũng phải có đáp án hợp lệ, thì mới chấm được. */

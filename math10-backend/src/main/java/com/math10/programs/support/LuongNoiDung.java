@@ -79,26 +79,25 @@ public class LuongNoiDung {
             "coalesce(v.video_url, case when d.file_asset_id is null then d.file_url end)";
 
     /**
-     * Bài đã mở cho người học chưa — điều kiện trên <em>bài và chương</em>, không phải trên mục.
+     * Xuất bản là việc của cả chương trình, không phải của từng chương hay từng bài: chương trình đã
+     * xuất bản thì người học thấy toàn bộ chương và bài bên trong. Trạng thái riêng của chương/bài
+     * không còn làm cổng. Cần bí danh {@code ch} cho bảng chương.
+     */
+    public static final String CHUONG_TRINH_XUAT_BAN =
+            " exists (select 1 from courses ct_xb where ct_xb.id=ch.course_id"
+            + " and ct_xb.deleted_at is null and ct_xb.status='PUBLISHED')";
+
+    /**
+     * Bài đã mở cho người học chưa — điều kiện trên <em>chương trình chứa bài</em>, không phải trên mục.
      *
-     * <p>Mục có thể đã xuất bản và đúng đối tượng mà bài chứa nó còn ẩn. Màn khóa học xưa nay vẫn
-     * hiểu vậy: bài {@code HIDDEN} hiện tên kèm ổ khóa và không phát học liệu nào. Nhưng luật ấy
-     * trước chỉ sống trong một dòng Java của màn khóa học, nên cổng tệp không biết tới nó — giấu
-     * học liệu khỏi bài ẩn xong vẫn phát tệp của chính học liệu ấy cho ai gọi thẳng số hiệu.
-     *
-     * <p>Hai dạng vì hai chỗ cần hai dạng: màn khóa học đã có sẵn trạng thái trong tay nên hỏi bằng
-     * {@link #baiMo(String)}, các câu truy vấn thì nối chuỗi này vào. Chúng nằm cạnh nhau ở đây để
-     * sửa một cái mà quên cái kia thì thấy ngay, chứ không phải để tiện chép.
+     * <p>Mục có thể đã xuất bản và đúng đối tượng mà chương trình chứa nó chưa xuất bản. Luật này
+     * nằm ở đây để màn khóa học, màn Hôm nay và cổng tệp cùng hỏi một câu — giấu học liệu khỏi danh
+     * sách mà cổng tệp vẫn phát cho ai gọi thẳng số hiệu thì việc giấu chẳng có nghĩa gì.
      *
      * <p>Cần bí danh {@code l} cho bảng bài và {@code ch} cho bảng chương.
      */
     public static final String BAI_MO =
-            " l.deleted_at is null and l.status='PUBLISHED' and ch.deleted_at is null and ch.status='PUBLISHED'";
-
-    /** Cùng luật {@link #BAI_MO}, cho chỗ đã cầm sẵn trạng thái của bài. */
-    public static boolean baiMo(String trangThaiBai) {
-        return "PUBLISHED".equals(trangThaiBai);
-    }
+            " l.deleted_at is null and ch.deleted_at is null and" + CHUONG_TRINH_XUAT_BAN;
 
     /**
      * Thứ tự trên màn hình người học: đang học, rồi sắp học, rồi đã học.

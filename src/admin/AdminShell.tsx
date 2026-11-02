@@ -20,6 +20,7 @@ import { TextbookManagement } from "./TextbookManagement";
 import { DocumentManagement } from "./DocumentManagement";
 import { AuditManagement } from "./AuditManagement";
 import { AdminClassesPanel } from "./AdminClassesPanel";
+import { AdminOverview } from "./AdminOverview";
 
 export function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSession;children:(activeSection:string)=>React.ReactNode;onLogout:()=>void;onChangePassword:()=>void}) {
  const [active,setActive]=useState("overview");
@@ -99,11 +100,7 @@ export function AdminDashboard({session,activeSection}:{session:AuthSession;acti
   const error=statsQuery.isError?messageOf(statsQuery.error):logsQuery.isError?messageOf(logsQuery.error):"";
   return <div className="page live-dashboard admin-page-section">
       {error&&<div className="mb-4 p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
-      {activeSection==="overview"&&<>
-        <AdminPage.Header eyebrow="QUẢN TRỊ HỆ THỐNG" title="Tổng quan" description="Theo dõi nhanh người dùng, lớp học, khóa học và nội dung đã xuất bản." />
-        <section className="stat-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">{stats&&[["Người dùng",stats.totalUsers],["Giáo viên",stats.teachers],["Học sinh",stats.students],["Lớp học",stats.classes],["Khóa học",stats.courses],["Khóa đã publish",stats.publishedCourses],["Bài toán publish",stats.publishedProblems]].map(([label,value])=><article className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-center" key={label}><small>{label}</small><b className="block mt-1 text-xl">{value}</b></article>)}</section>
-        <section className="admin-overview-grid"><article className="audit-panel"><h2>Phân bổ tài khoản</h2>{stats&&<div className="admin-distribution">{[["Giáo viên",stats.teachers],["Học sinh",stats.students],["Khác",Math.max(0,stats.totalUsers-stats.teachers-stats.students)]].map(([label,value])=><div key={label}><span><b>{label}</b><small>{Number(value).toLocaleString("vi-VN")}</small></span><progress max={Math.max(stats.totalUsers,1)} value={Number(value)}/></div>)}</div>}</article><article className="audit-panel"><h2>Hoạt động gần đây</h2>{logs.slice(0,6).map(log=><div className="audit-row" key={log.id}><b>{log.action}</b><span>{log.targetType}{log.targetId?` #${log.targetId}`:""}</span><small>{new Date(log.createdAt).toLocaleString("vi-VN")}</small></div>)}{!logs.length&&<AdminEmptyState title="Chưa có hoạt động hệ thống."/>}</article></section>
-      </>}
+      {activeSection==="overview"&&<AdminOverview session={session}/>}
       {activeSection==="users"&&<>
         <UserAccountsPage session={session}/>
       </>}

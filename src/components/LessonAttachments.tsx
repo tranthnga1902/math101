@@ -22,7 +22,7 @@ export function AttachmentCard({ row, actions, accessToken }: { row: LessonDocum
     <div className="attachment-copy">
       <h3 title={row.title}>{row.title}</h3>
       <div className="attachment-meta">
-        <span>{row.docType === "VIDEO" ? "Video" : "Tài liệu"}</span>
+        <span>{row.docType === "VIDEO" ? "Video" : row.docType === "HTML_LESSON_CONTENT" ? "Bài học HTML" : row.docType === "HTML" ? "Tài liệu HTML" : "Tài liệu"}</span>
         <span>{row.audience === "STUDENT_ALLOWED" ? "Học sinh và giáo viên" : "Chỉ giáo viên"}</span>
         <span>{row.required ? "Bắt buộc" : "Tham khảo"}</span>
         {row.startPage && <span>Từ trang {row.startPage}</span>}

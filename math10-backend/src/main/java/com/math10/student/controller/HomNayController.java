@@ -322,8 +322,9 @@ public class HomNayController {
                        l.title lesson_title,ch.id chapter_id,ch.title chapter_title
                 from program_strands s
                 left join program_periods p on p.strand_id=s.id and p.deleted_at is null and p.week_no=?
-                left join lessons l on l.id=p.lesson_id and l.deleted_at is null and l.status='PUBLISHED'
-                left join chapters ch on ch.id=l.chapter_id and ch.deleted_at is null and ch.status='PUBLISHED'
+                left join (lessons l join chapters ch on ch.id=l.chapter_id)
+                       on l.id=p.lesson_id and""" + LuongNoiDung.BAI_MO + """
+
                 where s.program_id=? and s.deleted_at is null
                 order by s.order_index,p.period_no
                 """, soTuan, chuongTrinh);

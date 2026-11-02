@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  attachLessonDocument,
   getChapters,
   getCourses,
+  getLessonDocuments,
   getLessons,
   getProgramStrands,
   getProgramWeek,
@@ -30,10 +32,11 @@ const NOI_DEN_OPTIONS: { value: NoiDenLoai; label: string }[] = [
  * POST /admin/phan-phoi (xem ProgramContentController.phanPhoi/neoCua). Đây là cửa ghi
  * duy nhất vào program_resources cho 5 loại nơi đến — không tự viết SQL insert ở đây.
  */
-export function AttachDocumentDialog({ session, document, documents, onClose, onDone }: {
+export function AttachDocumentDialog({ session, document, documents, initialNoiDen = "BAI", onClose, onDone }: {
   session: AuthSession;
   document?: DocumentItem | null;
   documents?: DocumentItem[] | null;
+  initialNoiDen?: NoiDenLoai;
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
@@ -46,7 +49,7 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
   const isMultiple = docList.length > 1;
   const primaryDoc = docList[0] || ({} as DocumentItem);
 
-  const [noiDenLoai, setNoiDenLoai] = useState<NoiDenLoai>("BAI");
+  const [noiDenLoai, setNoiDenLoai] = useState<NoiDenLoai>(initialNoiDen);
   const [courseId, setCourseId] = useState<number | null>(null);
   const [chapterId, setChapterId] = useState<number | null>(null);
   const [lessonId, setLessonId] = useState<number | null>(null);
@@ -57,6 +60,7 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
   const [title, setTitle] = useState(primaryDoc.title || "");
   const [status, setStatus] = useState("PUBLISHED");
   const [audience, setAudience] = useState(primaryDoc.audience || "TEACHER_ONLY");
+  const [required, setRequired] = useState(false);
   const [error, setError] = useState("");
 
   const needsCourse = noiDenLoai === "MACH" || noiDenLoai === "TIET" || noiDenLoai === "BAI";
@@ -93,6 +97,16 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      // Gán vào bài đi qua cửa của chính bài (lesson_documents): màn "Tài liệu" của bài và trang bài
+      // của học sinh đọc từ đó, còn trigger sync_lesson_attachment tự đưa dòng sang luồng nội dung.
+      if (noiDenLoai === "BAI" && lessonId) {
+        const daGan = new Set((await getLessonDocuments(session, lessonId)).map(row => row.documentId));
+        for (const doc of docList) {
+          if (daGan.has(doc.id)) continue;
+          await attachLessonDocument(session, lessonId, { documentId: doc.id, required, teacherNote: "" });
+        }
+        return;
+      }
       await Promise.all(
         docList.map(doc => {
           const input: PhanPhoiInput = {
@@ -114,7 +128,7 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
   });
 
   const canSubmit = (() => {
-    if (!isMultiple && !title.trim()) return false;
+    if (noiDenLoai !== "BAI" && !isMultiple && !title.trim()) return false;
     switch (noiDenLoai) {
       case "HE_THONG": return true;
       case "BAI": return !!lessonId;
@@ -125,9 +139,10 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
     }
   })();
 
+  const dich = noiDenLoai === "BAI" ? "bài học" : "chương trình";
   const modalTitle = isMultiple
-    ? `Gắn ${docList.length} tài liệu vào chương trình`
-    : `Gắn "${primaryDoc.title || "tài liệu"}" vào chương trình`;
+    ? `Gán ${docList.length} tài liệu vào ${dich}`
+    : `Gán "${primaryDoc.title || "tài liệu"}" vào ${dich}`;
 
   return (
     <AdminModal open={true} onClose={onClose} title={modalTitle} size="md"
@@ -212,7 +227,18 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
           </div>
         )}
 
-        {!isMultiple ? (
+        {noiDenLoai === "BAI" && (
+          <label className="flex items-center gap-2 text-sm text-on-surface">
+            <input type="checkbox" checked={required} onChange={event => setRequired(event.target.checked)} />
+            Bắt buộc học sinh xem
+          </label>
+        )}
+
+        {noiDenLoai === "BAI" ? (
+          <p className="text-xs text-on-surface-variant bg-surface-variant/40 rounded-lg p-3">
+            Tài liệu hiện trong mục "Tài liệu" của bài, giữ tên và phạm vi của tài liệu gốc. Tài liệu đã có trong bài sẽ được bỏ qua.
+          </p>
+        ) : !isMultiple ? (
           <div>
             <label className="block text-sm font-medium text-on-surface mb-1">Tiêu đề hiển thị</label>
             <input required value={title} onChange={event => setTitle(event.target.value)} className="w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none" />
@@ -223,6 +249,7 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
           </div>
         )}
 
+        {noiDenLoai !== "BAI" && <>
         <div>
           <label className="block text-sm font-medium text-on-surface mb-1">Phạm vi</label>
           <select value={audience} onChange={event => setAudience(event.target.value)} className="w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none bg-white">
@@ -239,6 +266,7 @@ export function AttachDocumentDialog({ session, document, documents, onClose, on
             <option value="DRAFT">Lưu nháp</option>
           </select>
         </div>
+        </>}
 
         {error && <div className="p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
       </div>

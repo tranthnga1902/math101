@@ -1,6 +1,8 @@
 package com.math10.authentication.service.impl;
 
+import com.math10.audit.service.AuditService;
 import com.math10.authentication.dto.ChangePasswordRequest;
+import com.math10.authentication.dto.ImpersonationResponse;
 import com.math10.authentication.dto.LoginRequest;
 import com.math10.authentication.dto.RefreshTokenRequest;
 import com.math10.authentication.dto.TokenResponse;
@@ -8,11 +10,13 @@ import com.math10.authentication.entity.RefreshToken;
 import com.math10.authentication.repository.RefreshTokenRepository;
 import com.math10.authentication.service.AuthService;
 import com.math10.common.exception.BusinessException;
+import com.math10.enrollments.repository.ClassStudentRepository;
 import com.math10.configuration.security.JwtService;
 import com.math10.users.entity.User;
 import com.math10.users.entity.UserStatus;
 import com.math10.users.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +42,8 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenRepository refreshTokens;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ClassStudentRepository classStudents;
+    private final AuditService auditService;
     private final long refreshExpiresInSeconds;
 
     public AuthServiceImpl(
@@ -45,6 +51,8 @@ public class AuthServiceImpl implements AuthService {
             RefreshTokenRepository refreshTokens,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
+            ClassStudentRepository classStudents,
+            AuditService auditService,
             @Value("${math10.refresh-expiration}") long refreshExpiresInSeconds
     ) {
         if (refreshExpiresInSeconds <= 0) {
@@ -54,6 +62,8 @@ public class AuthServiceImpl implements AuthService {
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.classStudents = classStudents;
+        this.auditService = auditService;
         this.refreshExpiresInSeconds = refreshExpiresInSeconds;
     }
 
@@ -140,6 +150,43 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         // Đổi mật khẩu là để cắt đuôi người khác đang dùng ké; còn refresh token cũ thì không cắt được.
         refreshTokens.revokeAllByUserId(userId, LocalDateTime.now());
+    }
+
+    /**
+     * Giữ chủ thể token là học viên: cổng đọc LuongNoiDung không cần biết tới việc xem hộ,
+     * nên không có nhánh phân quyền thứ hai để lệch pha. Người thật đi kèm ở claim "act",
+     * và JwtAuthenticationFilter chặn mọi request ghi khi claim đó có mặt.
+     */
+    @Override
+    @Transactional
+    public ImpersonationResponse impersonate(Long actorUserId, String actorRoleCode, Long studentId) {
+        if (actorUserId.equals(studentId)) {
+            throw new BusinessException("Không cần xem hộ chính mình");
+        }
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new BusinessException("Không tìm thấy học viên"));
+        if (!"STUDENT".equals(student.getRoleCode())) {
+            throw new BusinessException("Chỉ xem hộ được tài khoản học viên");
+        }
+        if (student.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException("Tài khoản học viên không hoạt động");
+        }
+        // Admin xem được mọi học viên; giáo viên chỉ xem được học viên của lớp mình dạy.
+        if (!"ADMIN".equals(actorRoleCode) && !classStudents.existsStudentTaughtByTeacher(studentId, actorUserId)) {
+            throw new AccessDeniedException("Chỉ xem hộ được học viên thuộc lớp bạn dạy");
+        }
+
+        auditService.record("IMPERSONATE_START", "USER", studentId, null,
+                "actor=" + actorUserId + ";role=" + actorRoleCode);
+
+        return new ImpersonationResponse(
+                jwtService.createImpersonationToken(student, actorUserId),
+                jwtService.xemHoExpiresInSeconds(),
+                student.getId(),
+                student.getFullName(),
+                student.getEmail(),
+                actorUserId
+        );
     }
 
     private TokenResponse capToken(User user) {

@@ -25,7 +25,6 @@ public class Document extends BaseEntity {
     @Column(nullable = false, length = 255)
     private String title;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "doc_type", nullable = false, length = 30)
     private DocumentType docType;
 

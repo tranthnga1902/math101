@@ -29,7 +29,8 @@ export function kindOf(fileUrl: string): Kind {
   if (IMAGE.includes(ext)) return "image";
   if (isAbsolute(fileUrl)) return "external";
   if (OFFICE.includes(ext)) return "office";
-  if (ext === "zip") return "package";
+  // Trang HTML chạy chung đường gói (token + CSP sandbox), không nhúng thẳng vào app
+  if (ext === "zip" || ext === "html" || ext === "htm") return "package";
   return "other";
 }
 
@@ -129,14 +130,14 @@ function PackageViewer({ doc }: { doc: OpenDocument }) {
     let cancelled = false;
     launchDocumentPackage(session, fileUrl)
       .then(url => { if (!cancelled) setLaunchUrl(url); })
-      .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Không mở được gói bài giảng."); });
+      .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Không mở được tài liệu."); });
     return () => { cancelled = true; };
   }, [session, fileUrl]);
 
   return (
     <Frame doc={doc} fill>
-      {error ? <p className="pv-state"><strong>Không chạy được gói bài giảng</strong>{error}</p>
-        : !launchUrl ? <p className="pv-state">Đang chuẩn bị gói bài giảng…</p>
+      {error ? <p className="pv-state"><strong>Không tải được nội dung</strong>{error}</p>
+        : !launchUrl ? <p className="pv-state">Đang chuẩn bị nội dung…</p>
         : (
           // Không có allow-same-origin: script trong gói không đọc được phiên đăng nhập của app.
           <iframe

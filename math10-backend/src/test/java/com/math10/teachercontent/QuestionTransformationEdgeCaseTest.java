@@ -49,7 +49,7 @@ class QuestionTransformationEdgeCaseTest {
  /** sin(x) lọt cổng chặn thành LINEAR_EXPRESSION, nhưng engine không có rule nên ném lỗi. */
  @Test void trigonometryPassesGateThenEngineRefuses(){
   long teacher=teacher("trig"),source=source(teacher);
-  long q=jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,created_at,updated_at) values(?,'Tìm hệ số của sin(x)',.95,'REVIEWED','LEVEL_0','FREE_RESPONSE',now(),now()) returning id",Long.class,source);
+  long q=jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,created_at,updated_at) values(?,'Tìm hệ số của sin(x)',.95,'REVIEWED','LEVEL_0','TU_LUAN',now(),now()) returning id",Long.class,source);
   jdbc.update("insert into math_fragments(question_id,raw_value,latex_value,order_index,status,confidence,review_decision,created_at,updated_at) values(?,'sin(x)','sin(x)',1,'REVIEWED',.95,'ACCEPTED',now(),now())",q);
 
   var a=analysis.analyze(q);
@@ -64,5 +64,5 @@ class QuestionTransformationEdgeCaseTest {
 
  private long teacher(String tag){return jdbc.queryForObject("insert into users(email,password_hash,full_name,username,role_code,status,created_at,updated_at) values(?,'x','T',?,'TEACHER','ACTIVE',now(),now()) returning id",Long.class,tag+System.nanoTime()+"@test.local",tag+System.nanoTime());}
  private long source(long teacher){return jdbc.queryForObject("insert into teacher_source_documents(owner_teacher_id,title,file_type,storage_key,original_filename,status,created_at,updated_at) values(?,'x','TXT','x','x.txt','PARSED',now(),now()) returning id",Long.class,teacher);}
- private long question(long source,String signature,String intent){return jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,math_signature,signature_confidence,question_intent,intent_confidence,math_parse_valid,structure_valid,transformable,created_at,updated_at) values(?,'Question',.95,'REVIEWED','LEVEL_2','FREE_RESPONSE',?,.95,?,.95,true,true,true,now(),now()) returning id",Long.class,source,signature,intent);}
+ private long question(long source,String signature,String intent){return jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,math_signature,signature_confidence,question_intent,intent_confidence,math_parse_valid,structure_valid,transformable,created_at,updated_at) values(?,'Question',.95,'REVIEWED','LEVEL_2','TU_LUAN',?,.95,?,.95,true,true,true,now(),now()) returning id",Long.class,source,signature,intent);}
 }

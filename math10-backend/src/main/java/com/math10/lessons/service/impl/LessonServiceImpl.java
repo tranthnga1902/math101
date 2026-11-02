@@ -1,6 +1,5 @@
 package com.math10.lessons.service.impl;
 
-import com.math10.common.entity.PublishStatus;
 import com.math10.common.exception.BusinessException;
 import com.math10.common.exception.ResourceNotFoundException;
 import com.math10.courses.dto.request.ReorderRequest;
@@ -49,7 +48,8 @@ public class LessonServiceImpl implements LessonService {
     public LessonResponse findPublishedByPublicCode(String publicCode) {
         Lesson lesson = lessonRepository.findByPublicCode(publicCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bài public: " + publicCode));
-        if (lesson.getStatus() != PublishStatus.PUBLISHED) {
+        // Xuất bản theo cả chương trình, không theo từng bài
+        if (!chapterRepository.chuongTrinhDaXuatBan(lesson.getChapterId())) {
             throw new ResourceNotFoundException("Bài chưa được xuất bản");
         }
         return toResponse(lesson);
@@ -59,7 +59,7 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse create(LessonRequest request) {
         checkChapter(request.chapterId());
-        ensurePublicCodeAvailable(request.publicCode());
+        ensurePublicCodeAvailable(normalizePublicCode(request.publicCode()));
         Lesson lesson = new Lesson();
         apply(request, lesson);
         return toResponse(lessonRepository.save(lesson));
@@ -71,8 +71,9 @@ public class LessonServiceImpl implements LessonService {
         Lesson lesson = findEntity(id);
         checkChapter(lesson.getChapterId());
         checkChapter(request.chapterId());
-        if (request.publicCode() != null && !request.publicCode().equals(lesson.getPublicCode())) {
-            ensurePublicCodeAvailable(request.publicCode());
+        String publicCode = normalizePublicCode(request.publicCode());
+        if (publicCode != null && !publicCode.equals(lesson.getPublicCode())) {
+            ensurePublicCodeAvailable(publicCode);
         }
         apply(request, lesson);
         return toResponse(lesson);
@@ -129,6 +130,10 @@ public class LessonServiceImpl implements LessonService {
     }
     private void checkChapter(Long chapterId){var chapter=chapterRepository.findById(chapterId).orElseThrow(()->new ResourceNotFoundException("Không tìm thấy chương: "+chapterId));securityService.checkCourseOwnership(chapter.getCourseId());}
 
+    private String normalizePublicCode(String publicCode) {
+        return publicCode == null || publicCode.isBlank() ? null : publicCode;
+    }
+
     private void ensurePublicCodeAvailable(String publicCode) {
         if (publicCode != null && lessonRepository.existsByPublicCode(publicCode)) {
             throw new BusinessException("Public code đã tồn tại");
@@ -138,7 +143,7 @@ public class LessonServiceImpl implements LessonService {
     private void apply(LessonRequest request, Lesson lesson) {
         lesson.setChapterId(request.chapterId());
         lesson.setTitle(request.title());
-        lesson.setPublicCode(request.publicCode());
+        lesson.setPublicCode(normalizePublicCode(request.publicCode()));
         lesson.setSummary(request.summary());
         lesson.setContentHtml(request.contentHtml());
         lesson.setOrderIndex(request.orderIndex());

@@ -29,6 +29,18 @@ class FileFormatDetectorTest {
     }
 
     @Test
+    void fileHtmlDonLaHtml() {
+        assertThat(FileFormatDetector.detect("Tap-hop.HTML", KHONG_DUOC_MO)).isEqualTo(FileFormat.HTML);
+        assertThat(FileFormatDetector.detect("bai.htm", KHONG_DUOC_MO)).isEqualTo(FileFormat.HTML);
+    }
+
+    @Test
+    void goiCoIndexHtmlMaKhongCoMoTaLaHtml() throws IOException {
+        byte[] zip = zipOf("bai-1/index.html", "bai-1/css/style.css", "bai-1/images/hinh.png");
+        assertThat(FileFormatDetector.detect("bai-1.zip", () -> new ByteArrayInputStream(zip))).isEqualTo(FileFormat.HTML);
+    }
+
+    @Test
     void duoiLaThiTuChoi() {
         assertThatThrownBy(() -> FileFormatDetector.detect("virus.exe", KHONG_DUOC_MO))
                 .isInstanceOf(BusinessException.class);

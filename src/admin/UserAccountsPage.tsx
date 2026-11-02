@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, 
   Download, GraduationCap, KeyRound, LockKeyhole, MoreHorizontal, 
-  Pencil, Plus, Search, ShieldCheck, Trash2, Upload, User, Users, UserX, X, Calendar
+  Eye, Pencil, Plus, Search, ShieldCheck, Trash2, Upload, User, Users, UserX, X, Calendar
 } from "lucide-react";
 import { 
   confirmUserImport, createUser, deleteUser, disableUser, downloadUserImportTemplate, 
-  getAdminStats, getClasses, getEnrollments, getGrades, getMetadata, getUsersPage, 
+  getAdminStats, getClasses, getEnrollments, getGrades, getMetadata, getUsersPage, impersonateStudent, 
   resetUserPassword, setUserLocked, updateUser, uploadUserImport, 
   type AuthSession, type MetadataOption, type UserAccount, type UserAccountInput, type UserImportPreview 
 } from "../api";
@@ -257,6 +257,12 @@ export function UserAccountsPage({ session }: { session: AuthSession }) {
   const resetMutation = useMutation({
     mutationFn: ({ row, password }: { row: UserAccount; password: string }) =>
       resetUserPassword(session, row.id, password)
+  });
+  // App.tsx giữ phiên đăng nhập, trang này nằm sâu mấy tầng — báo lên bằng sự kiện cửa sổ,
+  // đúng lối "math10:admin-navigation" đã dùng sẵn, thay vì xâu prop qua từng tầng.
+  const xemHoMutation = useMutation({
+    mutationFn: (studentId: number) => impersonateStudent(session, studentId),
+    onSuccess: phien => window.dispatchEvent(new CustomEvent("math10:xem-ho", { detail: phien }))
   });
 
   const error = usersQuery.isError ? formatError(usersQuery.error, "Không thể tải danh sách tài khoản")
@@ -938,6 +944,17 @@ export function UserAccountsPage({ session }: { session: AuthSession }) {
                                 >
                                   <Pencil size={14} /> Chỉnh sửa
                                 </button>
+                                {acc.roleCode === "STUDENT" && acc.status === "ACTIVE" && (
+                                  <button
+                                    type="button"
+                                    className="w-full text-left px-3.5 py-1.5 text-xs hover:bg-gray-50 flex items-center gap-2 text-gray-700 cursor-pointer disabled:opacity-50"
+                                    disabled={xemHoMutation.isPending}
+                                    title="Mở màn hình đúng như học viên nhìn thấy (chỉ đọc)"
+                                    onClick={() => { setActiveMenuId(null); xemHoMutation.mutate(acc.id); }}
+                                  >
+                                    <Eye size={14} /> Xem bằng mắt học viên
+                                  </button>
+                                )}
                                 <button 
                                   type="button"
                                   className="w-full text-left px-3.5 py-1.5 text-xs hover:bg-gray-50 flex items-center gap-2 text-gray-700 cursor-pointer"

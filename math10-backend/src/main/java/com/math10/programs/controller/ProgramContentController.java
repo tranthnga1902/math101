@@ -32,7 +32,7 @@ public class ProgramContentController {
       select ch.id chapter_id,ch.title,ch.order_index,ps.starts_on,ps.ends_on,
       case when ? between ps.starts_on and ps.ends_on then 'CURRENT' when ps.starts_on>? then 'UPCOMING' else 'PAST' end time_group
       from chapters ch left join program_schedules ps on ps.chapter_id=ch.id and ps.course_id=ch.course_id and ps.deleted_at is null and ps.status='ACTIVE' and ps.course_instance_id is null
-      where ch.course_id=? and ch.deleted_at is null and ch.status='PUBLISHED'
+      where ch.course_id=? and ch.deleted_at is null
       order by ch.order_index""",date,date,programId));}
 
     // Nơi đến rộng ra bảy chỗ từ lát trước, nhưng đường đọc này vẫn hỏi bằng một phép nối vào bảng

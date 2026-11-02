@@ -64,7 +64,7 @@ public class StudentLearningController {
             List<Map<String, Object>> chapterRows = jdbc.queryForList("""
                     select id,title,order_index
                     from chapters
-                    where course_id=? and deleted_at is null and status='PUBLISHED'
+                    where course_id=? and deleted_at is null
                     order by order_index
                     """, courseId);
             List<StudentCourseResponse.Chapter> chapters = new ArrayList<>();
@@ -78,14 +78,15 @@ public class StudentLearningController {
                                coalesce(p.completion_percent,0) completion_percent
                         from lessons l
                         left join learning_progress p on p.lesson_id=l.id and p.student_id=? and p.deleted_at is null
-                        where l.chapter_id=? and l.deleted_at is null and l.status in ('PUBLISHED','HIDDEN')
+                        where l.chapter_id=? and l.deleted_at is null
                         order by l.order_index
                         """, studentId, chapterId);
                 List<StudentCourseResponse.Lesson> lessons = new ArrayList<>();
 
                 for (Map<String, Object> lesson : lessonRows) {
                     Long lessonId = num(lesson.get("id"));
-                    boolean locked = !LuongNoiDung.baiMo(str(lesson.get("status")));
+                    // Chương trình đã xuất bản (lọc ở câu trên) thì mọi bài đều mở — không khóa lẻ từng bài
+                    boolean locked = false;
                     List<StudentCourseResponse.Resource> resources = locked ? List.of() : resources(lessonId);
                     List<StudentCourseResponse.AttachedWorksheet> attached = locked ? List.of() : worksheets(lessonId);
                     lessons.add(new StudentCourseResponse.Lesson(
@@ -134,7 +135,7 @@ public class StudentLearningController {
         Long studentId = current.requireUserId();
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 select distinct a.id,a.title,a.open_at,a.due_at,a.status,a.lesson_id,a.worksheet_id,w.name worksheet_name,a.created_at,
-                a.max_attempts,a.late_policy,a.late_penalty_percent,a.publish_score_at,
+                a.max_attempts,a.late_policy,a.late_penalty_percent,a.publish_score_at,a.requirement,
                 case when ap.completed_at is not null then 'COMPLETED' when ap.opened_at is not null then 'IN_PROGRESS' else 'NOT_OPENED' end progress_status,
                 coalesce(ap.completion_percent,0) completion_percent,coalesce(ap.grading_status,'NOT_SUBMITTED') grading_status,
                 ap.score,ap.max_score,ap.graded_at,ap.returned_at,coalesce(ap.attempt_no,0) attempt_no,
@@ -174,6 +175,7 @@ public class StudentLearningController {
                     released ? progress.getMaxScore() : null,
                     AssignmentWindow.attemptsLeft(assignment, progress),
                     progress.isSubmittedLate(),
+                    str(row.get("requirement")) == null ? "BAT_BUOC" : str(row.get("requirement")),
                     content
             ));
         }

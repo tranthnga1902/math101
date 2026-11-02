@@ -20,7 +20,7 @@ class QuestionMathAnalysisServiceTest {
   assertCase(source,"Tính biểu thức sin(x)","sin(x)","LINEAR_EXPRESSION","UNKNOWN",false);
  }
  private void assertCase(long source,String stem,String math,String signature,String intent,boolean expected){
-  long q=jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,created_at,updated_at) values(?,? ,.95,'REVIEWED','LEVEL_0','FREE_RESPONSE',now(),now()) returning id",Long.class,source,stem);
+  long q=jdbc.queryForObject("insert into extracted_questions(source_document_id,question_text,confidence,status,transform_level,question_type,created_at,updated_at) values(?,? ,.95,'REVIEWED','LEVEL_0','TU_LUAN',now(),now()) returning id",Long.class,source,stem);
   jdbc.update("insert into math_fragments(question_id,raw_value,latex_value,order_index,status,confidence,review_decision,created_at,updated_at) values(?,?,?,1,'REVIEWED',.95,'ACCEPTED',now(),now())",q,math,math);
   var a=analysis.analyze(q);assertThat(a.signature()).isEqualTo(signature);assertThat(a.intent()).isEqualTo(intent);assertThat(a.transformable()).isEqualTo(expected);
  }

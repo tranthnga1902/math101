@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -6,6 +6,7 @@ import {
   getLessonDocumentQuestions,
   getLessonDocuments,
   getSharedTeacherResources,
+  getMyAssignments,
   getMyCourses,
   markLessonProgress,
   openLessonDocumentFile,
@@ -16,7 +17,7 @@ import {
   type LessonDocumentQuestion,
   type StudentCourse,
 } from "../api";
-import { flattenLessons, formatPercent } from "./format";
+import { assignmentGate, flattenLessons, formatPercent, lessonCompletion, lessonExercises } from "./format";
 import { PdfViewer, isPdfDocument } from "../components/PdfViewer";
 import { YoutubeVideoModal, youtubeThumbnailUrl } from "../components/YoutubeVideoModal";
 import { LessonContentRenderer } from "../components/lesson-editor";
@@ -27,6 +28,8 @@ type LessonDetailPageProps = {
   lessonId: number;
   onBack: () => void;
   onOpenLesson: (lessonId: number) => void;
+  /** Mở màn hình làm bài của một bài giao — cùng đường với trang Bài tập. */
+  onOpenWorksheet: (assignmentId: number) => void;
 };
 
 type FlatLesson = ReturnType<typeof flattenLessons>[number];
@@ -45,11 +48,19 @@ export function LessonDetailPage({
   lessonId,
   onBack,
   onOpenLesson,
+  onOpenWorksheet,
 }: LessonDetailPageProps) {
   const coursesQuery = useQuery({
     queryKey: ["student-courses", session.userId],
     queryFn: () => getMyCourses(session),
   });
+  // Cùng key với trang Bài tập để hai nơi dùng chung một bản dữ liệu.
+  const assignmentsQuery = useQuery({
+    queryKey: ["student-assignments", session.userId],
+    queryFn: () => getMyAssignments(session),
+  });
+  const exerciseRef = useRef<HTMLElement>(null);
+  const [highlightExercises, setHighlightExercises] = useState(false);
   const ctx = useMemo(() => findLessonContext(coursesQuery.data ?? [], lessonId), [coursesQuery.data, lessonId]);
 
   const docsQuery = useQuery({
@@ -90,6 +101,12 @@ export function LessonDetailPage({
     try {
       await markLessonProgress(session, ctx.lesson.id, true);
       await coursesQuery.refetch();
+      // Gợi ý chuyển sang bài tập, không khóa gì cả: học sinh vẫn làm bài lúc nào cũng được.
+      if (exerciseRef.current) {
+        exerciseRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        setHighlightExercises(true);
+        window.setTimeout(() => setHighlightExercises(false), 2400);
+      }
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -124,7 +141,10 @@ export function LessonDetailPage({
   const next = currentIndex >= 0 && currentIndex < courseLessons.length - 1 ? courseLessons[currentIndex + 1] : null;
   const docs = docsQuery.data ?? [];
   const videoDocs = docs.filter((doc) => doc.docType === "VIDEO");
-  const learningDocs = docs.filter((doc) => doc.docType !== "VIDEO");
+  const htmlLessonDocs = docs.filter((doc) => doc.docType === "HTML_LESSON_CONTENT");
+  const learningDocs = docs.filter((doc) => doc.docType !== "VIDEO" && doc.docType !== "HTML_LESSON_CONTENT");
+  const exercises = lessonExercises(lesson.id, assignmentsQuery.data ?? []);
+  const completion = lessonCompletion(lesson, exercises);
   const hasQuiz = docs.some((doc) => (docQuestions[doc.id] ?? []).length > 0);
   const quizPassed = !hasQuiz || docs.every((doc) => {
     const qs = docQuestions[doc.id] ?? [];
@@ -173,7 +193,11 @@ export function LessonDetailPage({
               {videoDocs.length ? `${videoDocs.length} video · ` : ""}{learningDocs.length} tài liệu đính kèm
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-on-surface-variant">Tiến độ bài học</span>
+              <span className="text-xs text-on-surface-variant">
+                {completion.done ? "Bài học đã xong"
+                  : completion.theoryDone ? `Còn ${completion.required - completion.submittedRequired} bài tập bắt buộc`
+                  : "Tiến độ bài học"}
+              </span>
               <span className="text-xs font-medium text-primary">{formatPercent(lesson.completionPercent)}</span>
             </div>
           </div>
@@ -189,6 +213,43 @@ export function LessonDetailPage({
         <section className="max-w-none text-on-surface">
           <LessonContentRenderer content={lesson.contentHtml} fallbackSummary={lesson.summary} />
         </section>
+
+        {!!htmlLessonDocs.length && (
+          <section className="rounded-xl border border-primary/30 bg-primary-container/20 p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[22px]">html</span>
+              <div>
+                <h2 className="text-base font-semibold text-on-surface">Bài học tương tác HTML</h2>
+                <p className="text-xs text-on-surface-variant">Nội dung bài học dạng trang web trực quan, có thể xem trực tiếp</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {htmlLessonDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="rounded-xl border border-primary/20 bg-surface-container-lowest p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                >
+                  <div className="min-w-0">
+                    <span className="inline-block text-[10px] uppercase font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full mb-1">
+                      Nội dung lý thuyết
+                    </span>
+                    <b className="block text-sm font-semibold">{doc.title}</b>
+                    {doc.teacherNote && <p className="mt-1 text-xs text-on-surface-variant">{doc.teacherNote}</p>}
+                    <small className="mt-1 block text-xs text-on-surface-variant">{doc.required ? "Bài học bắt buộc" : "Bài học tham khảo"}</small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openDocument(doc)}
+                    className="inline-flex h-10 px-4 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium hover:bg-primary/90 transition-colors shadow-xs"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">play_lesson</span>
+                    Mở bài học HTML
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {!!videoDocs.length && (
           <section className="border-t border-outline-variant pt-6 space-y-3">
@@ -346,6 +407,55 @@ export function LessonDetailPage({
           </section>
         )}
 
+        {!!exercises.length && (
+          <section
+            ref={exerciseRef}
+            id="bai-tap-sau-bai-hoc"
+            className={`border-t border-outline-variant pt-6 space-y-3 scroll-mt-24 rounded-xl transition-shadow duration-500 ${
+              highlightExercises ? "ring-2 ring-primary ring-offset-4 ring-offset-surface-container-lowest" : ""
+            }`}
+          >
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">edit_note</span>
+                Bài tập sau bài học
+              </h2>
+              {completion.required > 0 && (
+                <span className="text-xs text-on-surface-variant">
+                  Đã nộp {completion.submittedRequired}/{completion.required} bài bắt buộc
+                </span>
+              )}
+            </div>
+            {exercises.map((assignment) => {
+              const gate = assignmentGate(assignment);
+              const submitted = assignment.gradingStatus !== "NOT_SUBMITTED";
+              return (
+                <article key={assignment.id} className="border border-outline-variant rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <small className="text-xs text-on-surface-variant">
+                      {assignment.requirement === "TU_CHON" ? "Tự chọn" : "Bắt buộc"}
+                      {gate.canView && assignment.items.length ? ` · ${assignment.items.length} câu` : ""}
+                      {` · ${gate.label}`}
+                    </small>
+                    <b className="block text-sm">{assignment.title || assignment.worksheetName}</b>
+                    <p className={`text-xs ${gate.urgent ? "text-error" : "text-on-surface-variant"}`}>
+                      {submitted ? "Đã nộp" : "Chưa nộp"} · {gate.note}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!gate.canView}
+                    onClick={() => onOpenWorksheet(assignment.id)}
+                    className="inline-flex h-10 px-4 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">{submitted ? "visibility" : "play_arrow"}</span>
+                    {!gate.canView ? "Chưa mở" : submitted ? "Xem lại" : "Bắt đầu làm bài"}
+                  </button>
+                </article>
+              );
+            })}
+          </section>
+        )}
         <footer className="border-t border-outline-variant pt-6 flex flex-col md:flex-row gap-3 justify-between">
           <div className="flex gap-2">
             <button type="button" onClick={onBack} className="inline-flex h-11 px-4 items-center gap-2 rounded-lg border border-outline-variant text-sm font-medium">
@@ -370,7 +480,7 @@ export function LessonDetailPage({
               className="inline-flex h-11 px-5 items-center gap-2 rounded-lg bg-primary text-on-primary text-sm font-medium disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-[18px]">check_circle</span>
-              {lesson.completionPercent >= 100 || lesson.completedAt ? "Đã hoàn thành" : "Đánh dấu đã học xong"}
+              {completion.theoryDone ? "Đã học xong lý thuyết" : "Hoàn thành lý thuyết"}
             </button>
             {next && (
               <button

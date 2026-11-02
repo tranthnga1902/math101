@@ -58,6 +58,18 @@ class LearningPackageServiceTest {
     }
 
     @Test
+    void singleHtmlFileLaunchesAsIndex() throws IOException {
+        byte[] html = "<html><body>bai 1</body></html>".getBytes(StandardCharsets.UTF_8);
+        LearningPackageService service = new LearningPackageService(storage.toString(), SECRET);
+
+        String launch = service.launchHtmlPath(3L, "r2://bai-1.html", () -> html);
+
+        assertThat(launch).startsWith(LearningPackageService.PATH_PREFIX).endsWith("/index.html");
+        String token = launch.substring(LearningPackageService.PATH_PREFIX.length()).split("/")[0];
+        assertThat(Files.readString(service.resolve(token, "index.html"))).contains("bai 1");
+    }
+
+    @Test
     void rejectsZipSlip() throws IOException {
         byte[] zip = zip(Map.of("../evil.html", "x"));
         LearningPackageService service = new LearningPackageService(storage.toString(), SECRET);

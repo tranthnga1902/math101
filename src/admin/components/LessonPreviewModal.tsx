@@ -3,13 +3,13 @@ import {
   X,
   Edit3,
   Upload,
+  FileCode,
   FileText,
   ClipboardList,
   Database,
   Maximize2,
   Minimize2,
   AlertCircle,
-  FileCode,
   CheckCircle2,
   ChevronRight,
   BookOpen,
@@ -23,6 +23,7 @@ import {
   extractHtmlMetadata,
   convertLegacyHtmlToStructured,
   serializeLessonDoc,
+  isFullHtmlDocument,
 } from "../../components/lesson-editor";
 import { LessonAttachments } from "../../components/LessonAttachments";
 import type { AuthSession, Lesson } from "../../api";
@@ -63,7 +64,6 @@ export function LessonPreviewModal({
   const [updatingHtml, setUpdatingHtml] = useState(false);
   const [updateError, setUpdateError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [activeTab, setActiveTab] = useState<"content" | "attachments">("content");
 
   // Pending upload modal state
   const [pendingFile, setPendingFile] = useState<{
@@ -99,6 +99,8 @@ export function LessonPreviewModal({
         extractedTitle: meta.title,
         extractedSummary: meta.summary,
       });
+      // Trang có CSS/script riêng: chuyển sang khối sẽ làm mất định dạng
+      setUpdateStrategy(isFullHtmlDocument(text) ? "raw" : "structured");
       setApplyTitle(Boolean(meta.title && meta.title !== lesson.title));
       setApplySummary(Boolean(meta.summary && meta.summary !== lesson.summary));
       setUpdateError("");
@@ -199,15 +201,6 @@ export function LessonPreviewModal({
                   <Clock size={11} className="text-emerald-600" />
                   {lesson.publicCode ? `${lesson.publicCode} tiết` : "1 tiết"}
                 </span>
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${
-                    lesson.status === "PUBLISHED" || lesson.status === "ACTIVE"
-                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                      : "bg-slate-100 text-slate-600 border border-slate-200"
-                  }`}
-                >
-                  {lesson.status === "PUBLISHED" || lesson.status === "ACTIVE" ? "Đã xuất bản" : "Bản nháp"}
-                </span>
               </div>
             </div>
           </div>
@@ -220,7 +213,7 @@ export function LessonPreviewModal({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               className="border-emerald-300 text-[#176b50] bg-emerald-50 hover:bg-emerald-100 font-semibold"
-              title="Cập nhật nội dung bài học bằng tệp HTML"
+              title="Chọn tệp HTML, hoặc kéo thả tệp vào bất kỳ đâu trong khung này"
             >
               <Upload size={14} className="mr-1.5 text-emerald-600" />
               Cập nhật file HTML
@@ -343,6 +336,11 @@ export function LessonPreviewModal({
                     <span>Giữ nguyên mã HTML gốc</span>
                   </label>
                 </div>
+                {updateStrategy === "structured" && isFullHtmlDocument(pendingFile.content) && (
+                  <p className="text-xs text-amber-700 m-0">
+                    Tệp này có CSS/script riêng. Chuyển sang khối sẽ bỏ màu sắc, bố cục và phần tương tác của tệp.
+                  </p>
+                )}
 
                 {(pendingFile.extractedTitle || pendingFile.extractedSummary) && (
                   <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-slate-600">
@@ -392,32 +390,9 @@ export function LessonPreviewModal({
           </div>
         )}
 
-        {/* ── SUB-BAR: TABS & QUICK ATTACHMENT SHORTCUTS ── */}
+        {/* ── THANH GẮN KÈM: nơi duy nhất mở tài liệu / phiếu / học liệu ── */}
         <div className="px-5 py-2.5 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab("content")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                activeTab === "content"
-                  ? "bg-white text-[#176b50] shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-              }`}
-            >
-              Nội dung bài học & Lý thuyết
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("attachments")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                activeTab === "attachments"
-                  ? "bg-white text-[#176b50] shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-              }`}
-            >
-              Tài liệu & Học liệu đính kèm
-            </button>
-          </div>
+          <span className="text-xs font-bold text-slate-600">Gắn vào bài học</span>
 
           <div className="flex items-center gap-2">
             <Button
@@ -452,7 +427,6 @@ export function LessonPreviewModal({
 
         {/* ── BODY KHUNG LỚN CHÍNH ── */}
         <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6">
-          {activeTab === "content" ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto">
               {/* KHUNG LỚN CHÍNH HIỂN THỊ NỘI DUNG (CỘT TRÁI - 8 COLS) */}
               <div className="lg:col-span-8 flex flex-col gap-5">
@@ -546,30 +520,6 @@ export function LessonPreviewModal({
 
               {/* CỘT PHẢI (SIDE PANEL TIỆN ÍCH - 4 COLS) */}
               <div className="lg:col-span-4 flex flex-col gap-5">
-                {/* Thẻ Cập nhật nhanh file HTML */}
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <FileCode size={14} className="text-[#176b50]" />
-                    Cập nhật nhanh tệp HTML
-                  </h4>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-3">
-                    Kéo thả tệp <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded font-mono">.html</code> vào khung này hoặc chọn từ máy tính để cập nhật ngay nội dung bài học.
-                  </p>
-
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-200 hover:border-[#176b50] rounded-xl p-4 text-center cursor-pointer transition-colors bg-slate-50/70 hover:bg-emerald-50/40 group"
-                  >
-                    <Upload size={24} className="mx-auto text-slate-400 group-hover:text-[#176b50] mb-1.5 transition-colors" />
-                    <span className="text-xs font-semibold text-slate-700 block group-hover:text-[#176b50]">
-                      Chọn file HTML từ máy tính
-                    </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
-                      Hỗ trợ HTML chứa công thức KaTeX, bảng biểu, hình ảnh
-                    </span>
-                  </div>
-                </div>
-
                 {/* Thẻ Tài liệu đã gắn */}
                 <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
                   <div className="flex items-center justify-between mb-3">
@@ -577,63 +527,12 @@ export function LessonPreviewModal({
                       <FileText size={14} className="text-[#176b50]" />
                       Tài liệu bài học
                     </h4>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onOpenDocuments(lesson)}
-                      className="text-xs text-[#176b50] hover:bg-emerald-50 h-7 px-2"
-                    >
-                      Quản lý
-                    </Button>
                   </div>
                   <LessonAttachments session={session} lessonId={lesson.id} />
                 </div>
               </div>
             </div>
-          ) : (
-            /* TAB TÀI LIỆU ĐÍNH KÈM ĐẦY ĐỦ */
-            <div className="max-w-4xl mx-auto bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-6">
-              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 m-0">Tài liệu học tập & Đính kèm</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 m-0">Danh sách tài liệu, file PDF, video gán trực tiếp cho bài học này</p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => onOpenDocuments(lesson)}
-                  className="bg-[#176b50] text-white"
-                >
-                  <FileText size={14} className="mr-1.5" />
-                  Gắn tài liệu mới
-                </Button>
-              </div>
-
-              <LessonAttachments session={session} lessonId={lesson.id} />
-            </div>
-          )}
         </div>
-
-        {/* ── FOOTER KHUNG LỚN ── */}
-        <footer className="px-5 py-3 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
-          <div className="text-xs text-slate-500 flex items-center gap-2">
-            <span className="font-semibold text-slate-700">Mẹo:</span>
-            <span>Nhấn phím <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px]">Esc</kbd> hoặc click ngoài để đóng khung xem bài học.</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Đóng
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => onEditLesson(lesson)}
-              className="bg-[#176b50] hover:bg-[#11543e] text-white"
-            >
-              <Edit3 size={14} className="mr-1.5" />
-              Sửa bài học
-            </Button>
-          </div>
-        </footer>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { AdminFinancePage } from "./finance/AdminFinancePage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import katex from "katex";
 import QRCode from "qrcode";
-import { ArrowUpDown, Bell, BookOpen, BookOpenCheck, CalendarRange, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, Edit, Edit3, Eye, Filter, FileText, GraduationCap, Home, Info, KeyRound, LayoutList, LibraryBig, Lock, LogOut, Menu, MoreVertical, Pencil, PlayCircle, Plus, Printer, Search, Settings, Trash2, Upload, UserRound, Users, X } from "lucide-react";
+import { ArrowUpDown, Bell, BookOpen, BookOpenCheck, Calculator, CalendarRange, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Clock3, Database, FileCheck, Edit, Edit3, Eye, Filter, FileText, GraduationCap, Home, Info, KeyRound, LayoutList, LibraryBig, Lock, LogOut, Menu, MoreVertical, Pencil, PlayCircle, Plus, Printer, Search, Settings, Trash2, Upload, UserRound, Users, X } from "lucide-react";
 import "katex/dist/katex.min.css";
 import { MainLayout } from "./layout/MainLayout";
 import { PdfThumbnail } from "./PdfThumbnail";
@@ -18,6 +18,7 @@ import { TextbookManagement } from "./admin/TextbookManagement";
 import { DocumentManagement } from "./admin/DocumentManagement";
 import { AuditManagement } from "./admin/AuditManagement";
 import { PpctCauTrucModal } from "./admin/PpctCauTrucModal";
+import { AdminOverview } from "./admin/AdminOverview";
 import { getAdminDestination, type AdminDestination } from "./admin/navigation";
 import { ClassSchedulePanel } from "./admin/ClassSchedulePanel";
 import { CourseDeliverySessionPanel } from "./admin/CourseDeliverySessionPanel";
@@ -30,7 +31,8 @@ import { ngayDiHocLai, ngayVN } from "./student/format";
 import { TeacherDocumentLibrary } from "./teacher/TeacherDocumentLibrary";
 import { TeacherSubmissionView } from "./teacher/TeacherSubmissionView";
 import { TeacherWorksheetView } from "./teacher/TeacherWorksheetView";
-import { TeacherContentPipeline } from "./teacher/TeacherContentPipeline";
+import { DeThiWorkspace } from "./dethi/DeThiWorkspace";
+import { ExamManager } from "./exams/ExamManager";
 import { TeacherTaskView } from "./teacher/TeacherTaskView";
 import { TeacherOperationsView } from "./teacher/TeacherOperationsView";
 import { TeacherClassManager } from "./teacher/TeacherClassManager";
@@ -187,9 +189,40 @@ export default function App() {
     return ()=>clearTimeout(hen);
   },[session]);
 
+  // Vào/ra phiên xem hộ. Phiên thật nằm riêng một khoá để thoát ra được kể cả khi tải lại trang;
+  // nếu ghi đè lên "math10.session" thì đóng tab giữa chừng là mất luôn phiên giáo viên.
+  useEffect(()=>{
+    const vao=(event:Event)=>{
+      const phienXem=(event as CustomEvent<AuthSession>).detail;
+      const phienThat=localStorage.getItem("math10.session.real")??localStorage.getItem("math10.session");
+      if(phienThat)localStorage.setItem("math10.session.real",phienThat);
+      acceptSession(phienXem);
+    };
+    window.addEventListener("math10:xem-ho",vao);
+    return()=>window.removeEventListener("math10:xem-ho",vao);
+  },[]);
+  const thoatXemHo=()=>{
+    const phienThat=localStorage.getItem("math10.session.real");
+    localStorage.removeItem("math10.session.real");
+    if(!phienThat){forgetSession();return}
+    try{acceptSession(JSON.parse(phienThat) as AuthSession)}catch{forgetSession()}
+  };
+
   if(publicSlug)return <PublicProblemPage slug={publicSlug} session={session}/>;
   if (!session) return <LoginPage onLogin={acceptSession} />;
+  if(session.impersonating)return <>
+    <BangXemHo ten={session.impersonating.studentName} onThoat={thoatXemHo}/>
+    <div className="dang-xem-ho"><AppShell session={session} onLogout={thoatXemHo}/></div>
+  </>;
   return <AppShell session={session} onLogout={logout} />;
+}
+
+/** Dải băng cam dính đầu màn: đang nhìn bằng mắt ai, và đường thoát ra. */
+function BangXemHo({ten,onThoat}:{ten:string;onThoat:()=>void}){
+ return <div className="bang-xem-ho" role="status">
+  <span><b>Đang xem bằng mắt học viên {ten}</b> — chỉ đọc, mọi thao tác ghi đều bị chặn.</span>
+  <button type="button" onClick={onThoat}>Thoát khỏi chế độ xem</button>
+ </div>;
 }
 
 function PublicProblemPage({slug,session}:{slug:string;session:AuthSession|null}){
@@ -228,8 +261,8 @@ function AppShell({ session, onLogout }: { session: AuthSession; onLogout: () =>
   );
   if (session.role === "admin") return (
     <AdminShell session={session} onLogout={onLogout} onChangePassword={()=>setPasswordOpen(true)}>
-      {activeSection => <>
-        <AdminDashboard session={session} activeSection={activeSection} />
+      {(activeSection, onNavigate) => <>
+        <AdminDashboard session={session} activeSection={activeSection} onNavigate={onNavigate} />
         {passwordOpen&&<ChangePasswordDialog session={session} onClose={()=>setPasswordOpen(false)} onLogout={onLogout}/>}
       </>}
     </AdminShell>
@@ -239,7 +272,7 @@ function AppShell({ session, onLogout }: { session: AuthSession; onLogout: () =>
   );
 }
 
-function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSession;children:(activeSection:string)=>React.ReactNode;onLogout:()=>void;onChangePassword:()=>void}) {
+function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSession;children:(activeSection:string,onNavigate:(section:string)=>void)=>React.ReactNode;onLogout:()=>void;onChangePassword:()=>void}) {
  const [active,setActive]=useState("overview");
  useEffect(()=>{const navigate=(event:Event)=>setActive((event as CustomEvent<AdminDestination>).detail.section);window.addEventListener("math10:admin-navigation",navigate);return()=>window.removeEventListener("math10:admin-navigation",navigate)},[]);
  const [profileOpen,setProfileOpen]=useState(false);
@@ -251,57 +284,115 @@ function AdminShell({session,children,onLogout,onChangePassword}:{session:AuthSe
   ["classes","Lớp học",CheckCircle],
   ["textbooks","Sách giáo khoa",GraduationCap],
   ["documents","Tài liệu",FileText],
+  ["dethi","Tạo đề",Calculator],
+  ["exams","Kì thi",FileCheck],
   ["audit","Nhật ký",ClipboardList],
   ["finance","Tài chính",Database],
  ] as const;
- return <div className="teacher-shell admin-shell flex h-screen w-screen overflow-hidden bg-gray-50 font-sans">
-  <aside className="teacher-sidebar admin-full-sidebar w-56 shrink-0 h-screen bg-white border-r border-gray-200 flex flex-col z-30">
-   <div className="sidebar-brand"><span className="brand-mark">M10</span><span className="sidebar-brand-copy"><b>MATH10</b><small>ADMIN</small></span></div>
-   <nav aria-label="Điều hướng quản trị" className="admin-nav-body flex-1 overflow-y-auto">
-    <div className="admin-nav-main">
-     {items.map(([id,label,Icon])=><section key={id}><button className={active===id?"active":""} aria-current={active===id?"page":undefined} title={label} onClick={()=>{setActive(id);window.scrollTo({top:0,behavior:"smooth"})}}><span><Icon size={18}/></span><b>{label}</b></button></section>)}
-    </div>
-    <div className="sidebar-bottom">
-     <section>
-      <button className={active==="settings"?"active":""} aria-current={active==="settings"?"page":undefined} title="Cài đặt" onClick={()=>{setActive("settings");window.scrollTo({top:0,behavior:"smooth"})}}>
-       <span><Settings size={18}/></span><b>Cài đặt</b>
-      </button>
-     </section>
-    </div>
-   </nav>
-  </aside>
-  <div className="teacher-main flex-1 flex flex-col h-screen min-w-0 overflow-hidden bg-white">
-    <header className="teacher-topbar h-[58px] bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 z-20">
-     <div className="global-search">
-      <h1 className="text-[19px] font-bold text-slate-900 tracking-tight m-0">
-       {items.find(([id])=>id===active)?.[1]||(active==="settings"?"Cài đặt":"Quản trị hệ thống")}
-      </h1>
+
+ return <div className="admin-shell flex h-screen w-screen overflow-hidden bg-gray-50 font-sans text-gray-900">
+  <aside className="w-64 bg-white border-r border-gray-100 flex flex-col h-full shrink-0 z-30">
+   <div className="h-20 flex items-center px-6 border-b border-gray-50">
+    <div className="flex items-center gap-3">
+     <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm">
+      M10
      </div>
-     <div className="teacher-top-actions flex items-center gap-2">
+     <div>
+      <h1 className="font-bold text-gray-900 tracking-tight leading-tight text-base m-0">MATH10</h1>
+      <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase m-0">Admin</p>
+     </div>
+    </div>
+   </div>
+
+   <nav aria-label="Điều hướng quản trị" className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+    {items.map(([id,label,Icon])=>(
+     <button
+      key={id}
+      type="button"
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer border-0 text-left ${
+       active===id
+        ? "bg-emerald-50 text-emerald-600 font-semibold"
+        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+      }`}
+      onClick={()=>{setActive(id);window.scrollTo({top:0,behavior:"smooth"})}}
+     >
+      <Icon className="w-5 h-5 shrink-0"/>
+      <span>{label}</span>
+     </button>
+    ))}
+   </nav>
+
+   <div className="p-3 border-t border-gray-100">
+    <button
+     type="button"
+     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer border-0 text-left ${
+      active==="settings"
+       ? "bg-emerald-50 text-emerald-600 font-semibold"
+       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+     }`}
+     onClick={()=>{setActive("settings");window.scrollTo({top:0,behavior:"smooth"})}}
+    >
+     <Settings className="w-5 h-5 shrink-0"/>
+     <span>Cài đặt</span>
+    </button>
+   </div>
+  </aside>
+
+  <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden bg-[#f8fafc]">
+   <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-8 shrink-0 z-20">
+    <h2 className="text-xl font-bold text-gray-900 m-0">
+     {items.find(([id])=>id===active)?.[1]||(active==="settings"?"Cài đặt":"Quản trị hệ thống")}
+    </h2>
+    <div className="flex items-center gap-6">
+     <button
+      type="button"
+      className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors border-0 bg-transparent cursor-pointer"
+      title="Thông báo"
+      aria-label="Thông báo"
+     >
+      <Bell className="w-5 h-5"/>
+      <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"/>
+     </button>
+     <div className="relative">
       <button
        type="button"
-       className="w-8 h-8 rounded-full border-0 bg-transparent hover:bg-slate-100 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-colors"
-       title="Thông báo"
-       aria-label="Thông báo"
+       className="flex items-center gap-3 cursor-pointer border-0 bg-transparent p-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+       aria-expanded={profileOpen}
+       aria-haspopup="menu"
+       onClick={()=>setProfileOpen(v=>!v)}
       >
-       <Bell size={18}/>
+       <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-semibold text-sm">
+        {(session.email[0]||"A").toUpperCase()}
+       </div>
+       <span className="text-sm font-medium text-gray-700">{session.email}</span>
+       <ChevronDown className="w-4 h-4 text-gray-400"/>
       </button>
-      <div className="top-menu">
-       <button className="profile-trigger" aria-expanded={profileOpen} aria-haspopup="menu" onClick={()=>setProfileOpen(value=>!value)}>
-        <span>{(session.email[0]||"A").toUpperCase()}</span>
-        <b>{session.email}</b>
-        <ChevronDown size={14} aria-hidden="true"/>
-       </button>
-       {profileOpen&&<div className="top-dropdown profile-dropdown" role="menu">
-        <button role="menuitem" onClick={()=>{setProfileOpen(false);onChangePassword()}}><KeyRound size={15}/>Đổi mật khẩu</button>
-        <button role="menuitem" onClick={()=>{setProfileOpen(false);onLogout()}}><LogOut size={15}/>Đăng xuất</button>
-       </div>}
-      </div>
+      {profileOpen&&(
+       <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+        <button
+         type="button"
+         className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5 transition-colors text-left"
+         onClick={()=>{setProfileOpen(false);onChangePassword()}}
+        >
+         <KeyRound className="w-4 h-4 text-gray-500"/>
+         Đổi mật khẩu
+        </button>
+        <button
+         type="button"
+         className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors text-left"
+         onClick={()=>{setProfileOpen(false);onLogout()}}
+        >
+         <LogOut className="w-4 h-4 text-red-500"/>
+         Đăng xuất
+        </button>
+       </div>
+      )}
      </div>
-    </header>
-    <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-      {children(active)}
     </div>
+   </header>
+   <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+    {children(active, setActive)}
+   </div>
   </div>
  </div>;
 }
@@ -349,13 +440,13 @@ function AdminOverviewCalendar({session}:{session:AuthSession}) {
   </article>;
 }
 
-function AdminDashboard({session,activeSection}:{session:AuthSession;activeSection:string}) {
+function AdminDashboard({session,activeSection,onNavigate}:{session:AuthSession;activeSection:string;onNavigate?:(section:string)=>void}) {
   const metadata=useMetadata(session);
   const statsQuery=useQuery({queryKey:["admin-stats",session.accessToken],queryFn:()=>getAdminStats(session)});
   const logsQuery=useQuery({queryKey:["admin-audit-logs",session.accessToken],queryFn:()=>getAuditLogs(session,{size:6})});
-  const stats=statsQuery.data??null;
-  const logs=logsQuery.data?.items??[];
   if(activeSection==="finance")return <AdminFinancePage session={session}/>;
+  if(activeSection==="dethi")return <div className="p-6 overflow-auto"><DeThiWorkspace session={session}/></div>;
+  if(activeSection==="exams")return <div className="p-6 overflow-auto"><ExamManager session={session} scope="COURSE"/></div>;
   const error=statsQuery.isError?messageOf(statsQuery.error):logsQuery.isError?messageOf(logsQuery.error):"";
   if (activeSection === "programs") {
     return (
@@ -402,15 +493,13 @@ function AdminDashboard({session,activeSection}:{session:AuthSession;activeSecti
     );
   }
 
+  if (activeSection === "overview") {
+    return <AdminOverview session={session} onNavigate={onNavigate} />;
+  }
+
   return (
     <div className="flex-1 min-h-0 h-full w-full overflow-y-auto bg-[#f8fafc] p-6 lg:p-8">
       {error && <div className="api-error mb-4">{error}</div>}
-      {activeSection === "overview" && <>
-        <PageHeading eyebrow="QUẢN TRỊ HỆ THỐNG" title="Tổng quan" text="Theo dõi nhanh người dùng, lớp học, khóa học và nội dung đã xuất bản." />
-        <section className="stat-grid">{stats&&[["Người dùng",stats.totalUsers],["Giáo viên",stats.teachers],["Học sinh",stats.students],["Lớp học",stats.classes],["Khóa học",stats.courses],["Khóa đã publish",stats.publishedCourses],["Bài toán publish",stats.publishedProblems]].map(([label,value])=><article key={label}><small>{label}</small><b>{value}</b></article>)}</section>
-        <AdminOverviewCalendar session={session}/>
-        <section className="admin-overview-grid"><article className="audit-panel"><h2>Phân bổ tài khoản</h2>{stats&&<div className="admin-distribution">{[["Giáo viên",stats.teachers],["Học sinh",stats.students],["Khác",Math.max(0,stats.totalUsers-stats.teachers-stats.students)]].map(([label,value])=><div key={label}><span><b>{label}</b><small>{Number(value).toLocaleString("vi-VN")}</small></span><progress max={Math.max(stats.totalUsers,1)} value={Number(value)}/></div>)}</div>}</article><article className="audit-panel"><h2>Hoạt động gần đây</h2>{logs.slice(0,6).map(log=><div className="audit-row" key={log.id}><b>{log.action}</b><span>{log.targetType}{log.targetId?` #${log.targetId}`:""}</span><small>{new Date(log.createdAt).toLocaleString("vi-VN")}</small></div>)}{!logs.length&&<EmptyState text="Chưa có hoạt động hệ thống."/>}</article></section>
-      </>}
       {activeSection === "textbooks" && <TextbookManagement session={session} />}
       {activeSection === "audit" && <AuditManagement session={session} />}
       {activeSection === "settings" && <AdminSystemSettings session={session} metadata={metadata} />}
@@ -1213,7 +1302,8 @@ function TeacherDashboard({ session, activeSection }: { session: AuthSession; ac
         <div id="teacher-worksheets" data-teacher-section data-search="Phiếu bài tập Worksheets" className="section-anchor" />
         <TeacherWorksheetView session={session} classes={classes}/>
       </>}
-      {activeSection === "teacher-pipeline" && <TeacherContentPipeline session={session}/>}
+      {activeSection === "teacher-pipeline" && <DeThiWorkspace session={session}/>}
+      {activeSection === "teacher-exams" && <ExamManager session={session} scope="CLASS"/>}
 
       {activeSection === "teacher-textbooks" && <>
         <div id="teacher-textbooks" data-teacher-section data-search="Sách giáo khoa" className="section-anchor" />
@@ -1427,8 +1517,8 @@ function CurriculumManager({ session, course, onClose }: { session: AuthSession;
     <div className="curriculum-columns">
       <div>
         <div className="panel-head" style={{marginBottom:8}}><h3 style={{margin:0}}>Chương ({chapters.length})</h3><button type="button" onClick={()=>setBulkImport(true)}>Nhập hàng loạt</button></div>
-        <form className="compact-form" onSubmit={saveChapter}><input required placeholder="Tên chương" value={chapterForm.title} onChange={e => setChapterForm({...chapterForm,title:e.target.value})}/><input required min="1" type="number" value={chapterForm.orderIndex} onChange={e => setChapterForm({...chapterForm,orderIndex:Number(e.target.value)})}/><select required value={chapterForm.status} onChange={e=>setChapterForm({...chapterForm,status:e.target.value})}>{metadataOptions(metadata,"publishStatuses").filter(option=>option.value!=="ARCHIVED").map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><button className="primary">{chapterEdit?"Cập nhật":"Thêm"}</button></form>
-        {chapters.map((chapter,index)=><div className={`content-item content-actions ${selectedChapter?.id===chapter.id?"selected":""}`} key={chapter.id}><button className="content-main" onClick={()=>chooseChapter(chapter)}><span>{chapter.orderIndex}</span><div><b>{chapter.title}</b><small>{chapter.status}</small></div></button><button onClick={()=>void moveChapter(index,-1)}>↑</button><button onClick={()=>void moveChapter(index,1)}>↓</button><button onClick={()=>{setChapterEdit(chapter.id);setChapterForm({courseId:chapter.courseId,title:chapter.title,orderIndex:chapter.orderIndex,status:chapter.status})}}>Sửa</button><button className="danger-link" onClick={()=>void removeChapter(chapter)}>Xóa</button></div>)}
+        <form className="compact-form" onSubmit={saveChapter}><input required placeholder="Tên chương" value={chapterForm.title} onChange={e => setChapterForm({...chapterForm,title:e.target.value})}/><input required min="1" type="number" value={chapterForm.orderIndex} onChange={e => setChapterForm({...chapterForm,orderIndex:Number(e.target.value)})}/><button className="primary">{chapterEdit?"Cập nhật":"Thêm"}</button></form>
+        {chapters.map((chapter,index)=><div className={`content-item content-actions ${selectedChapter?.id===chapter.id?"selected":""}`} key={chapter.id}><button className="content-main" onClick={()=>chooseChapter(chapter)}><span>{chapter.orderIndex}</span><div><b>{chapter.title}</b></div></button><button onClick={()=>void moveChapter(index,-1)}>↑</button><button onClick={()=>void moveChapter(index,1)}>↓</button><button onClick={()=>{setChapterEdit(chapter.id);setChapterForm({courseId:chapter.courseId,title:chapter.title,orderIndex:chapter.orderIndex,status:chapter.status})}}>Sửa</button><button className="danger-link" onClick={()=>void removeChapter(chapter)}>Xóa</button></div>)}
       </div>
       <div>
         <div className="flex items-center justify-between" style={{marginBottom:8}}>

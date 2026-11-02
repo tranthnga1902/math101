@@ -530,7 +530,7 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
         </div>
       )}
       {route.kind === "lesson" ? (
-        <LessonDetailPage session={session} lessonId={route.lessonId} onBack={() => goTab("lessons")} onOpenLesson={openLesson} />
+        <LessonDetailPage session={session} lessonId={route.lessonId} onBack={() => goTab("lessons")} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} />
       ) : route.kind === "chapter" ? (
         <ChapterDetailPage session={session} course={route.course} chapterId={route.chapterId} onBack={() => goTab("lessons")} onOpenLesson={openLesson} />
       ) : route.kind === "worksheet" ? (
@@ -548,7 +548,13 @@ export function StudentExperience({ session, onLogout }: StudentExperienceProps)
       ) : route.tab === "classes" ? (
         <MyClassesPage session={session} onOpenLesson={openLesson} onOpenWorksheet={openWorksheet} />
       ) : route.tab === "lessons" ? (
-        <LessonsPage session={session} onOpenLesson={openLesson} onOpenChapter={(course,chapterId)=>setRoute({kind:"chapter",course,chapterId})} />
+        <LessonsPage
+          session={session}
+          onOpenLesson={openLesson}
+          onOpenChapter={(course, chapterId) => setRoute({ kind: "chapter", course, chapterId })}
+          onOpenWorksheet={openWorksheet}
+          onGoTab={goTab}
+        />
       ) : route.tab === "videos" ? (
         <ProgramResourcePage session={session} type="VIDEO" />
       ) : route.tab === "assignments" ? (

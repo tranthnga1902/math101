@@ -95,7 +95,17 @@ class ManHomNayTest {
         baiCu = bai(chuong1, "Bài 1 - Mệnh đề", 1, "PUBLISHED");
         baiDaiSo = bai(chuong2, "Bài 5 - Đồ thị hàm số bậc hai", 1, "PUBLISHED");
         baiHinh = bai(chuong2, "Bài 6 - Định lí cosin", 2, "PUBLISHED");
-        baiAn = bai(chuong2, "Bài 7 - Bài chưa mở", 3, "HIDDEN");
+        // Xuất bản theo cả chương trình: bài "chưa mở" là bài thuộc chương trình còn nháp,
+        // còn trạng thái riêng của bài không còn làm cổng.
+        long chuongTrinhNhap = jdbc.queryForObject("""
+                insert into courses (code, name, status, created_at, updated_at)
+                values ('TOAN10-HOMNAY-NHAP', 'Toan 10 ban nhap', 'DRAFT', now(), now())
+                returning id""", Long.class);
+        long chuongNhap = jdbc.queryForObject("""
+                insert into chapters (course_id, title, order_index, status, created_at, updated_at)
+                values (?, 'Chương của chương trình nháp', 1, 'PUBLISHED', now(), now())
+                returning id""", Long.class, chuongTrinhNhap);
+        baiAn = bai(chuongNhap, "Bài 7 - Bài chưa mở", 3, "PUBLISHED");
 
         long daiSo = mach("DAI_SO", "Đại số", 1);
         long hinhHoc = mach("HINH_HOC", "Hình học", 2);

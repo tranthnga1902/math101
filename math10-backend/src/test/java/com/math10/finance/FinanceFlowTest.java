@@ -42,7 +42,7 @@ class FinanceFlowTest {
  @BeforeEach void login(){as(admin,"ADMIN");}
  @AfterEach void logout(){SecurityContextHolder.clearContext();}
  long account(){return finance.account(new FinanceController.AccountInput("Học phí","Trung tâm kiểm thử","970415","Vietinbank","123456789","TEST ACCOUNT","compact2")).data();}
- List<Map<String,Object>> createFees(int installments){long account=account();finance.policy(course,new FinanceController.PolicyInput(account,"FIXED",new BigDecimal("1001"),BigDecimal.ZERO,installments,LocalDate.now().minusDays(1),1,true,true));finance.generate(course);return finance.fees(course).data();}
+ List<Map<String,Object>> createFees(int installments){long account=account();finance.policy(course,new FinanceController.PolicyInput(account,"FIXED",new BigDecimal("1001"),BigDecimal.ZERO,installments,LocalDate.now().minusDays(1),1,true,true,true));finance.generate(course,"ADD");return finance.fees(course).data();}
  long id(Map<String,Object> f){return ((Number)f.get("id")).longValue();}
  FinanceController.ConfirmationInput confirmation(String ref){return new FinanceController.ConfirmationInput(ref,"BANK_RECONCILIATION","Đã kiểm tra sao kê ngân hàng");}
 
@@ -51,7 +51,7 @@ class FinanceFlowTest {
   assertThat(fees).hasSize(3);
   assertThat(fees.stream().map(f->(BigDecimal)f.get("amount")).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("1001");
   assertThat(fees).extracting(f->f.get("payment_reference")).doesNotHaveDuplicates();
-  assertThat(finance.generate(course).data()).isZero();
+  assertThat(finance.generate(course,"ADD").data().added()).isZero();
   as(student,"STUDENT");assertThat(finance.myFees().data()).isEmpty();
  }
  @Test @Transactional void hocSinhBaoChuyenTienChuaDuocTinhLaDaDong() {
@@ -92,8 +92,8 @@ class FinanceFlowTest {
  }
  @Test @Transactional void doiChinhSachKhongSuaKhoanDaPhatHanh() {
   var original=createFees(1).get(0);long fee=id(original);finance.publish(fee);
-  finance.policy(course,new FinanceController.PolicyInput(account(),"FIXED",new BigDecimal("5000"),BigDecimal.ZERO,2,LocalDate.now(),1,true,false));
-  finance.generate(course);
+  finance.policy(course,new FinanceController.PolicyInput(account(),"FIXED",new BigDecimal("5000"),BigDecimal.ZERO,2,LocalDate.now(),1,true,false,true));
+  finance.generate(course,"ADD");
   var fees=finance.fees(course).data();assertThat(fees).hasSize(1);
   assertThat(fees.get(0)).containsEntry("payment_account_id",original.get("payment_account_id"));
   assertThat((BigDecimal)fees.get(0).get("amount")).isEqualByComparingTo("1001");

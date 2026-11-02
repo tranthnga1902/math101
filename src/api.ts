@@ -10,7 +10,11 @@ export type ApiEnvelope<T> = { success: boolean; code: number; message: string; 
 export type AuthSession = {
   accessToken: string; refreshToken: string; expiresInSeconds: number;
   userId: number; email: string; role: "student" | "teacher" | "admin";
+  /** Chỉ có trong phiên xem hộ: danh tính ở trên là của học viên, đây là người thật. */
+  impersonating?: XemHo | null;
 };
+/** Phiên xem hộ: token chỉ đọc, không có refresh token, hết hạn là tự rơi về phiên thật. */
+export type XemHo = { studentId: number; studentName: string; actorUserId: number };
 export type Progress = {
   id: number; studentId: number; lessonId: number|null; worksheetId:number|null; status:string; openedAt: string | null;
   completedAt: string | null; completionPercent: number;
@@ -41,7 +45,9 @@ export type ProgramResource = { id:number; lesson_id:number|null; noi_den_loai:"
 export type SharedTeacherResource={id:number;owner_teacher_id:number;lesson_id:number|null;exercise_type_id:number|null;resource_type:string;title:string;description:string|null;external_url:string|null;teacher_name:string;class_name:string;available_from:string|null;available_until:string|null};
 export type SourceDocument={id:number;title:string;file_type:"PDF"|"DOCX"|"TEX"|"TXT";original_filename:string;status:string;failure_reason:string|null;question_count:number;page_count:number;quality_label:string;warning_count:number;pipeline_stage:string;created_at:string};
 export type MathFragment={id:number;raw_value:string;latex_value:string;ast_json:unknown;order_index:number;status:string;confidence:number;review_decision:string};
-export type ExtractedQuestion={id:number;source_document_id:number;start_block_id:number;end_block_id:number;source_start:number;source_end:number;question_type:string;question_text:string;option_a:string|null;option_b:string|null;option_c:string|null;option_d:string|null;answer_text:string|null;solution_text:string|null;confidence:number;status:"DETECTED"|"REVIEWED"|"REJECTED";transform_level:"LEVEL_0"|"LEVEL_1"|"LEVEL_2"|"LEVEL_3";math_signature:string;signature_confidence:number;question_intent:string;intent_confidence:number;math_parse_valid:boolean;structure_valid:boolean;transformable:boolean;transform_block_reason:string|null;math_fragments:MathFragment[]};
+export type ExtractedQuestion={id:number;source_document_id:number;start_block_id:number;end_block_id:number;source_start:number;source_end:number;question_type:string;question_text:string;option_a:string|null;option_b:string|null;option_c:string|null;option_d:string|null;answer_text:string|null;solution_text:string|null;confidence:number;status:"DETECTED"|"REVIEWED"|"REJECTED";transform_level:"LEVEL_0"|"LEVEL_1"|"LEVEL_2"|"LEVEL_3";math_signature:string;signature_confidence:number;question_intent:string;intent_confidence:number;math_parse_valid:boolean;structure_valid:boolean;transformable:boolean;transform_block_reason:string|null;math_fragments:MathFragment[];answer_payload?:Record<string,unknown>|null;max_score?:number|string|null;source_title?:string|null};
+export type KieuCauHoi="MCQ"|"DUNG_SAI_4Y"|"TRA_LOI_NGAN"|"TU_LUAN";
+export type SoanCauHoi={questionType:KieuCauHoi;questionText:string;optionA?:string|null;optionB?:string|null;optionC?:string|null;optionD?:string|null;answerText?:string|null;solutionText?:string|null;answerPayload?:string|null;maxScore?:number|null};
 export type DocumentBlock={id:number;block_type:string;raw_content:string;normalized_content:string;order_index:number;page_number:number};
 export type ParsingQuality={status:string;pages:number;blocks:number;questions:number;mathQuestions:number;answeredQuestions:number;textCoverage:number;questionConfidence:number;mathConfidence:number;warnings:number;label:string;stage:string;parser:string};
 export type QuestionVariant={id:number;source_question_id:number;transformation_type:string;content:string;answer:string|null;solution:string|null;options_json:Record<string,string>;rule_code:string|null;validation_status:"VALID"|"INVALID"|"REVIEW_REQUIRED";teacher_accepted:boolean};
@@ -109,7 +115,7 @@ export type ContentGroup="THEORY"|"PRACTICE"|"ASSESSMENT"|"REFERENCE";
 /** null nghÄ©a lÃ  chÆ°a ai phÃ¢n loáº¡i, khÃ´ng pháº£i "Tham kháº£o" â€” Ä‘á»«ng hiá»ƒn thá»‹ thay báº±ng nhÃ³m máº·c Ä‘á»‹nh. */
 export type DocumentItem={id:number;title:string;docType:string;audience:string;fileUrl:string;gradeId:number|null;chapterId:number|null;status:string;subjectId:number|null;totalPages:number|null;basePageOffset:number|null;createdAt:string;thumbnailUrl:string|null;folderId:number|null;contentMarkdown:string|null;taxonomyNodeId:number|null;contentGroup:ContentGroup|null;fileFormat:FileFormat|null};
 /** "Mở bằng gì" — khác docType ("ấn phẩm gì"). Null với tài liệu cũ không đoán được đuôi. */
-export type FileFormat="WORD"|"EXCEL"|"POWERPOINT"|"PDF"|"VIDEO"|"SCORM"|"XAPI";
+export type FileFormat="WORD"|"EXCEL"|"POWERPOINT"|"PDF"|"VIDEO"|"SCORM"|"XAPI"|"HTML";
 export type ContentGroupCounts={theoNhom:Record<ContentGroup,number>;chuaPhanLoai:number};
 export type DocumentFolder={id:number;name:string;documentCount:number;createdAt:string};
 export type TextbookItem={id:number;title:string;docType:string;audience:string;gradeId:number|null;subjectId:number|null;status:string;totalPages:number|null;basePageOffset:number;fileUrl:string;thumbnailUrl:string|null;createdAt:string};
@@ -162,7 +168,7 @@ export type AdminClassOverviewRow={id:number;code:string;name:string;grade_id:nu
  * `essay` do server quyáº¿t, Ä‘á»«ng suy láº¡i tá»« `optionA..D`: Ä‘á» nháº­p tá»« PDF in bá»‘n phÆ°Æ¡ng Ã¡n ngay
  * trong `statementLatex` nÃªn bá»‘n cá»™t Ä‘Ã³ trá»‘ng mÃ  cÃ¢u váº«n lÃ  tráº¯c nghiá»‡m.
  */
-export type StudentAssignment={id:number;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;gradingStatus:string;score:number|null;maxScore:number|null;attemptsLeft:number|null;submittedLate:boolean;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null;essay:boolean}[]};
+export type StudentAssignment={id:number;title:string;openAt:string|null;dueAt:string|null;status:string;state:AssignmentState;lessonId:number|null;worksheetId:number|null;worksheetName:string;progressStatus:string;completionPercent:number;gradingStatus:string;score:number|null;maxScore:number|null;attemptsLeft:number|null;submittedLate:boolean;requirement:ClassRequirement;items:{problemId:number;orderIndex:number;publicCode:string;qrSlug:string;statementLatex:string;difficulty:string;optionA:string|null;optionB:string|null;optionC:string|null;optionD:string|null;essay:boolean}[]};
 /**
  * Äiá»ƒm vÃ  nháº­n xÃ©t cá»§a má»™t cÃ¢u. DÃ¹ng chung cho báº£ng cháº¥m cá»§a giÃ¡o viÃªn vÃ  báº£ng káº¿t quáº£ cá»§a há»c
  * sinh â€” khÃ¡c nhau á»Ÿ chá»— Ä‘Æ°á»ng tráº£ vá» cho há»c sinh **luÃ´n Ä‘á»ƒ trá»‘ng `correctOption`**.
@@ -268,6 +274,28 @@ function toSession(tokens: TokenResponse): AuthSession {
   return { ...tokens, userId: Number(tokens.userId ?? claims.sub), email: tokens.email ?? claims.email, role };
 }
 
+type ImpersonationResponse = {
+  accessToken: string; expiresInSeconds: number;
+  studentId: number; studentName: string; studentEmail: string; actorUserId: number;
+};
+
+/**
+ * Xin token để nhìn màn hình bằng mắt học viên. Phiên trả về cố tình thiếu refreshToken:
+ * hiệu ứng tự làm mới ở App.tsx bỏ qua phiên không có refresh token, nên hết hạn là hết xem.
+ */
+export async function impersonateStudent(session: AuthSession, studentId: number): Promise<AuthSession> {
+  const data = await request<ImpersonationResponse>(`/auth/impersonate/${studentId}`, { method: "POST" }, session.accessToken);
+  return {
+    accessToken: data.accessToken,
+    refreshToken: "",
+    expiresInSeconds: data.expiresInSeconds,
+    userId: data.studentId,
+    email: data.studentEmail,
+    role: "student",
+    impersonating: { studentId: data.studentId, studentName: data.studentName, actorUserId: data.actorUserId },
+  };
+}
+
 export async function login(email: string, password: string): Promise<AuthSession> {
   return toSession(await request<TokenResponse>("/auth/login", { method: "POST", body: JSON.stringify({ identifier: email, password }) }));
 }
@@ -311,6 +339,14 @@ export function changePassword(session: AuthSession, currentPassword: string, ne
 
 export function getMetadata(session: AuthSession) {
   return request<Metadata>("/metadata", {}, session.accessToken);
+}
+
+/** Admin thêm loại tài liệu mới; bỏ trống mã thì máy chủ tự sinh từ tên. */
+export function createDocumentType(session: AuthSession, payload: { label: string; value?: string }) {
+  return request<MetadataOption>("/metadata/document-types", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, session.accessToken);
 }
 
 export function markLessonProgress(session: AuthSession, lessonId: number, completed = false) {
@@ -518,6 +554,15 @@ export const getHomNay=(s:AuthSession)=>request<HomNayData>("/student/hom-nay",{
 export const getCurrentProgramChapter=(s:AuthSession,courseId:number,at?:string)=>{const p=new URLSearchParams({courseId:String(courseId)});if(at)p.set("at",at);return request<ProgramSchedule|null>(`/program-schedules/current?${p}`,{},s.accessToken)};
 export const getProgramChaptersByTime=(s:AuthSession,programId:number)=>request<ProgramChapterTime[]>(`/programs/${programId}/chapters-by-time`,{},s.accessToken);
 export const getProgramResources=(s:AuthSession,programId:number,type?:ProgramResource["resource_type"])=>request<ProgramResource[]>(`/programs/${programId}/resources${type?`?type=${type}`:""}`,{},s.accessToken);
+export const napVanBanOcr=(s:AuthSession,id:number,text:string,pages:number)=>request<SourceDocument>(`/teacher/content-pipeline/sources/${id}/ocr-text`,{method:"POST",body:JSON.stringify({text,pages})},s.accessToken);
+export type Exam={id:number;scope:"COURSE"|"CLASS";courseInstanceId:number|null;classId:number|null;courseName:string|null;className:string|null;title:string;description:string|null;worksheetId:number|null;worksheetVersionId:number|null;worksheetTitle:string|null;durationMinutes:number|null;openAt:string|null;dueAt:string|null;anchorPeriodId:number|null;maxAttempts:number;latePolicy:string;answerReveal:string;countsInGradebook:boolean;status:string;classCount:number;assignmentCount:number;createdAt:string};
+export type SoanKiThi={scope:"COURSE"|"CLASS";courseInstanceId?:number|null;classId?:number|null;title:string;description?:string|null;worksheetVersionId?:number|null;durationMinutes?:number|null;openAt?:string|null;dueAt?:string|null;maxAttempts?:number;latePolicy?:string;answerReveal?:string;countsInGradebook?:boolean};
+export const getExams=(s:AuthSession,scope?:"COURSE"|"CLASS")=>request<Exam[]>(`/exams${scope?`?scope=${scope}`:""}`,{},s.accessToken);
+export const createExam=(s:AuthSession,x:SoanKiThi)=>request<Exam>("/exams",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const updateExam=(s:AuthSession,id:number,x:SoanKiThi)=>request<Exam>(`/exams/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const publishExam=(s:AuthSession,id:number)=>request<Exam>(`/exams/${id}/publish`,{method:"POST"},s.accessToken);
+export const closeExam=(s:AuthSession,id:number)=>request<Exam>(`/exams/${id}/close`,{method:"POST"},s.accessToken);
+export const deleteExam=(s:AuthSession,id:number)=>request<void>(`/exams/${id}`,{method:"DELETE"},s.accessToken);
 export const getSourceDocuments=(s:AuthSession)=>request<SourceDocument[]>("/teacher/content-pipeline/sources",{},s.accessToken);
 export async function uploadSourceDocument(s:AuthSession,title:string,file:File){const form=new FormData();form.append("title",title);form.append("file",file);const response=await fetch(`${API_BASE_URL}/api/teacher/content-pipeline/sources`,{method:"POST",headers:{Authorization:`Bearer ${s.accessToken}`},body:form});const payload=await response.json() as ApiEnvelope<SourceDocument>;if(!response.ok||!payload.success)throw new Error(payload.message);return payload.data;}
 export const getExtractedQuestions=(s:AuthSession,id:number)=>request<ExtractedQuestion[]>(`/teacher/content-pipeline/sources/${id}/questions`,{},s.accessToken);
@@ -531,6 +576,10 @@ export const createQuestionVariant=(s:AuthSession,id:number,x:Record<string,stri
 export const batchTransformQuestions=(s:AuthSession,questionIds:number[])=>request<BatchTransformResult>("/teacher/content-pipeline/variants/batch",{method:"POST",body:JSON.stringify({questionIds})},s.accessToken);
 export const getQuestionTransformations=(s:AuthSession,id:number)=>request<Array<{id:number;rule_code:string;validation_result:unknown;created_at:string}>>(`/teacher/content-pipeline/questions/${id}/transformations`,{},s.accessToken);
 export const acceptQuestionVariant=(s:AuthSession,id:number)=>request<QuestionVariant>(`/teacher/content-pipeline/variants/${id}/accept`,{method:"PUT"},s.accessToken);
+export const getKhoCauHoi=(s:AuthSession,kieu?:string)=>request<ExtractedQuestion[]>(`/teacher/content-pipeline/questions${kieu?`?kieu=${kieu}`:""}`,{},s.accessToken);
+export const soanCauHoi=(s:AuthSession,x:SoanCauHoi)=>request<ExtractedQuestion>("/teacher/content-pipeline/questions",{method:"POST",body:JSON.stringify(x)},s.accessToken);
+export const suaCauHoi=(s:AuthSession,id:number,x:SoanCauHoi)=>request<ExtractedQuestion>(`/teacher/content-pipeline/questions/${id}`,{method:"PUT",body:JSON.stringify(x)},s.accessToken);
+export const xoaCauHoi=(s:AuthSession,id:number)=>request<void>(`/teacher/content-pipeline/questions/${id}`,{method:"DELETE"},s.accessToken);
 export const getPipelineWorksheets=(s:AuthSession)=>request<PipelineWorksheet[]>("/teacher/content-pipeline/worksheets",{},s.accessToken);
 export const composePipelineWorksheet=(s:AuthSession,title:string,items:Array<{questionId:number;variantId?:number;content?:string}>)=>request<PipelineWorksheet>("/teacher/content-pipeline/worksheets",{method:"POST",body:JSON.stringify({title,items})},s.accessToken);
 export const publishPipelineWorksheet=(s:AuthSession,id:number)=>request<PipelineWorksheet>(`/teacher/content-pipeline/worksheet-versions/${id}/publish`,{method:"POST"},s.accessToken);
@@ -797,6 +846,8 @@ export const saveDocumentMarkdown=(s:AuthSession,id:number,contentMarkdown:strin
 export const getDocumentsByNode=(s:AuthSession,nodeId:number)=>request<DocumentItem[]>(`/admin/documents/by-node/${nodeId}`,{},s.accessToken);
 export const setDocumentTaxonomyNode=(s:AuthSession,id:number,taxonomyNodeId:number|null)=>request<DocumentItem>(`/admin/documents/${id}/taxonomy-node`,{method:"PATCH",body:JSON.stringify({taxonomyNodeId})},s.accessToken);
 /** Gá»­i null lÃ  gá»¡ phÃ¢n loáº¡i. ÄÆ°á»ng riÃªng chá»© khÃ´ng gá»™p vÃ o updateDocument, vÃ¬ thÃ¢n PUT khÃ´ng mang trÆ°á»ng nÃ y. */
+/** Admin sửa tên, loại, phạm vi của tài liệu hệ thống; các trường khác giữ nguyên giá trị đang có. */
+export const updateAdminDocument=(s:AuthSession,doc:DocumentItem,x:{title?:string;docType?:string;audience?:string})=>request<DocumentItem>(`/admin/documents/${doc.id}`,{method:"PUT",body:JSON.stringify({title:x.title??doc.title,docType:x.docType??doc.docType,audience:x.audience??doc.audience,gradeId:doc.gradeId,chapterId:doc.chapterId,subjectId:doc.subjectId,totalPages:doc.totalPages,basePageOffset:doc.basePageOffset&&doc.basePageOffset>=1?doc.basePageOffset:null})},s.accessToken);
 export const setDocumentContentGroup=(s:AuthSession,id:number,contentGroup:ContentGroup|null)=>request<DocumentItem>(`/admin/documents/${id}/content-group`,{method:"PATCH",body:JSON.stringify({contentGroup})},s.accessToken);
 export const getContentGroupCounts=(s:AuthSession)=>request<ContentGroupCounts>("/admin/documents/content-groups",{},s.accessToken);
 export const getTeacherDocuments=(s:AuthSession)=>request<DocumentItem[]>("/teacher/documents",{},s.accessToken);

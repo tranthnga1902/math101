@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/core";
 import { isStructuredLesson, safeParseStructuredLesson } from "./converter";
 import { BookOpen, Lightbulb, Info, AlertTriangle, Copy, Check } from "lucide-react";
 import "./lesson-renderer.css";
+import { IsolatedHtmlFrame, isFullHtmlDocument } from "./IsolatedHtmlFrame";
 
 interface LessonContentRendererProps {
   content: string | null | undefined;
@@ -370,6 +371,8 @@ export function LessonContentRenderer({
             <RenderBlock key={index} node={node} index={index} />
           ))}
         </div>
+      ) : isFullHtmlDocument(content) ? (
+        <IsolatedHtmlFrame html={content} />
       ) : (
         <LegacyLessonContent html={content} />
       )}

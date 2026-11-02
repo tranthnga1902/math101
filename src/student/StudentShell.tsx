@@ -17,7 +17,7 @@ type StudentShellProps = {
 const navSections: Array<{ label?: string; items: Array<{ key: StudentTab; label: string; icon: string }> }> = [
   { items: [{ key: "today", label: "Trang chủ", icon: "home" }] },
   { label: "Chương trình học", items: [
-    { key: "lessons", label: "Tổng quan", icon: "account_tree" },
+    { key: "lessons", label: "Chương trình học", icon: "menu_book" },
     { key: "videos", label: "Video", icon: "smart_display" },
     { key: "textbooks", label: "Sách giáo khoa", icon: "auto_stories" },
     { key: "materials", label: "Tài liệu", icon: "description" },
@@ -125,17 +125,19 @@ export function StudentShell({
         </header>
 
         <main className="w-full px-4 sm:px-6 md:px-8 py-6 md:py-8 pb-24 md:pb-10 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold">{greeting}</h1>
-              {activeTab && (
-                <p className="text-sm text-on-surface-variant mt-1 inline-flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-primary">{activeTab.icon}</span>
-                  {activeTab.label}
-                </p>
-              )}
+          {tab !== "lessons" && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold">{greeting}</h1>
+                {activeTab && (
+                  <p className="text-sm text-on-surface-variant mt-1 inline-flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-primary">{activeTab.icon}</span>
+                    {activeTab.label}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
           {children}
         </main>
       </div>

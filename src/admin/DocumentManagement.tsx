@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, FileCode, Folder, FolderInput, FolderOpen, FolderPlus, Layers, MoreVertical, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileCode, Folder, FolderInput, FolderOpen, FolderPlus, Layers, MoreVertical, Plus, Trash2, X } from "lucide-react";
 import {
   convertDocumentToMarkdown,
   createAdminDocumentFolder,
+  createDocumentType,
   deleteAdminDocumentFolder,
   deleteDocument,
   fetchDocumentObjectUrl,
@@ -17,6 +18,7 @@ import {
   renameAdminDocumentFolder,
   saveDocumentMarkdown,
   setDocumentContentGroup,
+  updateAdminDocument,
   uploadDocument,
   type AdminDocumentFolder,
   type AuthSession,
@@ -36,6 +38,7 @@ import { AdminModal } from "./components/AdminModal";
 import { AdminEmptyState } from "./components/AdminEmptyState";
 import { SearchInput } from "./components/AdminFilterBar";
 import { Button } from "../components/ui/button";
+import { IsolatedHtmlFrame } from "../components/lesson-editor/IsolatedHtmlFrame";
 
 const isPdfDoc = isPdfDocument;
 
@@ -51,6 +54,13 @@ const DRAG_TYPE = "application/x-math10-documents";
  * Nhóm nội dung trả lời "dùng vào lúc nào trong quá trình học" — khác hẳn LOẠI TÀI LIỆU vốn
  * trả lời "đây là loại ấn phẩm gì". Danh sách cố định, do CSDL chốt bằng ràng buộc CHECK.
  */
+/** Phạm vi = ai đọc được tài liệu. Cố định theo enum DocumentAudience ở máy chủ. */
+const PHAM_VI: { value: string; label: string }[] = [
+  { value: "TEACHER_ONLY", label: "Chỉ giáo viên" },
+  { value: "STUDENT_ALLOWED", label: "Cho phép học sinh" },
+];
+const phamViLabel = (value: string) => PHAM_VI.find(item => item.value === value)?.label ?? value;
+
 const NHOM_NOI_DUNG: { value: ContentGroup; label: string }[] = [
   { value: "THEORY", label: "Lý thuyết" },
   { value: "PRACTICE", label: "Luyện tập" },
@@ -62,7 +72,7 @@ const CHUA_PHAN_LOAI = "CHUA_PHAN_LOAI";
 const nhomLabel = (group: ContentGroup | null) => NHOM_NOI_DUNG.find(item => item.value === group)?.label ?? "Chưa phân loại";
 
 /**
- * Định dạng file trả lời "mở bằng gì" — do máy chủ nhận ra lúc tải lên (SCORM/xAPI phải mở gói
+ * Định dạng file trả lời "mở bằng gì" — do máy chủ nhận ra lúc tải lên (SCORM/xAPI/HTML phải mở gói
  * .zip mới biết), nên danh sách cố định, không sửa/xóa được.
  */
 const DINH_DANG: { value: FileFormat; label: string; short: string }[] = [
@@ -73,11 +83,12 @@ const DINH_DANG: { value: FileFormat; label: string; short: string }[] = [
   { value: "VIDEO", label: "Video", short: "VIDEO" },
   { value: "SCORM", label: "SCORM", short: "SCORM" },
   { value: "XAPI", label: "xAPI", short: "xAPI" },
+  { value: "HTML", label: "HTML", short: "HTML" },
 ];
 const DINH_DANG_KHAC = "KHAC";
 const dinhDangLabel = (format: FileFormat | null) => DINH_DANG.find(item => item.value === format)?.label ?? "Khác";
-const FILE_ACCEPT = ".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.mp4,.webm,.mov,.m4v,.zip";
-const FILE_ACCEPT_HINT = "Word, Excel, PowerPoint, PDF, video (MP4, WebM, MOV) hoặc gói SCORM/xAPI (.zip)";
+const FILE_ACCEPT = ".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.mp4,.webm,.mov,.m4v,.html,.htm,.zip";
+const FILE_ACCEPT_HINT = "Word, Excel, PowerPoint, PDF, video (MP4, WebM, MOV) trang HTML (.html, hoặc .zip có index.html kèm ảnh/CSS/JS) hoặc gói SCORM/xAPI (.zip)";
 const isYoutubeRow = (row: DocumentItem) => !!row.fileUrl && !!youtubeEmbedUrl(row.fileUrl);
 const isUploadedVideo = (row: DocumentItem) => row.fileFormat === "VIDEO" && !isYoutubeRow(row);
 
@@ -156,6 +167,7 @@ function loadExpanded(): Set<number> {
 export function DocumentManagement({ session }: { session: AuthSession }) {
   const queryClient = useQueryClient();
   const [selectedFolder, setSelectedFolder] = useState<FolderKey>("ALL");
+  const [addTypeOpen, setAddTypeOpen] = useState(false);
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(loadExpanded);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -180,6 +192,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   const [videoDoc, setVideoDoc] = useState<DocumentItem | null>(null);
   const [pdfDoc, setPdfDoc] = useState<DocumentItem | null>(null);
   const [attachDoc, setAttachDoc] = useState<DocumentItem | null>(null);
+  const [editDoc, setEditDoc] = useState<DocumentItem | null>(null);
   const [attachDocs, setAttachDocs] = useState<DocumentItem[] | null>(null);
   const [bulkActionsMenuOpen, setBulkActionsMenuOpen] = useState(false);
   const [converting, setConverting] = useState<number | null>(null);
@@ -259,6 +272,12 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   });
   const groupMutation = useMutation({
     mutationFn: (x: { id: number; group: ContentGroup | null }) => setDocumentContentGroup(session, x.id, x.group),
+    onMutate: () => setActionError(""),
+    onSuccess: () => { void invalidateDocuments(); },
+    onError: (reason: unknown) => setActionError(message(reason)),
+  });
+  const audienceMutation = useMutation({
+    mutationFn: (x: { doc: DocumentItem; audience: string }) => updateAdminDocument(session, x.doc, { audience: x.audience }),
     onMutate: () => setActionError(""),
     onSuccess: () => { void invalidateDocuments(); },
     onError: (reason: unknown) => setActionError(message(reason)),
@@ -373,7 +392,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
   const openRow = (row: DocumentItem) => {
     if (isYoutubeRow(row)) { setVideoDoc(row); return; }
     if (isUploadedVideo(row)) { setFileVideoDoc(row); return; }
-    if (row.contentMarkdown) { setMarkdownDoc(row); return; }
+    if (row.contentMarkdown && row.fileFormat !== "HTML") { setMarkdownDoc(row); return; }
     openFile(row);
   };
   /** PDF xem ngay trong app; định dạng khác (Word, Excel, PowerPoint, gói SCORM/xAPI…) mở tab mới hoặc tải về. */
@@ -577,7 +596,10 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
       {foldersQuery.isSuccess && !index.flat.length && <p className="text-xs text-on-surface-variant px-2 py-1">Chưa có thư mục. Bấm biểu tượng thư mục ở trên để tạo, rồi kéo tài liệu thả vào.</p>}
 
       <div className="flex items-center justify-between mt-5 mb-1">
-        <h3 className={sectionTitle}>LOẠI TÀI LIỆU</h3>
+        <div className="flex items-center gap-1">
+          <h3 className={sectionTitle}>LOẠI TÀI LIỆU</h3>
+          <button className="text-primary hover:text-on-surface p-1 rounded" title="Thêm loại tài liệu" aria-label="Thêm loại tài liệu" onClick={() => setAddTypeOpen(true)}><Plus size={16} /></button>
+        </div>
         {filtersActive && <button className="text-xs text-primary hover:underline" onClick={clearFilters}>Bỏ lọc</button>}
       </div>
       {types.map(item => <label key={item.value} className="flex items-center gap-2 text-sm cursor-pointer py-1"><input className={checkbox} type="checkbox" checked={selectedTypes.includes(item.value)} onChange={() => toggleType(item.value)} /><span title={item.label}>{item.label}</span><span className={countBadge}>{typeCounts[item.value] ?? 0}</span></label>)}
@@ -669,7 +691,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
                 }}
               >
                 <Layers size={16} className="text-primary shrink-0" />
-                <span>Gắn vào chương trình…</span>
+                <span>Gán vào bài học / chương trình…</span>
               </button>
               {selectedPdfIdsWithoutMd.length > 0 && (
                 <button
@@ -879,7 +901,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
                               }}
                             >
                               <Layers size={15} className="text-primary shrink-0" />
-                              <span>Gắn vào chương trình…</span>
+                              <span>Gán vào bài học / chương trình…</span>
                             </button>
                             {selectedPdfIdsWithoutMd.length > 0 && (
                               <button
@@ -931,7 +953,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
                             <hr className="my-1 border-outline-variant" />
                             <span className="px-3 py-1 text-[11px] font-semibold text-on-surface-variant/80 uppercase block">Chỉ tài liệu này</span>
                             <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); openRow(row); }}>
-                              {row.contentMarkdown ? "Đọc bản Markdown" : row.fileFormat === "VIDEO" || row.docType === "VIDEO" ? "Xem video" : "Mở tài liệu"}
+                              {row.contentMarkdown ? "Đọc bản Markdown" : row.fileFormat === "VIDEO" || row.docType === "VIDEO" ? "Xem video" : row.fileFormat === "HTML" ? "Xem trang HTML" : "Mở tài liệu"}
                             </button>
                             {row.contentMarkdown && <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); openFile(row); }}>Mở file gốc</button>}
                             {isPdfDoc(row) && <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" disabled={!!ocrJob || converting === row.id} onClick={() => { setOpenDocMenu(null); void runOcr(row); }}>{row.contentMarkdown ? "Nhận dạng lại chữ (OCR)" : "Nhận dạng chữ (OCR)"}</button>}
@@ -953,13 +975,17 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
                               </div>
                             )}
                             <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); openRow(row); }}>
-                              {row.contentMarkdown ? "Đọc bản Markdown" : row.fileFormat === "VIDEO" || row.docType === "VIDEO" ? "Xem video" : row.fileFormat === "SCORM" || row.fileFormat === "XAPI" ? "Tải gói về" : "Mở tài liệu"}
+                              {row.contentMarkdown && row.fileFormat !== "HTML" ? "Đọc bản Markdown" : row.fileFormat === "VIDEO" || row.docType === "VIDEO" ? "Xem video" : row.fileFormat === "SCORM" || row.fileFormat === "XAPI" ? "Tải gói về" : row.fileFormat === "HTML" ? (row.docType === "HTML_LESSON_CONTENT" ? "Mở bài học HTML" : "Xem HTML") : "Mở tài liệu"}
                             </button>
                             {row.contentMarkdown && <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); openFile(row); }}>Mở file gốc</button>}
                             {isPdfDoc(row) && !row.contentMarkdown && <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" disabled={converting === row.id} onClick={() => { setOpenDocMenu(null); convertMutation.mutate(row.id); }}>{converting === row.id ? "Đang chuyển đổi…" : "Chuyển sang Markdown"}</button>}
                             {isPdfDoc(row) && <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" disabled={!!ocrJob || converting === row.id} onClick={() => { setOpenDocMenu(null); void runOcr(row); }}>{row.contentMarkdown ? "Nhận dạng lại chữ (OCR)" : "Nhận dạng chữ (OCR)"}</button>}
                             <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); setMovePicker({ kind: "documents", ids: [row.id] }); }}>Chuyển vào thư mục…</button>
-                            <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); setAttachDoc(row); }}>Gắn vào chương trình</button>
+                            <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); setAttachDoc(row); }}>Gán vào bài học / chương trình…</button>
+                            <button className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" onClick={() => { setOpenDocMenu(null); setEditDoc(row); }}>Sửa thông tin…</button>
+                            <hr className="my-1 border-outline-variant" />
+                            <span className="px-3 py-1 text-xs font-bold text-on-surface-variant uppercase tracking-wider block">Phạm vi</span>
+                            {PHAM_VI.map(item => <button key={item.value} className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant disabled:opacity-60" role="menuitem" disabled={audienceMutation.isPending || row.audience === item.value} onClick={() => { setOpenDocMenu(null); audienceMutation.mutate({ doc: row, audience: item.value }); }}>{row.audience === item.value ? "✓ " : ""}{item.label}</button>)}
                             <hr className="my-1 border-outline-variant" />
                             <span className="px-3 py-1 text-xs font-bold text-on-surface-variant uppercase tracking-wider block">Nhóm nội dung</span>
                             {NHOM_NOI_DUNG.map(item => <button key={item.value} className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-variant" role="menuitem" disabled={groupMutation.isPending || row.contentGroup === item.value} onClick={() => { setOpenDocMenu(null); groupMutation.mutate({ id: row.id, group: item.value }); }}>{row.contentGroup === item.value ? `✓ ${item.label}` : item.label}</button>)}
@@ -978,6 +1004,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
                 <p className="flex flex-wrap gap-2 text-xs text-on-surface-variant items-center mt-auto">
                   <span className="bg-secondary-container text-on-secondary-container px-2 py-1 rounded-md font-semibold" title="Định dạng file">{dinhDangLabel(row.fileFormat)}</span>
                   <span className="bg-surface px-2 py-1 rounded-md border border-outline-variant">{typeLabel(row.docType)}</span>
+                  <span className={row.audience === "STUDENT_ALLOWED" ? "bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded-md" : "bg-surface px-2 py-1 rounded-md border border-outline-variant"} title="Phạm vi">{phamViLabel(row.audience)}</span>
                   <span className={row.contentGroup ? "bg-primary-container text-on-primary-container px-2 py-1 rounded-md" : "bg-surface px-2 py-1 rounded-md border border-outline-variant border-dashed"}>{nhomLabel(row.contentGroup)}</span>
                   <time className="ml-auto">{new Intl.DateTimeFormat("vi-VN").format(new Date(row.createdAt))}</time>
                 </p>
@@ -1013,6 +1040,25 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
       await invalidateDocuments();
     }} />}
     {bulkUpload && <AdminBulkUpload session={session} types={types} folders={index.flat} initialFolderId={currentFolderId} onClose={() => setBulkUpload(false)} onDone={invalidateDocuments} />}
+    {editDoc && <EditDocumentDialog
+      session={session}
+      document={editDoc}
+      types={types}
+      onClose={() => setEditDoc(null)}
+      onSaved={async () => {
+        await invalidateDocuments();
+        setEditDoc(null);
+      }}
+    />}
+    {addTypeOpen && <AddDocumentTypeDialog
+      session={session}
+      existing={types}
+      onClose={() => setAddTypeOpen(false)}
+      onSaved={async () => {
+        await Promise.all([METADATA_QUERY_KEY, "metadata"].map(key => queryClient.invalidateQueries({ queryKey: [key] })));
+        setAddTypeOpen(false);
+      }}
+    />}
     {folderDialog && <FolderNameDialog
       session={session}
       dialog={folderDialog}
@@ -1049,7 +1095,7 @@ export function DocumentManagement({ session }: { session: AuthSession }) {
         document={attachDoc}
         documents={attachDocs}
         onClose={() => { setAttachDoc(null); setAttachDocs(null); }}
-        onDone={async () => { setAttachDoc(null); setAttachDocs(null); await invalidateDocuments(); }}
+        onDone={async () => { setAttachDoc(null); setAttachDocs(null); await Promise.all([invalidateDocuments(), queryClient.invalidateQueries({ queryKey: ["lesson-documents"] }), queryClient.invalidateQueries({ queryKey: ["lesson-resources"] })]); }}
       />
     )}
   </AdminPage>;
@@ -1108,6 +1154,100 @@ function FolderNameDialog({ session, dialog, parentPath, onClose, onSaved }: {
         {dialog.mode === "create" && <p className="text-sm text-on-surface-variant">Nằm trong: <strong className="text-on-surface">{parentPath ? parentPath.join(" › ") : "Cấp gốc"}</strong></p>}
         <label className="block text-sm font-medium text-on-surface">Tên thư mục</label>
         <input autoFocus required maxLength={120} placeholder="Ví dụ: Khối 10, Hàm số, Đề kiểm tra giữa kỳ" value={name} onChange={event => setName(event.target.value)} className="w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none" />
+        {error && <div className="p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
+      </form>
+    </AdminModal>
+  );
+}
+
+function EditDocumentDialog({ session, document, types, onClose, onSaved }: {
+  session: AuthSession;
+  document: DocumentItem;
+  types: MetadataOption[];
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [title, setTitle] = useState(document.title);
+  const [docType, setDocType] = useState(document.docType);
+  const [audience, setAudience] = useState(document.audience);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const typeOptions = types.some(item => item.value === document.docType) ? types : [{ value: document.docType, label: document.docType }, ...types];
+  const save = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await updateAdminDocument(session, document, { title: title.trim(), docType, audience });
+      await onSaved();
+    } catch (reason) {
+      setError(message(reason));
+      setBusy(false);
+    }
+  };
+  const field = "w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none bg-white";
+  return (
+    <AdminModal open={true} onClose={() => { if (!busy) onClose(); }} title="Sửa thông tin tài liệu" size="sm" footer={<><Button variant="outline" onClick={onClose} disabled={busy}>Hủy</Button><Button disabled={!title.trim() || busy} onClick={() => void save()}>{busy ? "Đang lưu…" : "Lưu"}</Button></>}>
+      <form onSubmit={save} className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-on-surface mb-1">Tên tài liệu</label>
+          <input autoFocus required maxLength={255} value={title} onChange={event => setTitle(event.target.value)} className={field} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface mb-1">Loại tài liệu</label>
+          <select value={docType} onChange={event => setDocType(event.target.value)} className={field}>
+            {typeOptions.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface mb-1">Phạm vi</label>
+          <select value={audience} onChange={event => setAudience(event.target.value)} className={field}>
+            {PHAM_VI.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}
+          </select>
+          <p className="text-xs text-on-surface-variant mt-1">"Chỉ giáo viên": học sinh không mở được, kể cả khi tài liệu đã gắn vào bài học.</p>
+        </div>
+        {error && <div className="p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
+      </form>
+    </AdminModal>
+  );
+}
+
+function AddDocumentTypeDialog({ session, existing, onClose, onSaved }: {
+  session: AuthSession;
+  existing: MetadataOption[];
+  onClose: () => void;
+  onSaved: (option: MetadataOption) => void | Promise<void>;
+}) {
+  const [label, setLabel] = useState("");
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const duplicate = existing.some(item => item.label.trim().toLowerCase() === label.trim().toLowerCase());
+  const codeInvalid = !!value.trim() && !/^[A-Za-z][A-Za-z0-9_]{0,29}$/.test(value.trim());
+  const save = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!label.trim() || duplicate || codeInvalid || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const option = await createDocumentType(session, { label: label.trim(), value: value.trim() ? value.trim().toUpperCase() : undefined });
+      await onSaved(option);
+    } catch (reason) {
+      setError(message(reason));
+      setBusy(false);
+    }
+  };
+  return (
+    <AdminModal open={true} onClose={() => { if (!busy) onClose(); }} title="Thêm loại tài liệu" size="sm" footer={<><Button variant="outline" onClick={onClose} disabled={busy}>Hủy</Button><Button disabled={!label.trim() || duplicate || codeInvalid || busy} onClick={() => void save()}>{busy ? "Đang lưu…" : "Thêm"}</Button></>}>
+      <form onSubmit={save} className="space-y-3">
+        <label className="block text-sm font-medium text-on-surface">Tên loại</label>
+        <input autoFocus required maxLength={255} placeholder="Ví dụ: Phiếu học tập, Đề cương ôn tập" value={label} onChange={event => setLabel(event.target.value)} className="w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none" />
+        {duplicate && <p className="text-xs text-error">Đã có loại tài liệu tên này.</p>}
+        <label className="block text-sm font-medium text-on-surface">Mã loại <span className="font-normal text-on-surface-variant">(không bắt buộc)</span></label>
+        <input maxLength={30} placeholder="Để trống: tự tạo từ tên, ví dụ PHIEU_HOC_TAP" value={value} onChange={event => setValue(event.target.value.toUpperCase())} className="w-full h-10 px-3 rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary outline-none font-mono text-sm" />
+        {codeInvalid && <p className="text-xs text-error">Mã chỉ gồm chữ không dấu, số, dấu gạch dưới và bắt đầu bằng chữ.</p>}
+        <p className="text-xs text-on-surface-variant">Loại mới xuất hiện ngay trong bộ lọc và trong ô chọn loại khi tải lên hoặc sửa tài liệu.</p>
         {error && <div className="p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
       </form>
     </AdminModal>
@@ -1175,6 +1315,21 @@ function DocumentUpload({ session, types, folders, initialFolderId, initialType,
   const [youtubeMode, setYoutubeMode] = useState<"single" | "bulk">("single");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [htmlPreview, setHtmlPreview] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const f = event.target.files?.[0] ?? null;
+    setFile(f);
+    setHtmlPreview(null);
+    if (f && (f.name.toLowerCase().endsWith(".html") || f.name.toLowerCase().endsWith(".htm"))) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setHtmlPreview((e.target?.result as string) || "");
+      };
+      reader.readAsText(f);
+    }
+  };
 
   type BulkVideoRow = {
     id: string;
@@ -1271,7 +1426,8 @@ function DocumentUpload({ session, types, folders, initialFolderId, initialType,
   const invalidVideo = useYoutube && !isBulkYt && !!videoUrl.trim() && !ytEmbed;
 
   return (
-    <AdminModal
+    <>
+      <AdminModal
       open={true}
       onClose={onClose}
       title={isVideo ? (useYoutube ? (isBulkYt ? "Tải nhiều video YouTube cùng lúc" : "Thêm video YouTube") : "Tải video lên") : "Tải tài liệu lên"}
@@ -1295,8 +1451,17 @@ function DocumentUpload({ session, types, folders, initialFolderId, initialType,
         ) : (
           <>
             <Button variant="outline" onClick={onClose}>Hủy</Button>
+            {htmlPreview && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPreviewModal(true)}
+              >
+                Xem trước
+              </Button>
+            )}
             <Button disabled={busy || !ready} onClick={submit}>
-              {busy ? "Đang tải…" : isVideo ? "Thêm video" : "Tải lên"}
+              {busy ? "Đang tải…" : isVideo ? "Thêm video" : "Lưu vào kho"}
             </Button>
           </>
         )
@@ -1446,15 +1611,63 @@ function DocumentUpload({ session, types, folders, initialFolderId, initialType,
             </div>
           )
         ) : (
-          <div>
-            <label className="block text-sm font-medium text-on-surface mb-1">Chọn file</label>
-            <input key={isVideo ? "video" : "file"} required type="file" accept={isVideo ? ".mp4,.webm,.mov,.m4v" : FILE_ACCEPT} onChange={event => setFile(event.target.files?.[0] ?? null)} className="w-full text-sm text-on-surface-variant file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-surface-variant file:text-on-surface hover:file:bg-outline-variant cursor-pointer" />
-            <small className="text-on-surface-variant block mt-1">{isVideo ? "MP4, WebM, MOV — tối đa 100 MB." : `${FILE_ACCEPT_HINT}. Định dạng được nhận tự động.`}</small>
+          <div className="space-y-2">
+            <div>
+              <label className="block text-sm font-medium text-on-surface mb-1">Chọn file</label>
+              <input key={isVideo ? "video" : "file"} required type="file" accept={isVideo ? ".mp4,.webm,.mov,.m4v" : FILE_ACCEPT} onChange={onFileChange} className="w-full text-sm text-on-surface-variant file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-surface-variant file:text-on-surface hover:file:bg-outline-variant cursor-pointer" />
+              <small className="text-on-surface-variant block mt-1">{isVideo ? "MP4, WebM, MOV — tối đa 100 MB." : `${FILE_ACCEPT_HINT}. Định dạng được nhận tự động.`}</small>
+            </div>
+            {(type === "HTML" || type === "HTML_LESSON_CONTENT") && (
+              <div className="text-xs text-on-surface-variant bg-surface-variant/40 p-2.5 rounded-lg space-y-1">
+                <p className="font-semibold text-primary">Quy cách tải tài liệu HTML:</p>
+                <p>• <b>File .html đơn lẻ:</b> Phù hợp bài giảng, công thức độc lập không kèm file ảnh/css riêng.</p>
+                <p>• <b>Gói .zip:</b> Gồm file <code>index.html</code> và các thư mục <code>images/</code>, <code>css/</code>, <code>js/</code> đi kèm.</p>
+              </div>
+            )}
+            {file && file.name.toLowerCase().endsWith(".zip") && (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-primary-container/20 border border-primary/30 text-xs text-primary font-medium">
+                <span className="material-symbols-outlined text-[16px]">folder_zip</span>
+                <span>Gói ZIP: Hệ thống sẽ tự tìm trang index.html hoặc chuẩn SCORM/xAPI khi mở.</span>
+              </div>
+            )}
+            {htmlPreview && (
+              <div className="flex items-center justify-between p-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="material-symbols-outlined text-amber-600 text-[18px]">html</span>
+                  <span className="truncate font-medium">Đã sẵn sàng xem trước file HTML: {file?.name}</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPreviewModal(true)}
+                  className="h-7 text-xs font-semibold bg-white border-amber-400 hover:bg-amber-100 shrink-0 ml-2"
+                >
+                  Xem trước HTML
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {error && <div className="p-3 rounded-lg bg-error-container text-on-error-container text-sm">{error}</div>}
       </form>
     </AdminModal>
+    {showPreviewModal && htmlPreview && (
+      <AdminModal
+        open={true}
+        onClose={() => setShowPreviewModal(false)}
+        title={`Xem trước: ${title.trim() || file?.name || "Tài liệu HTML"}`}
+        size="lg"
+        footer={
+          <Button onClick={() => setShowPreviewModal(false)}>Đóng</Button>
+        }
+      >
+        <div className="p-2 border border-outline-variant rounded-xl bg-surface-container-lowest max-h-[70vh] overflow-y-auto">
+          <IsolatedHtmlFrame html={htmlPreview} title={title.trim() || file?.name || "Tài liệu HTML"} />
+        </div>
+      </AdminModal>
+    )}
+  </>
   );
 }
 

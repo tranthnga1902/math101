@@ -36,5 +36,7 @@ public class Assignment extends BaseEntity {
  @Column(name="counts_in_gradebook",nullable=false) private Boolean countsInGradebook=true;
  /** CLASS = cả lớp, không sinh dòng assignment_targets nào. SELECTED = chỉ những em được chọn. */
  @Column(name="target_scope",nullable=false,length=10) private String targetScope="CLASS";
+ /** Sinh ra từ kì thi nào. Rỗng = bài giáo viên tự giao. */
+ @Column(name="exam_id") private Long examId;
  @Column(name="created_by",nullable=false) private Long createdBy;
 }

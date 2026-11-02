@@ -16,7 +16,8 @@ import java.util.zip.ZipInputStream;
  * {@code application/zip} hay {@code application/octet-stream}.
  *
  * <p>Gói .zip phải được mở ra xem: có {@code tincan.xml}/{@code cmi5.xml} là xAPI, có
- * {@code imsmanifest.xml} là SCORM. Chỉ đọc tên mục trong gói, không giải nén nội dung.
+ * {@code imsmanifest.xml} là SCORM, không có mô tả nào mà có {@code index.html} là trang HTML kèm tài nguyên.
+ * Chỉ đọc tên mục trong gói, không giải nén nội dung.
  */
 public final class FileFormatDetector {
 
@@ -31,12 +32,14 @@ public final class FileFormatDetector {
             Map.entry("mp4", FileFormat.VIDEO),
             Map.entry("webm", FileFormat.VIDEO),
             Map.entry("mov", FileFormat.VIDEO),
-            Map.entry("m4v", FileFormat.VIDEO)
+            Map.entry("m4v", FileFormat.VIDEO),
+            Map.entry("html", FileFormat.HTML),
+            Map.entry("htm", FileFormat.HTML)
     );
 
     public static final String ALLOWED_HINT =
             "Chỉ hỗ trợ Word (.doc, .docx), Excel (.xls, .xlsx), PowerPoint (.ppt, .pptx), PDF, "
-                    + "video (.mp4, .webm, .mov, .m4v) và gói SCORM/xAPI (.zip)";
+                    + "video (.mp4, .webm, .mov, .m4v), trang HTML (.html) và gói .zip (SCORM, xAPI hoặc trang HTML có index.html)";
 
     private FileFormatDetector() {
     }
@@ -68,6 +71,7 @@ public final class FileFormatDetector {
 
     static FileFormat detectPackage(InputStream in) throws IOException {
         boolean scorm = false;
+        boolean indexHtml = false;
         boolean anyEntry = false;
         try (ZipInputStream zip = new ZipInputStream(in)) {
             ZipEntry entry;
@@ -81,13 +85,19 @@ public final class FileFormatDetector {
                 if ("imsmanifest.xml".equals(base)) {
                     scorm = true;
                 }
+                if ("index.html".equals(base) || "index.htm".equals(base)) {
+                    indexHtml = true;
+                }
             }
         }
         if (scorm) {
             return FileFormat.SCORM;
         }
+        if (indexHtml) {
+            return FileFormat.HTML;
+        }
         throw new BusinessException(anyEntry
-                ? "File .zip không phải gói SCORM (thiếu imsmanifest.xml) hay xAPI (thiếu tincan.xml/cmi5.xml)"
+                ? "File .zip phải là gói SCORM (có imsmanifest.xml), xAPI (có tincan.xml/cmi5.xml) hoặc trang HTML (có index.html)"
                 : "File .zip rỗng hoặc hỏng");
     }
 

@@ -11,3 +11,4 @@ math10-backend/logs/
 *.tsbuildinfo
 .admin-staging-credentials.txt
 .DS_Store
+math10-backend/uploads/

@@ -84,6 +84,7 @@ public class DocumentServiceImpl implements DocumentService {
     private static final List<DocumentType> MATERIALS_EXCLUDED_TYPES =
             List.of(DocumentType.SGK, DocumentType.SBT, DocumentType.DE_THI);
 
+    private final com.math10.metadata.repository.MetadataOptionRepository metadataOptions;
     private final DocumentRepository documents;
     private final LessonDocumentRepository lessonDocuments;
     private final LessonDocumentQuestionRepository lessonDocumentQuestions;
@@ -220,7 +221,15 @@ public class DocumentServiceImpl implements DocumentService {
         return uploadDocument(title, docType, audience, gradeId, chapterId, null, file, videoUrl, currentUserService.requireUserId());
     }
 
+    /** Loại tài liệu là danh mục admin tự thêm được, nên mã phải có trong danh mục đang dùng. */
+    private void ensureKnownDocType(DocumentType docType) {
+        if (docType == null || !metadataOptions.existsByCategoryAndValueAndActiveTrue("DOCUMENT_TYPE", docType.name())) {
+            throw new BusinessException("Loại tài liệu không có trong danh mục: " + docType);
+        }
+    }
+
     private DocumentResponse uploadDocument(String title, DocumentType docType, DocumentAudience audience, Long gradeId, Long chapterId, Long taxonomyNodeId, MultipartFile file, String videoUrl, Long ownerId) {
+        ensureKnownDocType(docType);
         String fileUrl;
         String thumbnailUrl = null;
         String resolvedTitle;
@@ -289,6 +298,7 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException("Giáo viên không thể chuyển tài liệu thành sách giáo khoa");
         }
         document.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         document.setDocType(request.docType());
         document.setAudience(request.audience());
         document.setGradeId(request.gradeId());
@@ -334,6 +344,7 @@ public class DocumentServiceImpl implements DocumentService {
             throw new AccessDeniedException("Đây là tài liệu riêng của giáo viên, Admin không thể chỉnh sửa");
         }
         document.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         document.setDocType(request.docType());
         document.setAudience(request.audience());
         document.setGradeId(request.gradeId());
@@ -546,8 +557,12 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private String packageLaunch(Document document) {
-        if (!"zip".equals(FileFormatDetector.extensionOf(document.getFileUrl()))) {
-            throw new BusinessException("Tài liệu này không phải gói SCORM/xAPI");
+        String extension = FileFormatDetector.extensionOf(document.getFileUrl());
+        if ("html".equals(extension) || "htm".equals(extension)) {
+            return learningPackages.launchHtmlPath(document.getId(), document.getFileUrl(), () -> fileBytes(document));
+        }
+        if (!"zip".equals(extension)) {
+            throw new BusinessException("Tài liệu này không phải gói SCORM/xAPI hay trang HTML");
         }
         return learningPackages.launchPath(document.getId(), document.getFileUrl(), () -> fileBytes(document));
     }
@@ -895,6 +910,7 @@ public class DocumentServiceImpl implements DocumentService {
     public TextbookListResponse updateTextbook(Long id, DocumentUpdateRequest request) {
         Document doc = document(id);
         doc.setTitle(request.title().trim());
+        ensureKnownDocType(request.docType());
         doc.setDocType(request.docType());
         doc.setAudience(request.audience());
         doc.setGradeId(request.gradeId());

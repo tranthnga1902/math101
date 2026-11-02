@@ -11,5 +11,7 @@ public enum FileFormat {
     PDF,
     VIDEO,
     SCORM,
-    XAPI
+    XAPI,
+    /** Trang web: một file .html, hoặc gói .zip có index.html kèm ảnh/CSS/JS. */
+    HTML
 }

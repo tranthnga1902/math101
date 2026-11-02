@@ -29,6 +29,9 @@ const docTypeInfo: Record<string, { label: string; tone: string; bar: string }> 
   EXERCISE: { label: "BÀI TẬP", tone: "bg-amber-500/15 text-amber-800 border-amber-300", bar: "bg-amber-600" },
   VIDEO: { label: "VIDEO", tone: "bg-red-500/15 text-red-700 border-red-300", bar: "bg-red-600" },
   DOCUMENT: { label: "TÀI LIỆU", tone: "bg-primary-container text-on-primary-container border-primary/30", bar: "bg-primary" },
+  HTML: { label: "HTML", tone: "bg-amber-500/15 text-amber-800 border-amber-300", bar: "bg-amber-600" },
+  HTML_DOCUMENT: { label: "HTML", tone: "bg-amber-500/15 text-amber-800 border-amber-300", bar: "bg-amber-600" },
+  HTML_LESSON_CONTENT: { label: "BÀI HỌC HTML", tone: "bg-violet-500/15 text-violet-800 border-violet-300", bar: "bg-violet-600" },
 };
 
 function getBadge(type?: string | null) {

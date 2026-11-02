@@ -25,6 +25,7 @@ const mainSections = new Set([
   "teacher-content",
   "teacher-documents",
   "teacher-pipeline",
+  "teacher-exams",
   "teacher-courses",
   "teacher-problems",
   "teacher-worksheets",

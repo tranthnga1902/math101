@@ -36,7 +36,7 @@ class TeacherContentPipelineTest {
   long q=jdbc.queryForObject("select id from extracted_questions where source_document_id=?",Long.class,source);
   assertThat(jdbc.queryForObject("select count(*) from document_blocks where source_document_id=?",Integer.class,source)).isGreaterThan(0);
   assertThat(jdbc.queryForObject("select count(*) from math_fragments where question_id=?",Integer.class,q)).isGreaterThan(0);
-  assertThat(jdbc.queryForObject("select question_type from extracted_questions where id=?",String.class,q)).isEqualTo("MULTIPLE_CHOICE");
+  assertThat(jdbc.queryForObject("select question_type from extracted_questions where id=?",String.class,q)).isEqualTo("MCQ");
   assertThat(mvc.perform(get("/api/teacher/content-pipeline/sources/"+source+"/quality").with(authentication(auth(teacher)))).andReturn().getResponse().getContentAsString()).contains("questionConfidence").contains("mathQuestions");
   long math=jdbc.queryForObject("select id from math_fragments where question_id=? order by id limit 1",Long.class,q);
   assertThat(mvc.perform(put("/api/teacher/content-pipeline/math-fragments/"+math+"/review").contentType(MediaType.APPLICATION_JSON).content("{\"latex\":\"x^2-5x+6=0\",\"decision\":\"EDITED\"}").with(authentication(auth(teacher)))).andReturn().getResponse().getStatus()).isEqualTo(200);
