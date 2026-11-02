@@ -13,3 +13,6 @@ math10-backend/logs/
 .DS_Store
 math10-backend/uploads/
 .cursor/mcp.json
+.claude/
+.codex/
+.vscode/

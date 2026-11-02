@@ -4,6 +4,34 @@ MATH10 là hệ thống LMS/luyện tập Toán 10 dùng React + Spring Boot + S
 
 Nguồn sự thật duy nhất của dự án là [MATH10_MASTER_PLAN.md](MATH10_MASTER_PLAN.md). Trước khi code tính năng mới, hãy đọc file này và triển khai theo vertical slice: Database -> Backend API -> Frontend UI -> kiểm thử.
 
+## Giao Diện
+
+**Đăng nhập**
+
+![Đăng nhập](docs/images/dang-nhap.webp)
+
+**Admin — Chương trình học**
+
+![Danh mục chương và bài](docs/images/admin-chuong-trinh.png)
+
+**Admin — Lớp học và lịch từng buổi**
+
+![Thời khóa biểu và lịch buổi học](docs/images/admin-lich-lop.png)
+
+![Danh sách lớp học](docs/images/admin-quan-ly-lop.png)
+
+**Admin — Kho tài liệu**
+
+![Kho tài liệu](docs/images/admin-tai-lieu.png)
+
+**Giáo viên — Quản lý nhiệm vụ**
+
+![Quản lý nhiệm vụ](docs/images/giao-vien-nhiem-vu.png)
+
+**Học sinh — Lộ trình theo chương**
+
+![Lộ trình chương của học sinh](docs/images/hoc-sinh-chuong.png)
+
 ## Kiến Trúc
 
 ```text
