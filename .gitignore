@@ -12,3 +12,4 @@ math10-backend/logs/
 .admin-staging-credentials.txt
 .DS_Store
 math10-backend/uploads/
+.cursor/mcp.json
